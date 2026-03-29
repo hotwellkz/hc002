@@ -1,3 +1,4 @@
+import type { SnapKind } from "../geometry/snap2d";
 import type { Point2D } from "../geometry/types";
 import type { Project } from "./project";
 
@@ -20,6 +21,8 @@ export interface WallPlacementSession {
   readonly firstPointMm: Point2D | null;
   /** Текущий конец preview при движении мыши, мм. */
   readonly previewEndMm: Point2D | null;
+  /** Последняя сработавшая привязка при preview (для маркера и подсказки). */
+  readonly lastSnapKind: SnapKind | null;
 }
 
 export function initialWallPlacementPhase(project: Project): WallPlacementPhase {

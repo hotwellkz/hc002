@@ -60,11 +60,52 @@ const MODES: readonly { mode: LinearProfilePlacementMode; title: string; icon: R
   { mode: "rightEdge", title: "По правому краю", icon: <IconAlignRight /> },
 ];
 
+function IconSnapVertex() {
+  return (
+    <svg className="lpr-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M6 6h4v4H6V6zm8 0h4v4h-4V6zM6 14h4v4H6v-4zm8 0h4v4h-4v-4z"
+        opacity="0.35"
+      />
+      <path fill="currentColor" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z" />
+    </svg>
+  );
+}
+
+function IconSnapEdge() {
+  return (
+    <svg className="lpr-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M5 19L19 5" />
+    </svg>
+  );
+}
+
+function IconSnapGrid() {
+  return (
+    <svg className="lpr-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        d="M4 8h16M4 16h16M8 4v16M16 4v16"
+        opacity="0.85"
+      />
+    </svg>
+  );
+}
+
 export function LinearPlacementRail() {
   const shapeMode = useAppStore((s) => s.currentProject.settings.editor2d.wallShapeMode);
   const setShapeMode = useAppStore((s) => s.setWallShapeMode);
   const mode = useAppStore((s) => s.currentProject.settings.editor2d.linearPlacementMode);
   const setMode = useAppStore((s) => s.setLinearPlacementMode);
+  const snapV = useAppStore((s) => s.currentProject.settings.editor2d.snapToVertex);
+  const snapE = useAppStore((s) => s.currentProject.settings.editor2d.snapToEdge);
+  const snapG = useAppStore((s) => s.currentProject.settings.editor2d.snapToGrid);
+  const setSnapV = useAppStore((s) => s.setSnapToVertex);
+  const setSnapE = useAppStore((s) => s.setSnapToEdge);
+  const setSnapG = useAppStore((s) => s.setSnapToGrid);
 
   return (
     <aside className="lpr" aria-label="Режимы построения стены">
@@ -100,6 +141,42 @@ export function LinearPlacementRail() {
             {icon}
           </button>
         ))}
+      </div>
+      <div className="lpr-divider" role="separator" aria-hidden="true" />
+      <div className="lpr-group" aria-label="Привязка">
+        <button
+          type="button"
+          className="lpr-btn"
+          title="Привязка к углам"
+          aria-label="Привязка к углам"
+          aria-pressed={snapV}
+          data-active={snapV}
+          onClick={() => setSnapV(!snapV)}
+        >
+          <IconSnapVertex />
+        </button>
+        <button
+          type="button"
+          className="lpr-btn"
+          title="Привязка к линиям"
+          aria-label="Привязка к линиям"
+          aria-pressed={snapE}
+          data-active={snapE}
+          onClick={() => setSnapE(!snapE)}
+        >
+          <IconSnapEdge />
+        </button>
+        <button
+          type="button"
+          className="lpr-btn"
+          title="Привязка к сетке"
+          aria-label="Привязка к сетке"
+          aria-pressed={snapG}
+          data-active={snapG}
+          onClick={() => setSnapG(!snapG)}
+        >
+          <IconSnapGrid />
+        </button>
       </div>
     </aside>
   );

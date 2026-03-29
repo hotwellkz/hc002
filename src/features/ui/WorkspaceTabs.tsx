@@ -37,15 +37,24 @@ export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
           </button>
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {tab === "2d" ? (
           <>
             <Editor2DToolbar />
             <div
               className="workspace-2d-main"
-              style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "row" }}
+              style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative", display: "flex", flexDirection: "row" }}
             >
-              <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
+              <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative", overflow: "hidden" }}>
                 <ActiveLayerBadge />
                 <Editor2DWorkspace onWorldCursorMm={onWorldCursorMm} />
               </div>

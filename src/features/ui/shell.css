@@ -4,7 +4,8 @@
   --shell-right-col: var(--layout-right-panel);
   display: grid;
   grid-template-rows: var(--layout-top-toolbar) 1fr var(--layout-status);
-  grid-template-columns: var(--layout-left-rail) 1fr minmax(0, var(--shell-right-col));
+  /* Центр — гибкий minmax(0,1fr), справа — фиксированная ширина rail/панели (без minmax max=300, чтобы трек совпадал с --shell-right-col). */
+  grid-template-columns: var(--layout-left-rail) minmax(0, 1fr) var(--shell-right-col);
   grid-template-areas:
     "top top top"
     "navrail center right"
@@ -69,11 +70,15 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  overflow: hidden;
   background: var(--color-app-bg);
 }
 
 .workspace-2d-main {
+  min-width: 0;
   min-height: 0;
+  flex: 1;
 }
 
 .shell-right {

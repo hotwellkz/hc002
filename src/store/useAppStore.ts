@@ -24,7 +24,9 @@ import { getProfileById } from "@/core/domain/profileOps";
 import { validateProfile } from "@/core/domain/profileValidation";
 import type { Project } from "@/core/domain/project";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
-import { computeProfileThickness, setProjectOrigin, snapPoint2dToGridMm } from "@/core/domain/wallOps";
+import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
+import { resolveSnap2d } from "@/core/geometry/snap2d";
+import { computeProfileThickness, setProjectOrigin } from "@/core/domain/wallOps";
 import { commitWallPlacementSecondPoint } from "@/core/domain/wallPlacementCommit";
 import type { WallPlacementSession } from "@/core/domain/wallPlacement";
 import { initialWallPlacementPhase } from "@/core/domain/wallPlacement";
@@ -71,6 +73,8 @@ interface AppState {
   readonly persistenceReady: boolean;
   readonly persistenceStatus: "idle" | "loading" | "saving" | "saved" | "error";
   readonly firestoreEnabled: boolean;
+  /** Размер canvas 2D для привязки и модалки координат (не персистится). */
+  readonly viewportCanvas2dPx: { readonly width: number; readonly height: number } | null;
 }
 
 interface AppActions {
@@ -83,6 +87,7 @@ interface AppActions {
   setActiveTab: (tab: EditorTab) => void;
   toggleRightPanel: () => void;
   setRightPropertiesCollapsed: (collapsed: boolean) => void;
+  setShow3dProfileLayers: (show: boolean) => void;
   markClean: () => void;
   undo: () => void;
   redo: () => void;
@@ -120,11 +125,15 @@ interface AppActions {
     readonly baseElevationMm: number;
   }) => void;
   cancelWallPlacement: () => void;
-  wallPlacementPreviewMove: (worldMm: { readonly x: number; readonly y: number }) => void;
-  wallPlacementPrimaryClick: (worldMm: { readonly x: number; readonly y: number }) => void;
+  setViewportCanvas2dPx: (width: number, height: number) => void;
+  wallPlacementPreviewMove: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
+  wallPlacementPrimaryClick: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
   wallPlacementCompleteSecondPoint: (secondSnappedMm: { readonly x: number; readonly y: number }) => void;
   setLinearPlacementMode: (mode: LinearProfilePlacementMode) => void;
   setWallShapeMode: (mode: WallShapeMode) => void;
+  setSnapToVertex: (value: boolean) => void;
+  setSnapToEdge: (value: boolean) => void;
+  setSnapToGrid: (value: boolean) => void;
   openWallCoordinateModal: () => void;
   closeWallCoordinateModal: () => void;
   applyWallCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
@@ -133,6 +142,35 @@ interface AppActions {
 export type AppStore = AppState & AppActions;
 
 const initialHistory: UndoRedoSkeleton = { past: [], future: [] };
+
+function resolvePlacementSnap(
+  get: () => AppStore,
+  rawWorldMm: { readonly x: number; readonly y: number },
+  viewport: ViewportTransform | null,
+) {
+  const p0 = get().currentProject;
+  const e2 = p0.settings.editor2d;
+  return resolveSnap2d({
+    rawWorldMm,
+    viewport,
+    project: p0,
+    snapSettings: {
+      snapToVertex: e2.snapToVertex,
+      snapToEdge: e2.snapToEdge,
+      snapToGrid: e2.snapToGrid,
+    },
+    gridStepMm: p0.settings.gridStepMm,
+  });
+}
+
+function getViewportForSnapFromStore(get: () => AppStore): ViewportTransform | null {
+  const sz = get().viewportCanvas2dPx;
+  if (!sz || sz.width <= 0 || sz.height <= 0) {
+    return null;
+  }
+  const v = get().viewport2d;
+  return buildViewportTransform(sz.width, sz.height, v.panXMm, v.panYMm, v.zoomPixelsPerMm);
+}
 
 function mergeViewState(
   project: Project,
@@ -166,6 +204,15 @@ export const useAppStore = create<AppStore>((set, get) => {
     persistenceReady: false,
     persistenceStatus: "loading",
     firestoreEnabled: false,
+    viewportCanvas2dPx: null,
+
+    setViewportCanvas2dPx: (width, height) =>
+      set({
+        viewportCanvas2dPx:
+          Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+            ? { width, height }
+            : null,
+      }),
 
     setSelectedEntityIds: (ids) => set({ selectedEntityIds: ids }),
 
@@ -222,6 +269,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           ...s.currentProject,
           viewState: { ...s.currentProject.viewState, rightPropertiesCollapsed: collapsed },
         }),
+        dirty: true,
+      })),
+
+    setShow3dProfileLayers: (show3dProfileLayers) =>
+      set((s) => ({
+        currentProject: touchProjectMeta(mergeViewState(s.currentProject, { show3dProfileLayers })),
         dirty: true,
       })),
 
@@ -397,6 +450,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           },
           firstPointMm: null,
           previewEndMm: null,
+          lastSnapKind: null,
         },
         addWallModalOpen: false,
         selectedEntityIds: [],
@@ -406,39 +460,40 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     cancelWallPlacement: () => set({ wallPlacementSession: null, wallCoordinateModalOpen: false }),
 
-    wallPlacementPreviewMove: (worldMm) => {
+    wallPlacementPreviewMove: (worldMm, viewport) => {
       const s = get().wallPlacementSession;
       if (!s || s.phase !== "waitingSecondPoint") {
         return;
       }
-      const grid = get().currentProject.settings.gridStepMm;
-      const snap = snapPoint2dToGridMm(worldMm, grid);
+      const snap = resolvePlacementSnap(get, worldMm, viewport);
       set({
         wallPlacementSession: {
           ...s,
-          previewEndMm: snap,
+          previewEndMm: snap.point,
+          lastSnapKind: snap.kind,
         },
       });
     },
 
-    wallPlacementPrimaryClick: (worldMm) => {
+    wallPlacementPrimaryClick: (worldMm, viewport) => {
       const p0 = get().currentProject;
       const session = get().wallPlacementSession;
       if (!session) {
         return;
       }
-      const grid = p0.settings.gridStepMm;
-      const snap = snapPoint2dToGridMm(worldMm, grid);
+      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      const pt = snap.point;
 
       if (session.phase === "waitingOriginAndFirst") {
-        const nextProject = setProjectOrigin(p0, snap);
+        const nextProject = setProjectOrigin(p0, pt);
         set({
           currentProject: nextProject,
           wallPlacementSession: {
             ...session,
             phase: "waitingSecondPoint",
-            firstPointMm: snap,
-            previewEndMm: snap,
+            firstPointMm: pt,
+            previewEndMm: pt,
+            lastSnapKind: snap.kind,
           },
           dirty: true,
           lastError: null,
@@ -451,15 +506,16 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallPlacementSession: {
             ...session,
             phase: "waitingSecondPoint",
-            firstPointMm: snap,
-            previewEndMm: snap,
+            firstPointMm: pt,
+            previewEndMm: pt,
+            lastSnapKind: snap.kind,
           },
         });
         return;
       }
 
       if (session.phase === "waitingSecondPoint") {
-        get().wallPlacementCompleteSecondPoint(snap);
+        get().wallPlacementCompleteSecondPoint(pt);
       }
     },
 
@@ -513,10 +569,46 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       const first = session.firstPointMm;
       const raw = { x: first.x + input.dxMm, y: first.y + input.dyMm };
-      const grid = get().currentProject.settings.gridStepMm;
-      const snap = snapPoint2dToGridMm(raw, grid);
-      get().wallPlacementCompleteSecondPoint(snap);
+      const vp = getViewportForSnapFromStore(get);
+      const snap = resolvePlacementSnap(get, raw, vp);
+      get().wallPlacementCompleteSecondPoint(snap.point);
     },
+
+    setSnapToVertex: (value) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          settings: {
+            ...s.currentProject.settings,
+            editor2d: { ...s.currentProject.settings.editor2d, snapToVertex: value },
+          },
+        }),
+        dirty: true,
+      })),
+
+    setSnapToEdge: (value) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          settings: {
+            ...s.currentProject.settings,
+            editor2d: { ...s.currentProject.settings.editor2d, snapToEdge: value },
+          },
+        }),
+        dirty: true,
+      })),
+
+    setSnapToGrid: (value) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          settings: {
+            ...s.currentProject.settings,
+            editor2d: { ...s.currentProject.settings.editor2d, snapToGrid: value },
+          },
+        }),
+        dirty: true,
+      })),
 
     setWallShapeMode: (mode) =>
       set((s) => ({

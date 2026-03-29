@@ -8,6 +8,10 @@ export interface Editor2dSettings {
   readonly linearPlacementMode: LinearProfilePlacementMode;
   /** Линия (одна стена) или прямоугольник (четыре стены). */
   readonly wallShapeMode: WallShapeMode;
+  /** Независимые режимы магнитной привязки (пороги в px на экране). */
+  readonly snapToVertex: boolean;
+  readonly snapToEdge: boolean;
+  readonly snapToGrid: boolean;
 }
 
 /** Настройки проекта (в т.ч. редактор), сериализуются в snapshot. */
@@ -25,9 +29,12 @@ export function normalizeProjectSettings(s: ProjectSettingsWire): ProjectSetting
   const linearPlacementMode: LinearProfilePlacementMode =
     mode === "leftEdge" || mode === "rightEdge" || mode === "center" ? mode : "center";
   const wallShapeMode: WallShapeMode = s.editor2d?.wallShapeMode === "rectangle" ? "rectangle" : "line";
+  const snapToVertex = s.editor2d?.snapToVertex !== false;
+  const snapToEdge = s.editor2d?.snapToEdge !== false;
+  const snapToGrid = s.editor2d?.snapToGrid !== false;
   return {
     gridStepMm: s.gridStepMm,
     showGrid: s.showGrid,
-    editor2d: { linearPlacementMode, wallShapeMode },
+    editor2d: { linearPlacementMode, wallShapeMode, snapToVertex, snapToEdge, snapToGrid },
   };
 }

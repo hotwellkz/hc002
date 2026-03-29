@@ -8,3 +8,5 @@ export * from "./lineSegment";
 export * from "./rect";
 export * from "./bbox";
 export * from "./axisRect";
+export * from "./viewportTransform";
+export * from "./snap2d";

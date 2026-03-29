@@ -148,6 +148,7 @@ export function createDemoProject(): Project {
         targetZMm: 1400,
       },
       rightPropertiesCollapsed: false,
+      show3dProfileLayers: true,
     },
   };
 

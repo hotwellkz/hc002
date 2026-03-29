@@ -73,6 +73,7 @@ export function createEmptyProject(): Project {
         targetZMm: 1500,
       },
       rightPropertiesCollapsed: false,
+      show3dProfileLayers: true,
     },
   };
 }

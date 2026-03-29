@@ -283,7 +283,10 @@
             "wallShapeMode": {
               "type": "string",
               "enum": ["line", "rectangle"]
-            }
+            },
+            "snapToVertex": { "type": "boolean" },
+            "snapToEdge": { "type": "boolean" },
+            "snapToGrid": { "type": "boolean" }
           }
         }
       }
@@ -294,6 +297,7 @@
       "required": ["activeTab", "viewport2d", "viewport3d"],
       "properties": {
         "rightPropertiesCollapsed": { "type": "boolean" },
+        "show3dProfileLayers": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d"] },
         "viewport2d": {
           "type": "object",

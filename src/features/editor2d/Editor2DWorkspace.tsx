@@ -14,7 +14,7 @@ import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
 import { buildScreenGridLines } from "./gridGeometry";
 import { drawWallsAndOpenings2d } from "./walls2dPixi";
-import { buildViewportTransform, screenToWorld } from "./viewportTransforms";
+import { buildViewportTransform, screenToWorld, worldToScreen } from "./viewportTransforms";
 
 import "./wall-placement-hint.css";
 
@@ -110,6 +110,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     const wallsG = new Graphics();
     const openingsG = new Graphics();
     const previewG = new Graphics();
+    const snapMarkerG = new Graphics();
     const marqueeG = new Graphics();
     const worldRoot = new Container();
     worldRoot.eventMode = "static";
@@ -186,6 +187,23 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
       }
 
+      snapMarkerG.clear();
+      if (
+        wallPlacementSession?.phase === "waitingSecondPoint" &&
+        wallPlacementSession.previewEndMm &&
+        wallPlacementSession.lastSnapKind &&
+        wallPlacementSession.lastSnapKind !== "none"
+      ) {
+        const sk = wallPlacementSession.lastSnapKind;
+        const p = wallPlacementSession.previewEndMm;
+        const sc = worldToScreen(p.x, p.y, t);
+        const col = sk === "vertex" ? 0x5cff8a : sk === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(sc.x, sc.y, 7);
+        snapMarkerG.stroke({ width: 2, color: col, alpha: 0.95 });
+        snapMarkerG.circle(sc.x, sc.y, 2);
+        snapMarkerG.fill({ color: col, alpha: 0.95 });
+      }
+
       marqueeG.clear();
       if (marquee) {
         const x = Math.min(marquee.sx, marquee.cx);
@@ -223,8 +241,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(wallsG);
       worldRoot.addChild(openingsG);
       worldRoot.addChild(previewG);
+      worldRoot.addChild(snapMarkerG);
       worldRoot.addChild(marqueeG);
       app.stage.addChild(worldRoot);
+      useAppStore.getState().setViewportCanvas2dPx(app.renderer.width, app.renderer.height);
 
       const onWheel = (ev: WheelEvent) => {
         ev.preventDefault();
@@ -301,14 +321,23 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         const top = rect.top + ev.global.y + 12;
         if (wallPlacementSession) {
           const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
-          setWallHintRef.current({
-            left,
-            top,
-            text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}`,
-          });
           if (wallPlacementSession.phase === "waitingSecondPoint") {
-            useAppStore.getState().wallPlacementPreviewMove(p);
+            useAppStore.getState().wallPlacementPreviewMove(p, t);
             const ws = useAppStore.getState().wallPlacementSession;
+            let snapLine = "";
+            if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
+              snapLine =
+                ws.lastSnapKind === "vertex"
+                  ? "Привязка: угол"
+                  : ws.lastSnapKind === "edge"
+                    ? "Привязка: линия"
+                    : "Привязка: сетка";
+            }
+            setWallHintRef.current({
+              left,
+              top,
+              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}`,
+            });
             if (ws?.firstPointMm && ws.previewEndMm) {
               const dx = ws.previewEndMm.x - ws.firstPointMm.x;
               const dy = ws.previewEndMm.y - ws.firstPointMm.y;
@@ -316,6 +345,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               setCoordHudRef.current({ left, top: top + 52, dx, dy, d });
             }
           } else {
+            setWallHintRef.current({
+              left,
+              top,
+              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}`,
+            });
             setCoordHudRef.current(null);
           }
         } else {
@@ -358,7 +392,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
 
         if (wallPlacementSession && ev.button === 0) {
-          useAppStore.getState().wallPlacementPrimaryClick(worldMm);
+          useAppStore.getState().wallPlacementPrimaryClick(worldMm, t);
           paint();
           if (!useAppStore.getState().wallPlacementSession) {
             setWallHintRef.current(null);
@@ -428,6 +462,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
       unsubStore = useAppStore.subscribe(paint);
       ro = new ResizeObserver(() => {
+        /* Pixi resizeTo слушает только window.resize, не изменение flex/grid — принудительно подгоняем renderer. */
+        app.resize();
+        useAppStore.getState().setViewportCanvas2dPx(app.renderer.width, app.renderer.height);
         paint();
       });
       ro.observe(host);
@@ -456,8 +493,17 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   }, []);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 0, flex: 1 }}>
-      <div ref={hostRef} style={{ width: "100%", height: "100%", minHeight: 0 }} />
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        minHeight: 0,
+        flex: 1,
+      }}
+    >
+      <div ref={hostRef} style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }} />
       {wallHint ? (
         <div className="ed2d-wall-hint" style={{ left: wallHint.left, top: wallHint.top }}>
           {wallHint.text}
