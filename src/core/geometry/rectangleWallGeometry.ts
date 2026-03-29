@@ -75,6 +75,30 @@ export function fourWallCenterSegmentsFromRect(r: AxisAlignedRectMm): readonly {
   ];
 }
 
+/**
+ * Четыре оси стен прямоугольника с miter-удлинением на 90°: на каждом конце сегмента
+ * ось продлевается на thicknessMm/2 вдоль направления стены (наружу от угла контура).
+ * Так толщина T по перпендикуляру закрывает внешние углы без щелей (2D/3D).
+ *
+ * Порядок CCW, как в fourWallCenterSegmentsFromRect: низ → право → верх → лево.
+ */
+export function fourWallMiteredCenterSegmentsFromRect(
+  r: AxisAlignedRectMm,
+  thicknessMm: number,
+): readonly { readonly start: Point2D; readonly end: Point2D }[] | null {
+  if (!Number.isFinite(thicknessMm) || thicknessMm <= 0) {
+    return null;
+  }
+  const h = thicknessMm / 2;
+  const { minX, minY, maxX, maxY } = r;
+  return [
+    { start: { x: minX - h, y: minY }, end: { x: maxX + h, y: minY } },
+    { start: { x: maxX, y: minY - h }, end: { x: maxX, y: maxY + h } },
+    { start: { x: maxX + h, y: maxY }, end: { x: minX - h, y: maxY } },
+    { start: { x: minX, y: maxY + h }, end: { x: minX, y: minY - h } },
+  ];
+}
+
 /** Δ от первой точки ко второй (мм), как в UI. */
 export function deltaMmFromFirstToSecond(first: Point2D, second: Point2D): { readonly dx: number; readonly dy: number; readonly d: number } {
   const dx = second.x - first.x;

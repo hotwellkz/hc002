@@ -12,7 +12,7 @@ import {
 import {
   adjustedRectForRectanglePlacement,
   axisAlignedRectFromCorners,
-  fourWallCenterSegmentsFromRect,
+  fourWallMiteredCenterSegmentsFromRect,
 } from "@/core/geometry/rectangleWallGeometry";
 import type { Point2D } from "@/core/geometry/types";
 import type { Profile } from "@/core/domain/profile";
@@ -209,7 +209,10 @@ export function drawRectangleWallPlacementPreview(
   if (!adjusted) {
     return;
   }
-  const segs = fourWallCenterSegmentsFromRect(adjusted);
+  const segs = fourWallMiteredCenterSegmentsFromRect(adjusted, thicknessMm);
+  if (!segs) {
+    return;
+  }
   const strips = resolvePreviewStrips(layeredOpts);
   const useLayered = strips && strips.length >= 2;
   for (const seg of segs) {

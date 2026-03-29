@@ -15,14 +15,17 @@ function IconWallAdd() {
 
 export function Editor2DPlanToolbar() {
   const open = useAppStore((s) => s.openAddWallModal);
+  const wallToolActive = useAppStore((s) => s.wallPlacementSession != null);
 
   return (
     <div className="e2dpt" role="toolbar" aria-label="Построение плана">
       <button
         type="button"
         className="e2dpt-btn"
-        title="Добавить стену"
-        aria-label="Добавить стену"
+        title={wallToolActive ? "Параметры стены (добавить ещё)" : "Добавить стену"}
+        aria-label={wallToolActive ? "Параметры стены" : "Добавить стену"}
+        aria-pressed={wallToolActive}
+        data-active={wallToolActive}
         onClick={() => open()}
       >
         <IconWallAdd />

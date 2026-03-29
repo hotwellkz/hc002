@@ -11,6 +11,7 @@ export function AddWallModal() {
   const apply = useAppStore((s) => s.applyAddWallModal);
   const openProfiles = useAppStore((s) => s.openProfilesModal);
   const project = useAppStore((s) => s.currentProject);
+  const wallToolSession = useAppStore((s) => s.wallPlacementSession);
 
   const [profileId, setProfileId] = useState("");
   const [heightMm, setHeightMm] = useState(2500);
@@ -20,10 +21,18 @@ export function AddWallModal() {
     if (!open) {
       return;
     }
-    const p = useAppStore.getState().currentProject;
+    const st = useAppStore.getState();
+    const p = st.currentProject;
+    const draft = st.wallPlacementSession?.draft;
     const wallProfiles = p.profiles.filter((pr) => pr.category === "wall");
     const first = wallProfiles[0];
     const active = getLayerById(p, p.activeLayerId);
+    if (draft && wallProfiles.some((pr) => pr.id === draft.profileId)) {
+      setProfileId(draft.profileId);
+      setHeightMm(draft.heightMm);
+      setElevationMm(draft.baseElevationMm);
+      return;
+    }
     setProfileId(first?.id ?? "");
     setHeightMm(
       first?.defaultHeightMm != null && Number.isFinite(first.defaultHeightMm) ? first.defaultHeightMm : 2500,
@@ -99,7 +108,7 @@ export function AddWallModal() {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="aw-title" className="lm-title">
-          Добавить стену
+          {wallToolSession ? "Параметры стены" : "Добавить стену"}
         </h2>
         <label className="lm-field">
           <span className="lm-label">Профиль</span>

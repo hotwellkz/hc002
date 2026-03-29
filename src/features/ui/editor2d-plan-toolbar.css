@@ -37,6 +37,13 @@
   box-shadow: var(--shadow-focus-glow);
 }
 
+.e2dpt-btn[data-active="true"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-accent-outline);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-accent-glow);
+}
+
 .e2dpt-icon {
   width: 18px;
   height: 18px;

@@ -73,7 +73,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
         if (useAppStore.getState().wallPlacementSession) {
           e.preventDefault();
-          useAppStore.getState().cancelWallPlacement();
+          useAppStore.getState().wallPlacementBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
         }
@@ -397,7 +397,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
         if (wallPlacementSession && ev.button === 2) {
           ev.preventDefault();
-          useAppStore.getState().cancelWallPlacement();
+          useAppStore.getState().wallPlacementBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
           paint();

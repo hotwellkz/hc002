@@ -125,7 +125,13 @@ interface AppActions {
     readonly heightMm: number;
     readonly baseElevationMm: number;
   }) => void;
+  /** Полностью выключить инструмент стены (сессия сбрасывается). */
   cancelWallPlacement: () => void;
+  /**
+   * Esc / ПКМ: если ждём вторую точку — отменить текущий сегмент и вернуться к первой точке;
+   * иначе полностью выйти из инструмента стены.
+   */
+  wallPlacementBackOrExit: () => void;
   setViewportCanvas2dPx: (width: number, height: number) => void;
   wallPlacementPreviewMove: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
   wallPlacementPrimaryClick: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
@@ -232,7 +238,13 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
     },
 
-    setActiveTool: (tool) => set({ activeTool: tool }),
+    setActiveTool: (tool) =>
+      set({
+        activeTool: tool,
+        ...(tool === "select"
+          ? { wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false }
+          : {}),
+      }),
 
     setViewport2d: (v) =>
       set((s) => ({
@@ -465,7 +477,28 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
     },
 
-    cancelWallPlacement: () => set({ wallPlacementSession: null, wallCoordinateModalOpen: false }),
+    cancelWallPlacement: () => set({ wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false }),
+
+    wallPlacementBackOrExit: () => {
+      const session = get().wallPlacementSession;
+      if (!session) {
+        return;
+      }
+      if (session.phase === "waitingSecondPoint") {
+        set({
+          wallPlacementSession: {
+            ...session,
+            phase: "waitingFirstWallPoint",
+            firstPointMm: null,
+            previewEndMm: null,
+            lastSnapKind: null,
+          },
+          wallCoordinateModalOpen: false,
+        });
+        return;
+      }
+      set({ wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false });
+    },
 
     wallPlacementPreviewMove: (worldMm, viewport) => {
       const s = get().wallPlacementSession;
@@ -544,9 +577,16 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: result.error });
         return;
       }
+      const nextProject = result.project;
       set({
-        currentProject: result.project,
-        wallPlacementSession: null,
+        currentProject: nextProject,
+        wallPlacementSession: {
+          phase: initialWallPlacementPhase(nextProject),
+          draft: session.draft,
+          firstPointMm: null,
+          previewEndMm: null,
+          lastSnapKind: null,
+        },
         wallCoordinateModalOpen: false,
         selectedEntityIds: [...result.createdWallIds],
         dirty: true,

@@ -3,7 +3,7 @@ import { computeWallCenterlineFromReferenceLine } from "../geometry/linearPlacem
 import {
   adjustedRectForRectanglePlacement,
   axisAlignedRectFromCorners,
-  fourWallCenterSegmentsFromRect,
+  fourWallMiteredCenterSegmentsFromRect,
 } from "../geometry/rectangleWallGeometry";
 import type { Point2D } from "../geometry/types";
 import { getProfileById } from "./profileOps";
@@ -83,7 +83,10 @@ export function commitWallPlacementSecondPoint(
     };
   }
 
-  const segs = fourWallCenterSegmentsFromRect(adjusted);
+  const segs = fourWallMiteredCenterSegmentsFromRect(adjusted, draft.thicknessMm);
+  if (!segs) {
+    return { error: "Не удалось построить сегменты контура стен." };
+  }
   const groupId = newEntityId();
   const walls: Wall[] = [];
   for (const seg of segs) {
