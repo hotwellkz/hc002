@@ -1,0 +1,33 @@
+.ed2d-wall-hint {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  max-width: 280px;
+  white-space: pre-line;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-tooltip-bg);
+  color: var(--color-text-primary);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  line-height: var(--lh-body-sm);
+  box-shadow: var(--shadow-panel);
+}
+
+.ed2d-wall-coord-hud {
+  position: fixed;
+  z-index: 41;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  background: rgba(20, 23, 27, 0.96);
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  box-shadow: var(--shadow-panel);
+}

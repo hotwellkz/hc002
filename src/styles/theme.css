@@ -1,0 +1,99 @@
+/**
+ * Design tokens → CSS variables (lowcode-dark-clean).
+ * Source of truth: src/theme/design-tokens.json
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Colors */
+  --color-app-bg: #111315;
+  --color-surface-base: #17191c;
+  --color-surface-raised: #1c1f24;
+  --color-surface-hover: #23272e;
+  --color-surface-active: #202a38;
+  --color-surface-selected: #223248;
+  --color-border-subtle: #2a2f36;
+  --color-border-strong: #3a4350;
+  --color-text-primary: #f3f5f7;
+  --color-text-secondary: #b2b8c2;
+  --color-text-muted: #8a919c;
+  --color-text-on-accent: #f7faff;
+  --color-accent: #5aa7ff;
+  --color-accent-hover: #72b6ff;
+  --color-accent-soft: #1d3654;
+  --color-accent-outline: #4e97e8;
+  --color-danger: #e06c75;
+  --color-danger-soft: #3a2328;
+  --color-success: #62c98c;
+  --color-warning: #e7b65c;
+  --color-overlay: rgba(8, 10, 12, 0.62);
+  --color-tooltip-bg: #20242b;
+  --color-grid-major: rgba(255, 255, 255, 0.1);
+  --color-grid-minor: rgba(255, 255, 255, 0.05);
+  --color-canvas-bg: #14171b;
+  --color-ghost-layer: rgba(120, 160, 220, 0.28);
+
+  /* Legacy aliases (existing components) */
+  --bg: var(--color-app-bg);
+  --panel: var(--color-surface-base);
+  --border: var(--color-border-subtle);
+  --text: var(--color-text-primary);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-accent);
+
+  /* Radius */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+  --radius-modal: 18px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-xxl: 24px;
+
+  /* Shadow */
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --shadow-modal: 0 18px 60px rgba(0, 0, 0, 0.38);
+  --shadow-focus-glow: 0 0 0 3px rgba(90, 167, 255, 0.16);
+  --shadow-accent-glow: 0 0 0 1px rgba(90, 167, 255, 0.26), 0 0 18px rgba(90, 167, 255, 0.1);
+
+  /* Layout */
+  --layout-left-rail: 64px;
+  --layout-top-toolbar: 56px;
+  --layout-status: 28px;
+  --layout-right-panel: 300px;
+  --tool-button-size: 40px;
+  --tool-button-gap: 8px;
+  --modal-max-w: 920px;
+  --content-gap: 12px;
+
+  /* Typography */
+  --font-sans: Inter, Geist, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --text-body: 14px;
+  --lh-body: 20px;
+  --text-body-sm: 13px;
+  --lh-body-sm: 18px;
+  --text-label: 12px;
+  --lh-label: 16px;
+  --fw-label: 600;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-fast: 120ms;
+  --t-normal: 180ms;
+}

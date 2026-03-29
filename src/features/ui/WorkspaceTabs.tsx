@@ -1,6 +1,7 @@
 import { ActiveLayerBadge } from "@/features/ui/ActiveLayerBadge";
 import { Editor2DToolbar } from "@/features/editor2d/Editor2DToolbar";
 import { Editor2DWorkspace } from "@/features/editor2d/Editor2DWorkspace";
+import { LinearPlacementRail } from "@/features/ui/LinearPlacementRail";
 import { Editor3DWorkspace } from "@/features/editor3d/Editor3DWorkspace";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -14,7 +15,7 @@ export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
 
   return (
     <div className="shell-center">
-      <div className="row" style={{ padding: 8, borderBottom: "1px solid var(--border)", background: "#12141c" }}>
+      <div className="workspace-subbar">
         <div className="tabs" role="tablist" aria-label="Режим редактора">
           <button
             type="button"
@@ -40,9 +41,15 @@ export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
         {tab === "2d" ? (
           <>
             <Editor2DToolbar />
-            <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-              <ActiveLayerBadge />
-              <Editor2DWorkspace onWorldCursorMm={onWorldCursorMm} />
+            <div
+              className="workspace-2d-main"
+              style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "row" }}
+            >
+              <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: "relative" }}>
+                <ActiveLayerBadge />
+                <Editor2DWorkspace onWorldCursorMm={onWorldCursorMm} />
+              </div>
+              <LinearPlacementRail />
             </div>
           </>
         ) : (

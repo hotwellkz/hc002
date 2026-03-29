@@ -1,0 +1,70 @@
+/* Вертикальная панель режимов привязки линейного профиля (2D) */
+
+.lpr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-xs);
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.lpr-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.lpr-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--color-border-subtle);
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.lpr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.lpr-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.lpr-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.lpr-btn[data-active="true"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-accent-outline);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-accent-glow);
+}
+
+.lpr-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}

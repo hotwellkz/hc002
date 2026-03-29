@@ -1,5 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
+import { initProjectPersistence } from "@/data/projectPersistence";
 import { AppShell } from "@/features/ui/AppShell";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -14,21 +15,7 @@ function ErrorBanner() {
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        right: 12,
-        bottom: 36,
-        maxWidth: 420,
-        padding: "10px 12px",
-        background: "#2a1214",
-        border: "1px solid #5c2a30",
-        borderRadius: 8,
-        color: "#ffd3d6",
-        fontSize: 12,
-        zIndex: 50,
-      }}
-    >
+    <div className="ui-error-banner">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <span>{err}</span>
         <button type="button" className="btn" onClick={clear}>
@@ -40,6 +27,10 @@ function ErrorBanner() {
 }
 
 export default function App() {
+  useEffect(() => {
+    void initProjectPersistence();
+  }, []);
+
   return (
     <>
       <AppShell />

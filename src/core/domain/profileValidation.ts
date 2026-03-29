@@ -1,0 +1,54 @@
+import type { Profile } from "./profile";
+
+/** Сообщения об ошибках для UI (без alert). */
+export function validateProfile(p: Profile): string[] {
+  const errors: string[] = [];
+  if (!p.name.trim()) {
+    errors.push("Укажите название профиля.");
+  }
+
+  const num = (v: number | undefined) => v != null && Number.isFinite(v);
+
+  if (p.compositionMode === "layered") {
+    if (p.layers.length < 1) {
+      errors.push("Для составного профиля нужен хотя бы один слой.");
+    }
+    p.layers.forEach((l, i) => {
+      if (!(l.thicknessMm > 0)) {
+        errors.push(`Слой ${i + 1}: толщина должна быть больше 0.`);
+      }
+      if (!String(l.materialName).trim()) {
+        errors.push(`Слой ${i + 1}: укажите название материала.`);
+      }
+    });
+  } else {
+    if (p.layers.length > 1) {
+      errors.push("Для цельного профиля допустим не более одного слоя.");
+    }
+    if (p.layers.length === 1) {
+      const l = p.layers[0]!;
+      if (!(l.thicknessMm > 0)) {
+        errors.push("Толщина сечения должна быть больше 0.");
+      }
+      if (!String(l.materialName).trim()) {
+        errors.push("Укажите материал.");
+      }
+    } else {
+      if (!num(p.defaultThicknessMm) || !(p.defaultThicknessMm! > 0)) {
+        errors.push("Укажите толщину сечения (мм) или один слой с толщиной.");
+      }
+    }
+  }
+
+  if (p.defaultHeightMm != null && !Number.isFinite(p.defaultHeightMm)) {
+    errors.push("Некорректная высота по умолчанию.");
+  }
+  if (p.defaultWidthMm != null && !Number.isFinite(p.defaultWidthMm)) {
+    errors.push("Некорректная ширина по умолчанию.");
+  }
+  if (p.defaultThicknessMm != null && !Number.isFinite(p.defaultThicknessMm)) {
+    errors.push("Некорректная толщина по умолчанию.");
+  }
+
+  return errors;
+}

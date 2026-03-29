@@ -1,0 +1,55 @@
+{
+  "themeName": "lowcode-dark-clean",
+  "styleIntent": "Modern low-code workspace UI with dark graphite surfaces, soft borders, clean typography, compact controls, rounded panels, subtle accent glow, minimal noise.",
+  "colors": {
+    "appBg": "#111315",
+    "surfaceBase": "#17191C",
+    "surfaceRaised": "#1C1F24",
+    "surfaceHover": "#23272E",
+    "surfaceActive": "#202A38",
+    "surfaceSelected": "#223248",
+    "borderSubtle": "#2A2F36",
+    "borderStrong": "#3A4350",
+    "textPrimary": "#F3F5F7",
+    "textSecondary": "#B2B8C2",
+    "textMuted": "#8A919C",
+    "textOnAccent": "#F7FAFF",
+    "accent": "#5AA7FF",
+    "accentHover": "#72B6FF",
+    "accentSoft": "#1D3654",
+    "accentOutline": "#4E97E8",
+    "danger": "#E06C75",
+    "dangerSoft": "#3A2328",
+    "success": "#62C98C",
+    "warning": "#E7B65C",
+    "overlay": "rgba(8, 10, 12, 0.62)",
+    "tooltipBg": "#20242B",
+    "gridMajor": "rgba(255,255,255,0.10)",
+    "gridMinor": "rgba(255,255,255,0.05)",
+    "canvasBg": "#14171B",
+    "ghostLayer": "rgba(120, 160, 220, 0.28)"
+  },
+  "radius": { "xs": 8, "sm": 10, "md": 12, "lg": 16, "xl": 20, "pill": 999 },
+  "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 20, "xxl": 24 },
+  "shadow": {
+    "panel": "0 8px 24px rgba(0,0,0,0.24)",
+    "modal": "0 18px 60px rgba(0,0,0,0.38)",
+    "focusGlow": "0 0 0 3px rgba(90,167,255,0.16)",
+    "accentGlow": "0 0 0 1px rgba(90,167,255,0.26), 0 0 18px rgba(90,167,255,0.10)"
+  },
+  "layout": {
+    "leftRailWidth": 64,
+    "topToolbarHeight": 56,
+    "toolButtonSize": 40,
+    "toolButtonGap": 8,
+    "panelPadding": 12,
+    "modalWidth": 920,
+    "modalMaxHeightViewportPercent": 82,
+    "contentGap": 12
+  },
+  "interaction": {
+    "transitionFastMs": 120,
+    "transitionNormalMs": 180,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+  }
+}

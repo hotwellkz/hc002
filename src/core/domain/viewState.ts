@@ -20,4 +20,20 @@ export interface ViewState {
   readonly activeTab: EditorTab;
   readonly viewport2d: ViewportState2D;
   readonly viewport3d: ViewportState3D;
+  /** Узкий rail вместо полной панели «Свойства» (сохраняется в проекте). */
+  readonly rightPropertiesCollapsed: boolean;
+}
+
+/** Нормализация viewState из файла (старые проекты без поля). */
+export function normalizeViewState(
+  input: Pick<ViewState, "activeTab" | "viewport2d" | "viewport3d"> & {
+    readonly rightPropertiesCollapsed?: boolean;
+  },
+): ViewState {
+  return {
+    activeTab: input.activeTab,
+    viewport2d: input.viewport2d,
+    viewport3d: input.viewport3d,
+    rightPropertiesCollapsed: input.rightPropertiesCollapsed === true,
+  };
 }

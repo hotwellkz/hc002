@@ -12,13 +12,32 @@ import {
 } from "@/core/domain/layerOps";
 import { normalizeVisibleLayerIds, setVisibleLayerIdsOnProject } from "@/core/domain/layerVisibility";
 import { createDemoProject } from "@/core/domain/demoProject";
-import { createEmptyProject } from "@/core/domain/projectFactory";
+import { createEmptyProject, touchProjectMeta } from "@/core/domain/projectFactory";
+import type { Profile } from "@/core/domain/profile";
+import {
+  addProfile as addProfileToProject,
+  duplicateProfile as duplicateProfileInProject,
+  removeProfile as removeProfileFromProject,
+  updateProfile as updateProfileInProject,
+} from "@/core/domain/profileMutations";
+import { getProfileById } from "@/core/domain/profileOps";
+import { validateProfile } from "@/core/domain/profileValidation";
 import type { Project } from "@/core/domain/project";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
+import { computeProfileThickness, setProjectOrigin, snapPoint2dToGridMm } from "@/core/domain/wallOps";
+import { commitWallPlacementSecondPoint } from "@/core/domain/wallPlacementCommit";
+import type { WallPlacementSession } from "@/core/domain/wallPlacement";
+import { initialWallPlacementPhase } from "@/core/domain/wallPlacement";
+import type { WallShapeMode } from "@/core/domain/wallShapeMode";
 import type { EditorTab } from "@/core/domain/viewState";
+import { setLastOpenedProjectId } from "@/data/lastOpenedProjectId";
+import { createProjectInDb, updateProjectSnapshot } from "@/data/projectFirestoreRepository";
+import { syncProjectToFirestore } from "@/data/projectFirestoreSync";
+import { tryGetFirestoreDb } from "@/firebase/app";
 import { deserializeProject } from "@/core/io/serialization";
 import { pickAndLoadProject, saveProjectWithFallback } from "@/core/io/projectFile";
 import { validateProjectSchema } from "@/core/validation/validateProjectSchema";
+import type { LinearProfilePlacementMode } from "@/core/geometry/linearPlacementGeometry";
 
 export type ActiveTool = "select" | "pan";
 
@@ -41,9 +60,17 @@ interface AppState {
   readonly uiPanels: UiPanelsState;
   readonly layerManagerOpen: boolean;
   readonly layerParamsModalOpen: boolean;
+  readonly profilesModalOpen: boolean;
+  readonly addWallModalOpen: boolean;
+  /** Режим постановки стены на 2D (после модалки «Добавить стену»). */
+  readonly wallPlacementSession: WallPlacementSession | null;
+  readonly wallCoordinateModalOpen: boolean;
   readonly dirty: boolean;
   readonly lastError: string | null;
   readonly history: UndoRedoSkeleton;
+  readonly persistenceReady: boolean;
+  readonly persistenceStatus: "idle" | "loading" | "saving" | "saved" | "error";
+  readonly firestoreEnabled: boolean;
 }
 
 interface AppActions {
@@ -55,6 +82,7 @@ interface AppActions {
   setViewport3d: (v: Project["viewState"]["viewport3d"]) => void;
   setActiveTab: (tab: EditorTab) => void;
   toggleRightPanel: () => void;
+  setRightPropertiesCollapsed: (collapsed: boolean) => void;
   markClean: () => void;
   undo: () => void;
   redo: () => void;
@@ -79,6 +107,27 @@ interface AppActions {
   openLayerParamsModal: () => void;
   closeLayerParamsModal: () => void;
   toggleVisibleLayer: (layerId: string) => void;
+  openProfilesModal: () => void;
+  closeProfilesModal: () => void;
+  upsertProfile: (profile: Profile) => boolean;
+  removeProfileById: (profileId: string) => void;
+  duplicateProfileById: (profileId: string) => void;
+  openAddWallModal: () => void;
+  closeAddWallModal: () => void;
+  applyAddWallModal: (input: {
+    readonly profileId: string;
+    readonly heightMm: number;
+    readonly baseElevationMm: number;
+  }) => void;
+  cancelWallPlacement: () => void;
+  wallPlacementPreviewMove: (worldMm: { readonly x: number; readonly y: number }) => void;
+  wallPlacementPrimaryClick: (worldMm: { readonly x: number; readonly y: number }) => void;
+  wallPlacementCompleteSecondPoint: (secondSnappedMm: { readonly x: number; readonly y: number }) => void;
+  setLinearPlacementMode: (mode: LinearProfilePlacementMode) => void;
+  setWallShapeMode: (mode: WallShapeMode) => void;
+  openWallCoordinateModal: () => void;
+  closeWallCoordinateModal: () => void;
+  applyWallCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
 }
 
 export type AppStore = AppState & AppActions;
@@ -96,20 +145,27 @@ function mergeViewState(
 }
 
 export const useAppStore = create<AppStore>((set, get) => {
-  const demo = createDemoProject();
+  const empty = createEmptyProject();
   return {
-    currentProject: demo,
+    currentProject: empty,
     selectedEntityIds: [],
     activeTool: "select",
-    viewport2d: demo.viewState.viewport2d,
-    viewport3d: demo.viewState.viewport3d,
-    activeTab: demo.viewState.activeTab,
+    viewport2d: empty.viewState.viewport2d,
+    viewport3d: empty.viewState.viewport3d,
+    activeTab: empty.viewState.activeTab,
     uiPanels: { rightPropertiesOpen: true },
     layerManagerOpen: false,
     layerParamsModalOpen: false,
+    profilesModalOpen: false,
+    addWallModalOpen: false,
+    wallPlacementSession: null,
+    wallCoordinateModalOpen: false,
     dirty: false,
     lastError: null,
     history: initialHistory,
+    persistenceReady: false,
+    persistenceStatus: "loading",
+    firestoreEnabled: false,
 
     setSelectedEntityIds: (ids) => set({ selectedEntityIds: ids }),
 
@@ -148,6 +204,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       set((s) => ({
         activeTab: tab,
         activeTool: tab === "2d" ? "select" : s.activeTool,
+        wallPlacementSession: tab === "2d" ? s.wallPlacementSession : null,
+        addWallModalOpen: tab === "2d" ? s.addWallModalOpen : false,
+        wallCoordinateModalOpen: tab === "2d" ? s.wallCoordinateModalOpen : false,
         currentProject: mergeViewState(s.currentProject, { activeTab: tab }),
         dirty: true,
       })),
@@ -155,6 +214,15 @@ export const useAppStore = create<AppStore>((set, get) => {
     toggleRightPanel: () =>
       set((s) => ({
         uiPanels: { ...s.uiPanels, rightPropertiesOpen: !s.uiPanels.rightPropertiesOpen },
+      })),
+
+    setRightPropertiesCollapsed: (collapsed) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          viewState: { ...s.currentProject.viewState, rightPropertiesCollapsed: collapsed },
+        }),
+        dirty: true,
       })),
 
     markClean: () => set({ dirty: false }),
@@ -258,36 +326,292 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ currentProject: next, dirty: true });
     },
 
-    bootstrapDemo: () => {
-      const p = createDemoProject();
+    openProfilesModal: () => set({ profilesModalOpen: true }),
+    closeProfilesModal: () => set({ profilesModalOpen: false }),
+
+    upsertProfile: (profile) => {
+      const errs = validateProfile(profile);
+      if (errs.length > 0) {
+        set({ lastError: errs.join(" ") });
+        return false;
+      }
+      const p = get().currentProject;
+      const exists = p.profiles.some((pr) => pr.id === profile.id);
+      const next = exists ? updateProfileInProject(p, profile) : addProfileToProject(p, profile);
+      set({ currentProject: next, dirty: true, lastError: null });
+      return true;
+    },
+
+    removeProfileById: (profileId) => {
       set({
-        currentProject: p,
-        viewport2d: p.viewState.viewport2d,
-        viewport3d: p.viewState.viewport3d,
-        activeTab: p.viewState.activeTab,
-        dirty: false,
+        currentProject: removeProfileFromProject(get().currentProject, profileId),
+        dirty: true,
         lastError: null,
-        selectedEntityIds: [],
-        history: initialHistory,
-        layerManagerOpen: false,
-        layerParamsModalOpen: false,
       });
     },
 
-    createNewProject: () => {
-      const p = createEmptyProject();
+    duplicateProfileById: (profileId) => {
+      const next = duplicateProfileInProject(get().currentProject, profileId);
+      if (next) {
+        set({ currentProject: next, dirty: true, lastError: null });
+      }
+    },
+
+    openAddWallModal: () => set({ addWallModalOpen: true }),
+
+    closeAddWallModal: () => set({ addWallModalOpen: false }),
+
+    applyAddWallModal: (input) => {
+      const p = get().currentProject;
+      const profile = getProfileById(p, input.profileId);
+      if (!profile) {
+        set({ lastError: "Профиль не найден." });
+        return;
+      }
+      if (profile.category !== "wall") {
+        set({ lastError: "Нужен профиль категории «стена»." });
+        return;
+      }
+      const thicknessMm = computeProfileThickness(profile);
+      if (!(thicknessMm > 0)) {
+        set({ lastError: "У профиля нулевая толщина — проверьте слои профиля." });
+        return;
+      }
+      if (!(Number.isFinite(input.heightMm) && input.heightMm > 0)) {
+        set({ lastError: "Высота должна быть числом больше 0." });
+        return;
+      }
+      if (!Number.isFinite(input.baseElevationMm)) {
+        set({ lastError: "Уровень должен быть числом (мм)." });
+        return;
+      }
+      const phase = initialWallPlacementPhase(p);
       set({
-        currentProject: p,
-        viewport2d: p.viewState.viewport2d,
-        viewport3d: p.viewState.viewport3d,
-        activeTab: p.viewState.activeTab,
-        dirty: false,
-        lastError: null,
+        wallPlacementSession: {
+          phase,
+          draft: {
+            profileId: input.profileId,
+            heightMm: input.heightMm,
+            baseElevationMm: input.baseElevationMm,
+            thicknessMm,
+          },
+          firstPointMm: null,
+          previewEndMm: null,
+        },
+        addWallModalOpen: false,
         selectedEntityIds: [],
-        history: initialHistory,
-        layerManagerOpen: false,
-        layerParamsModalOpen: false,
+        lastError: null,
       });
+    },
+
+    cancelWallPlacement: () => set({ wallPlacementSession: null, wallCoordinateModalOpen: false }),
+
+    wallPlacementPreviewMove: (worldMm) => {
+      const s = get().wallPlacementSession;
+      if (!s || s.phase !== "waitingSecondPoint") {
+        return;
+      }
+      const grid = get().currentProject.settings.gridStepMm;
+      const snap = snapPoint2dToGridMm(worldMm, grid);
+      set({
+        wallPlacementSession: {
+          ...s,
+          previewEndMm: snap,
+        },
+      });
+    },
+
+    wallPlacementPrimaryClick: (worldMm) => {
+      const p0 = get().currentProject;
+      const session = get().wallPlacementSession;
+      if (!session) {
+        return;
+      }
+      const grid = p0.settings.gridStepMm;
+      const snap = snapPoint2dToGridMm(worldMm, grid);
+
+      if (session.phase === "waitingOriginAndFirst") {
+        const nextProject = setProjectOrigin(p0, snap);
+        set({
+          currentProject: nextProject,
+          wallPlacementSession: {
+            ...session,
+            phase: "waitingSecondPoint",
+            firstPointMm: snap,
+            previewEndMm: snap,
+          },
+          dirty: true,
+          lastError: null,
+        });
+        return;
+      }
+
+      if (session.phase === "waitingFirstWallPoint") {
+        set({
+          wallPlacementSession: {
+            ...session,
+            phase: "waitingSecondPoint",
+            firstPointMm: snap,
+            previewEndMm: snap,
+          },
+        });
+        return;
+      }
+
+      if (session.phase === "waitingSecondPoint") {
+        get().wallPlacementCompleteSecondPoint(snap);
+      }
+    },
+
+    wallPlacementCompleteSecondPoint: (secondSnappedMm) => {
+      const session = get().wallPlacementSession;
+      if (!session || session.phase !== "waitingSecondPoint") {
+        return;
+      }
+      const p0 = get().currentProject;
+      const result = commitWallPlacementSecondPoint(
+        p0,
+        session,
+        session.draft,
+        p0.settings.editor2d.wallShapeMode,
+        p0.settings.editor2d.linearPlacementMode,
+        secondSnappedMm,
+      );
+      if ("error" in result) {
+        set({ lastError: result.error });
+        return;
+      }
+      set({
+        currentProject: result.project,
+        wallPlacementSession: null,
+        wallCoordinateModalOpen: false,
+        selectedEntityIds: [...result.createdWallIds],
+        dirty: true,
+        lastError: null,
+      });
+    },
+
+    openWallCoordinateModal: () => {
+      const s = get().wallPlacementSession;
+      if (!s || s.phase !== "waitingSecondPoint" || !s.firstPointMm) {
+        return;
+      }
+      set({ wallCoordinateModalOpen: true, lastError: null });
+    },
+
+    closeWallCoordinateModal: () => set({ wallCoordinateModalOpen: false }),
+
+    applyWallCoordinateModal: (input) => {
+      const session = get().wallPlacementSession;
+      if (!session?.firstPointMm) {
+        set({ wallCoordinateModalOpen: false });
+        return;
+      }
+      if (!Number.isFinite(input.dxMm) || !Number.isFinite(input.dyMm)) {
+        set({ lastError: "Введите числовые X и Y (мм)." });
+        return;
+      }
+      const first = session.firstPointMm;
+      const raw = { x: first.x + input.dxMm, y: first.y + input.dyMm };
+      const grid = get().currentProject.settings.gridStepMm;
+      const snap = snapPoint2dToGridMm(raw, grid);
+      get().wallPlacementCompleteSecondPoint(snap);
+    },
+
+    setWallShapeMode: (mode) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          settings: {
+            ...s.currentProject.settings,
+            editor2d: { ...s.currentProject.settings.editor2d, wallShapeMode: mode },
+          },
+        }),
+        dirty: true,
+      })),
+
+    setLinearPlacementMode: (mode) =>
+      set((s) => ({
+        currentProject: touchProjectMeta({
+          ...s.currentProject,
+          settings: {
+            ...s.currentProject.settings,
+            editor2d: { ...s.currentProject.settings.editor2d, linearPlacementMode: mode },
+          },
+        }),
+        dirty: true,
+      })),
+
+    bootstrapDemo: () => {
+      void (async () => {
+        const p = createDemoProject();
+        const db = tryGetFirestoreDb();
+        if (get().firestoreEnabled && db) {
+          try {
+            await createProjectInDb(db, p);
+            setLastOpenedProjectId(p.meta.id);
+          } catch (e) {
+            console.error(e);
+            set({
+              lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось сохранить демо в Firestore",
+              persistenceStatus: "error",
+            });
+            return;
+          }
+        }
+        set({
+          currentProject: p,
+          viewport2d: p.viewState.viewport2d,
+          viewport3d: p.viewState.viewport3d,
+          activeTab: p.viewState.activeTab,
+          dirty: false,
+          lastError: null,
+          selectedEntityIds: [],
+          history: initialHistory,
+          layerManagerOpen: false,
+          layerParamsModalOpen: false,
+          profilesModalOpen: false,
+          addWallModalOpen: false,
+          wallPlacementSession: null,
+          wallCoordinateModalOpen: false,
+        });
+      })();
+    },
+
+    createNewProject: () => {
+      void (async () => {
+        const p = createEmptyProject();
+        const db = tryGetFirestoreDb();
+        if (get().firestoreEnabled && db) {
+          try {
+            await createProjectInDb(db, p);
+            setLastOpenedProjectId(p.meta.id);
+          } catch (e) {
+            console.error(e);
+            set({
+              lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось создать проект в Firestore",
+              persistenceStatus: "error",
+            });
+            return;
+          }
+        }
+        set({
+          currentProject: p,
+          viewport2d: p.viewState.viewport2d,
+          viewport3d: p.viewState.viewport3d,
+          activeTab: p.viewState.activeTab,
+          dirty: false,
+          lastError: null,
+          selectedEntityIds: [],
+          history: initialHistory,
+          layerManagerOpen: false,
+          layerParamsModalOpen: false,
+          profilesModalOpen: false,
+          addWallModalOpen: false,
+          wallPlacementSession: null,
+          wallCoordinateModalOpen: false,
+        });
+      })();
     },
 
     openProject: async () => {
@@ -313,7 +637,20 @@ export const useAppStore = create<AppStore>((set, get) => {
         history: initialHistory,
         layerManagerOpen: false,
         layerParamsModalOpen: false,
+        profilesModalOpen: false,
+        addWallModalOpen: false,
+        wallPlacementSession: null,
+        wallCoordinateModalOpen: false,
       });
+      try {
+        await syncProjectToFirestore(loaded);
+      } catch (e) {
+        console.error(e);
+        set({
+          lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось синхронизировать с Firestore",
+          persistenceStatus: "error",
+        });
+      }
     },
 
     saveProject: async () => {
@@ -327,6 +664,20 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       await saveProjectWithFallback(currentProject);
       set({ dirty: false, lastError: null });
+      const db = tryGetFirestoreDb();
+      if (get().firestoreEnabled && db) {
+        try {
+          await updateProjectSnapshot(db, currentProject);
+          setLastOpenedProjectId(currentProject.meta.id);
+          set({ persistenceStatus: "saved" });
+        } catch (e) {
+          console.error(e);
+          set({
+            lastError: e instanceof Error ? `Firestore: ${e.message}` : "Ошибка записи в Firestore",
+            persistenceStatus: "error",
+          });
+        }
+      }
     },
 
     importProjectJson: (json) => {
@@ -350,7 +701,22 @@ export const useAppStore = create<AppStore>((set, get) => {
           history: initialHistory,
           layerManagerOpen: false,
           layerParamsModalOpen: false,
+          profilesModalOpen: false,
+          addWallModalOpen: false,
+          wallPlacementSession: null,
+          wallCoordinateModalOpen: false,
         });
+        void (async () => {
+          try {
+            await syncProjectToFirestore(loaded);
+          } catch (e) {
+            console.error(e);
+            set({
+              lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось синхронизировать с Firestore",
+              persistenceStatus: "error",
+            });
+          }
+        })();
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Ошибка импорта";
         set({ lastError: msg });

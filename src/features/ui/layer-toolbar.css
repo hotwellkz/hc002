@@ -1,53 +1,53 @@
 .ltb {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: 1px solid var(--border, #252a35);
-  border-radius: 10px;
-  background: linear-gradient(180deg, #1a1f2b 0%, #141824 100%);
+  gap: var(--tool-button-gap);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
 }
 
 .ltb-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 28px;
+  width: var(--tool-button-size);
+  height: 36px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #b4bccf;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition:
-    background 0.1s ease,
-    color 0.1s ease,
-    opacity 0.1s ease;
+    background var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard),
+    opacity var(--t-fast) var(--ease-standard);
 }
 
 .ltb-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e7eaf0;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
 }
 
 .ltb-btn:focus-visible {
-  outline: 2px solid rgba(92, 124, 250, 0.55);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
 }
 
 .ltb-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .ltb-btn--danger:not(:disabled):hover {
-  color: #ffa8a8;
-  background: rgba(201, 42, 42, 0.15);
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
 .ltb-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
 }

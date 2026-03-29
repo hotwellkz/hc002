@@ -1,6 +1,8 @@
 import { createEmptyMeta, touchProjectMeta } from "./projectFactory";
+import { normalizeProjectSettings } from "./settings";
 import type { Layer } from "./layer";
 import type { Project } from "./project";
+import type { Profile } from "./profile";
 import { newEntityId } from "./ids";
 
 /**
@@ -24,8 +26,28 @@ export function createDemoProject(): Project {
   const wallEastId = newEntityId();
   const wallSouthId = newEntityId();
 
+  const sipProfileId = newEntityId();
+  const demoProfiles: readonly Profile[] = [
+    {
+      id: sipProfileId,
+      name: "SIP 174 (OSB–EPS–OSB)",
+      category: "wall",
+      compositionMode: "layered",
+      defaultHeightMm: 2800,
+      notes: "Пример для библиотеки профилей",
+      layers: [
+        { id: newEntityId(), orderIndex: 0, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+        { id: newEntityId(), orderIndex: 1, materialName: "EPS", materialType: "eps", thicknessMm: 145 },
+        { id: newEntityId(), orderIndex: 2, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+      ],
+      createdAt: t,
+      updatedAt: t,
+    },
+  ];
+
   const base: Project = {
     meta,
+    projectOrigin: { x: 0, y: 0 },
     layers: [defaultLayer],
     activeLayerId: layerId,
     visibleLayerIds: [],
@@ -33,34 +55,42 @@ export function createDemoProject(): Project {
       {
         id: wallNorthId,
         layerId,
+        profileId: sipProfileId,
         start: { x: 0, y: 0 },
         end: { x: 8000, y: 0 },
         thicknessMm: 174,
         heightMm: 2800,
+        baseElevationMm: 0,
       },
       {
         id: wallEastId,
         layerId,
+        profileId: sipProfileId,
         start: { x: 8000, y: 0 },
         end: { x: 8000, y: 6000 },
         thicknessMm: 174,
         heightMm: 2800,
+        baseElevationMm: 0,
       },
       {
         id: wallSouthId,
         layerId,
+        profileId: sipProfileId,
         start: { x: 8000, y: 6000 },
         end: { x: 0, y: 6000 },
         thicknessMm: 174,
         heightMm: 2800,
+        baseElevationMm: 0,
       },
       {
         id: newEntityId(),
         layerId,
+        profileId: sipProfileId,
         start: { x: 0, y: 6000 },
         end: { x: 0, y: 0 },
         thicknessMm: 174,
         heightMm: 2800,
+        baseElevationMm: 0,
       },
     ],
     openings: [
@@ -97,10 +127,11 @@ export function createDemoProject(): Project {
     materialSet: { id: newEntityId(), name: "SIP 174 мм", panelThicknessMm: 174 },
     sheets: [],
     dimensions: [],
-    settings: {
+    profiles: demoProfiles,
+    settings: normalizeProjectSettings({
       gridStepMm: 500,
       showGrid: true,
-    },
+    }),
     viewState: {
       activeTab: "2d",
       viewport2d: {
@@ -116,6 +147,7 @@ export function createDemoProject(): Project {
         targetYMm: 3000,
         targetZMm: 1400,
       },
+      rightPropertiesCollapsed: false,
     },
   };
 

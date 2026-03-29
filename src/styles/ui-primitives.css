@@ -1,0 +1,256 @@
+/**
+ * UI foundation: кнопки, инпуты, модалки — на токенах theme.css
+ */
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-weight: 500;
+  background: var(--color-app-bg);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Текстовая шкала */
+.ui-text-label {
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  font-weight: var(--fw-label);
+  letter-spacing: 0.01em;
+  color: var(--color-text-muted);
+}
+
+.ui-text-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--lh-body-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Кнопка по умолчанию (secondary) */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 36px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.ui-btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.ui-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.ui-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-btn--primary {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-outline);
+  color: var(--color-text-on-accent);
+}
+
+.ui-btn--primary:hover:not(:disabled) {
+  background: var(--color-surface-active);
+  border-color: var(--color-accent);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-subtle);
+}
+
+/* Icon button (40px из спеки) */
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tool-button-size);
+  height: var(--tool-button-size);
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.ui-icon-btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.ui-icon-btn[data-active="true"],
+.ui-icon-btn[aria-pressed="true"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-accent-outline);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-accent-glow);
+}
+
+.ui-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.ui-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Input */
+.ui-input {
+  min-height: 40px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: #14171b;
+  color: var(--color-text-primary);
+  font-size: var(--text-body-sm);
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.ui-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.ui-input:focus {
+  outline: none;
+  border-color: var(--color-accent-outline);
+  box-shadow: var(--shadow-focus-glow);
+}
+
+/* Modal shell */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+}
+
+.ui-modal-panel {
+  width: 100%;
+  max-width: var(--modal-max-w);
+  max-height: min(82vh, calc(100vh - var(--space-xxl) * 2));
+  border-radius: var(--radius-modal);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Segmented tabs (2D/3D) */
+.ui-segmented {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  gap: 2px;
+}
+
+.ui-segmented button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-md);
+  height: 36px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+
+.ui-segmented button:hover {
+  color: var(--color-text-primary);
+}
+
+.ui-segmented button[data-active="true"] {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+/* Badge (активный слой) */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-accent-outline);
+  background: var(--color-surface-active);
+  color: var(--color-text-primary);
+  font-size: var(--text-label);
+  font-weight: 600;
+  box-shadow: var(--shadow-accent-glow);
+}
+
+/* Tooltip (базовый стиль для title= и будущих компонентов) */
+.ui-tooltip {
+  background: var(--color-tooltip-bg);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: var(--text-body-sm);
+  box-shadow: var(--shadow-panel);
+}
+
+/* Ошибка (banner) */
+.ui-error-banner {
+  position: fixed;
+  right: var(--space-md);
+  bottom: 36px;
+  max-width: 420px;
+  padding: var(--space-md) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-danger-soft);
+  background: var(--color-danger-soft);
+  color: #ffd3d6;
+  font-size: var(--text-body-sm);
+  z-index: 50;
+  box-shadow: var(--shadow-panel);
+}

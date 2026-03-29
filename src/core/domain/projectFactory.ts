@@ -2,6 +2,7 @@ import { PROJECT_SCHEMA_VERSION, PROJECT_UNITS } from "./constants";
 import type { Layer } from "./layer";
 import type { Project } from "./project";
 import type { ProjectMeta } from "./projectMeta";
+import { normalizeProjectSettings } from "./settings";
 import { newEntityId } from "./ids";
 
 function nowIso(): string {
@@ -39,6 +40,7 @@ export function createEmptyProject(): Project {
   const { layer, layerId } = createDefaultLayer();
   return {
     meta: createEmptyMeta(),
+    projectOrigin: null,
     layers: [layer],
     activeLayerId: layerId,
     visibleLayerIds: [],
@@ -50,10 +52,11 @@ export function createEmptyProject(): Project {
     materialSet: { id: newEntityId(), name: "По умолчанию" },
     sheets: [],
     dimensions: [],
-    settings: {
+    profiles: [],
+    settings: normalizeProjectSettings({
       gridStepMm: 100,
       showGrid: true,
-    },
+    }),
     viewState: {
       activeTab: "2d",
       viewport2d: {
@@ -69,6 +72,7 @@ export function createEmptyProject(): Project {
         targetYMm: 0,
         targetZMm: 1500,
       },
+      rightPropertiesCollapsed: false,
     },
   };
 }

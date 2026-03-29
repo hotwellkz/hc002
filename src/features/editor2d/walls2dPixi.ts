@@ -5,12 +5,13 @@ import { openingCenterOnWallMm } from "@/core/domain/openingPlacement";
 import type { ViewportTransform } from "./viewportTransforms";
 import { worldToScreen } from "./viewportTransforms";
 
-const WALL_NORMAL = 0x5c7cfa;
-const WALL_CONTEXT = 0x4a5f8a;
-const WALL_SELECTED = 0xfcc419;
-const OPENING_DOT = 0x8b93a7;
-const OPENING_CONTEXT = 0x5c6578;
-const OPENING_SELECTED = 0xfcc419;
+/** Акцент и выделение — из design-tokens (accent, warning) */
+const WALL_NORMAL = 0x5aa7ff;
+const WALL_CONTEXT = 0x4a6a8a;
+const WALL_SELECTED = 0xe7b65c;
+const OPENING_DOT = 0x8a919c;
+const OPENING_CONTEXT = 0x6a7280;
+const OPENING_SELECTED = 0xe7b65c;
 
 export type Draw2dLayerAppearance = "active" | "context";
 

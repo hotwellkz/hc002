@@ -2,6 +2,9 @@ import { PROJECT_SCHEMA_VERSION, PROJECT_UNITS } from "../domain/constants";
 import { normalizeVisibleLayerIds } from "../domain/layerVisibility";
 import type { Project } from "../domain/project";
 import type { ProjectMeta } from "../domain/projectMeta";
+import { normalizeProjectSettings, type ProjectSettingsWire } from "../domain/settings";
+
+import { normalizeViewState } from "../domain/viewState";
 
 import { migrateWireV0ToProject } from "./migrateWireV0";
 
@@ -17,6 +20,8 @@ export interface ProjectFileV1 {
   readonly units: "mm";
   readonly layers: Project["layers"];
   readonly activeLayerId: string;
+  /** В старых файлах может отсутствовать — null. */
+  readonly projectOrigin?: Project["projectOrigin"];
   /** В старых файлах может отсутствовать — подставляется []. */
   readonly visibleLayerIds?: Project["visibleLayerIds"];
   readonly walls: Project["walls"];
@@ -29,6 +34,7 @@ export interface ProjectFileV1 {
   readonly dimensions: Project["dimensions"];
   readonly settings: Project["settings"];
   readonly viewState: Project["viewState"];
+  readonly profiles?: Project["profiles"];
 }
 
 export function projectToWire(project: Project): ProjectFileV1 {
@@ -68,6 +74,7 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
   const visibleRaw = wire.visibleLayerIds ?? [];
   const base: Project = {
     meta,
+    projectOrigin: wire.projectOrigin ?? null,
     layers: wire.layers,
     activeLayerId: wire.activeLayerId,
     visibleLayerIds: visibleRaw,
@@ -79,8 +86,9 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     materialSet: wire.materialSet,
     sheets: wire.sheets,
     dimensions: wire.dimensions,
-    settings: wire.settings,
-    viewState: wire.viewState,
+    settings: normalizeProjectSettings(wire.settings as ProjectSettingsWire),
+    viewState: normalizeViewState(wire.viewState),
+    profiles: wire.profiles ?? [],
   };
   return {
     ...base,

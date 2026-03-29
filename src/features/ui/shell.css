@@ -1,34 +1,25 @@
-:root {
-  color-scheme: dark;
-  --bg: #0e1016;
-  --panel: #151822;
-  --border: #252a35;
-  --text: #e7eaf0;
-  --muted: #8b93a7;
-  --accent: #5c7cfa;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-}
+/* App shell: сетка и общие утилиты на design tokens */
 
 .shell {
+  --shell-right-col: var(--layout-right-panel);
   display: grid;
-  grid-template-rows: 48px 1fr 26px;
-  grid-template-columns: 48px 1fr 300px;
+  grid-template-rows: var(--layout-top-toolbar) 1fr var(--layout-status);
+  grid-template-columns: var(--layout-left-rail) 1fr minmax(0, var(--shell-right-col));
   grid-template-areas:
     "top top top"
     "navrail center right"
     "status status status";
   height: 100vh;
   width: 100vw;
+  background: var(--color-app-bg);
+}
+
+.shell[data-right-props="collapsed"] {
+  --shell-right-col: 44px;
+}
+
+.shell[data-right-props="hidden"] {
+  --shell-right-col: 0px;
 }
 
 .shell-top {
@@ -36,10 +27,11 @@ body {
   display: grid;
   grid-template-columns: minmax(200px, 1fr) auto minmax(200px, 1fr);
   align-items: center;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-  gap: 12px;
+  padding: 0 var(--space-md);
+  min-height: var(--layout-top-toolbar);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+  gap: var(--content-gap, var(--space-md));
 }
 
 .shell-top-left {
@@ -48,6 +40,14 @@ body {
 
 .shell-top-center {
   justify-self: center;
+}
+
+.shell-top-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--content-gap);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .shell-top-right {
@@ -59,8 +59,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border);
-  background: #12151c;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
 }
 
 .shell-center {
@@ -69,16 +69,28 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: #0b0d12;
+  background: var(--color-app-bg);
+}
+
+.workspace-2d-main {
+  min-height: 0;
 }
 
 .shell-right {
   grid-area: right;
-  border-left: 1px solid var(--border);
-  background: var(--panel);
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
   min-width: 0;
   overflow: auto;
-  padding: 12px;
+  padding: var(--space-md);
+}
+
+.shell-right--collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-sm) var(--space-xs);
+  overflow: hidden;
 }
 
 .shell-status {
@@ -86,54 +98,93 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-  font-size: 12px;
-  color: var(--muted);
+  padding: 0 var(--space-sm);
+  min-height: var(--layout-status);
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  color: var(--color-text-muted);
 }
 
+/* Подпанель под табами 2D/3D */
+.workspace-subbar {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+  gap: var(--space-md);
+}
+
+/* Legacy .tabs — переход на ui-segmented в WorkspaceTabs; оставляем для совместимости */
 .tabs {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+  align-items: center;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  gap: 2px;
+  overflow: visible;
 }
 
 .tabs button {
   border: 0;
   background: transparent;
-  color: var(--text);
-  padding: 6px 12px;
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-md);
+  height: 36px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+
+.tabs button:hover {
+  color: var(--color-text-primary);
 }
 
 .tabs button[data-active="true"] {
-  background: #1f2433;
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-sm);
   align-items: center;
   flex-wrap: wrap;
 }
 
 .btn {
-  border: 1px solid var(--border);
-  background: #1a1f2b;
-  color: var(--text);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) var(--space-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
 }
 
 .btn:hover {
-  border-color: #3d4454;
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
 }

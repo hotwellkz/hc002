@@ -1,28 +1,36 @@
 .alb {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: var(--space-md);
+  left: var(--space-md);
   z-index: 5;
-  border: 1px solid rgba(92, 124, 250, 0.35);
-  border-radius: 8px;
-  padding: 5px 10px;
-  background: rgba(18, 20, 28, 0.88);
-  backdrop-filter: blur(6px);
-  color: #d8deea;
-  font-size: 12px;
-  font-weight: 500;
+  min-height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-accent-outline);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-active);
+  backdrop-filter: blur(8px);
+  color: var(--color-text-primary);
+  font-size: var(--text-label);
+  font-weight: 600;
+  line-height: var(--lh-label);
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  box-shadow: var(--shadow-accent-glow);
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    background var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
 }
 
 .alb:hover {
-  border-color: rgba(92, 124, 250, 0.6);
-  background: rgba(26, 31, 43, 0.92);
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
 }
 
 .alb:focus-visible {
-  outline: 2px solid rgba(92, 124, 250, 0.55);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--shadow-focus-glow), var(--shadow-accent-glow);
 }
 
 .alb-text {

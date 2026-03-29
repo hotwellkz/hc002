@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./linearPlacementGeometry";
 export * from "./constants";
 export * from "./compare";
 export * from "./point";

@@ -22,7 +22,8 @@
     "sheets",
     "dimensions",
     "settings",
-    "viewState"
+    "viewState",
+    "profiles"
   ],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
@@ -32,6 +33,9 @@
     "updatedAt": { "type": "string", "minLength": 1 },
     "units": { "type": "string", "const": "mm" },
     "activeLayerId": { "type": "string", "minLength": 1 },
+    "projectOrigin": {
+      "anyOf": [{ "$ref": "#/$defs/point2d" }, { "type": "null" }]
+    },
     "visibleLayerIds": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
@@ -65,7 +69,11 @@
       "items": { "$ref": "#/$defs/dimension" }
     },
     "settings": { "$ref": "#/$defs/settings" },
-    "viewState": { "$ref": "#/$defs/viewState" }
+    "viewState": { "$ref": "#/$defs/viewState" },
+    "profiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/profile" }
+    }
   },
   "$defs": {
     "point2d": {
@@ -98,10 +106,71 @@
       "properties": {
         "id": { "type": "string" },
         "layerId": { "type": "string" },
+        "profileId": { "type": "string" },
         "start": { "$ref": "#/$defs/point2d" },
         "end": { "$ref": "#/$defs/point2d" },
         "thicknessMm": { "type": "number", "minimum": 0 },
-        "heightMm": { "type": "number", "minimum": 0 }
+        "heightMm": { "type": "number", "minimum": 0 },
+        "baseElevationMm": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "placementGroupId": { "type": "string" }
+      }
+    },
+    "profileMaterialType": {
+      "type": "string",
+      "enum": ["osb", "eps", "xps", "wood", "steel", "gypsum", "concrete", "membrane", "insulation", "custom"]
+    },
+    "profileCategory": {
+      "type": "string",
+      "enum": ["wall", "slab", "roof", "beam", "pipe", "board", "custom"]
+    },
+    "profileCompositionMode": {
+      "type": "string",
+      "enum": ["layered", "solid"]
+    },
+    "profileLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "orderIndex", "materialName", "materialType", "thicknessMm"],
+      "properties": {
+        "id": { "type": "string" },
+        "orderIndex": { "type": "number" },
+        "materialName": { "type": "string" },
+        "materialType": { "$ref": "#/$defs/profileMaterialType" },
+        "thicknessMm": { "type": "number", "exclusiveMinimum": 0 },
+        "widthMm": { "type": "number" },
+        "heightMm": { "type": "number" },
+        "note": { "type": "string" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "category",
+        "compositionMode",
+        "layers",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "$ref": "#/$defs/profileCategory" },
+        "compositionMode": { "$ref": "#/$defs/profileCompositionMode" },
+        "defaultHeightMm": { "type": "number" },
+        "defaultWidthMm": { "type": "number" },
+        "defaultThicknessMm": { "type": "number" },
+        "notes": { "type": "string" },
+        "layers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/profileLayer" }
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       }
     },
     "opening": {
@@ -198,10 +267,25 @@
     "settings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["gridStepMm", "showGrid"],
+      "required": ["gridStepMm", "showGrid", "editor2d"],
       "properties": {
         "gridStepMm": { "type": "number", "exclusiveMinimum": 0 },
-        "showGrid": { "type": "boolean" }
+        "showGrid": { "type": "boolean" },
+        "editor2d": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["linearPlacementMode", "wallShapeMode"],
+          "properties": {
+            "linearPlacementMode": {
+              "type": "string",
+              "enum": ["center", "leftEdge", "rightEdge"]
+            },
+            "wallShapeMode": {
+              "type": "string",
+              "enum": ["line", "rectangle"]
+            }
+          }
+        }
       }
     },
     "viewState": {
@@ -209,6 +293,7 @@
       "additionalProperties": false,
       "required": ["activeTab", "viewport2d", "viewport3d"],
       "properties": {
+        "rightPropertiesCollapsed": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d"] },
         "viewport2d": {
           "type": "object",

@@ -1,0 +1,120 @@
+.wcm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+}
+
+.wcm-dialog {
+  width: 100%;
+  max-width: 300px;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-modal);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-modal);
+}
+
+.wcm-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.wcm-hint {
+  margin: 0 0 var(--space-md);
+  font-size: var(--text-label);
+  line-height: 1.45;
+}
+
+.wcm-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.wcm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wcm-field--readonly {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.wcm-label {
+  font-size: var(--text-label);
+  font-weight: var(--fw-label);
+  color: var(--color-text-muted);
+}
+
+.wcm-input {
+  min-height: 36px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-sm);
+  background: #14171b;
+  color: var(--color-text-primary);
+  font-size: var(--text-body-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.wcm-input:focus {
+  outline: none;
+  border-color: var(--color-accent-outline);
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.wcm-readonly {
+  font-size: var(--text-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.wcm-error {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-label);
+  color: var(--color-danger);
+}
+
+.wcm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.wcm-btn {
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+}
+
+.wcm-btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.wcm-btn--primary {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-outline);
+  color: var(--color-text-on-accent);
+}
+
+.wcm-btn--ghost {
+  background: transparent;
+}

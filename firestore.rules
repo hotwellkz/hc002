@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// ВАЖНО: для продакшена замените на правила с Firebase Auth или серверной проверкой.
+// Сейчас разрешено чтение/запись документов в коллекции `projects` — удобно для разработки SPA без Auth.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /projects/{projectId} {
+      allow read, write: if true;
+    }
+  }
+}

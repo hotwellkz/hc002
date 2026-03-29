@@ -2,6 +2,8 @@ import { PROJECT_SCHEMA_VERSION, PROJECT_UNITS } from "../domain/constants";
 import type { Layer } from "../domain/layer";
 import type { Project } from "../domain/project";
 import type { ProjectMeta } from "../domain/projectMeta";
+import { normalizeProjectSettings, type ProjectSettingsWire } from "../domain/settings";
+import { normalizeViewState } from "../domain/viewState";
 import type { Room } from "../domain/room";
 import type { Wall } from "../domain/wall";
 
@@ -62,6 +64,7 @@ export function migrateWireV0ToProject(data: Record<string, unknown>): Project {
 
   return {
     meta,
+    projectOrigin: null,
     layers,
     activeLayerId,
     visibleLayerIds: [],
@@ -73,7 +76,8 @@ export function migrateWireV0ToProject(data: Record<string, unknown>): Project {
     materialSet: data["materialSet"] as Project["materialSet"],
     sheets: data["sheets"] as Project["sheets"],
     dimensions: data["dimensions"] as Project["dimensions"],
-    settings: data["settings"] as Project["settings"],
-    viewState: data["viewState"] as Project["viewState"],
+    settings: normalizeProjectSettings(data["settings"] as ProjectSettingsWire),
+    viewState: normalizeViewState(data["viewState"] as Parameters<typeof normalizeViewState>[0]),
+    profiles: [],
   };
 }
