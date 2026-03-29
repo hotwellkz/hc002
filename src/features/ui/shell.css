@@ -1,0 +1,139 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e1016;
+  --panel: #151822;
+  --border: #252a35;
+  --text: #e7eaf0;
+  --muted: #8b93a7;
+  --accent: #5c7cfa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: 48px 1fr 26px;
+  grid-template-columns: 48px 1fr 300px;
+  grid-template-areas:
+    "top top top"
+    "navrail center right"
+    "status status status";
+  height: 100vh;
+  width: 100vw;
+}
+
+.shell-top {
+  grid-area: top;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto minmax(200px, 1fr);
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  gap: 12px;
+}
+
+.shell-top-left {
+  justify-self: start;
+}
+
+.shell-top-center {
+  justify-self: center;
+}
+
+.shell-top-right {
+  justify-self: end;
+}
+
+.shell-nav-rail {
+  grid-area: navrail;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: #12151c;
+}
+
+.shell-center {
+  grid-area: center;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #0b0d12;
+}
+
+.shell-right {
+  grid-area: right;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.shell-status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tabs button[data-active="true"] {
+  background: #1f2433;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: #1a1f2b;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn:hover {
+  border-color: #3d4454;
+}

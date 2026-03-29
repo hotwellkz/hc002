@@ -1,0 +1,55 @@
+.lnr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 6px;
+  background: #12151c;
+  flex-shrink: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.lnr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #2e3545;
+  border-radius: 10px;
+  background: #1a1f2b;
+  color: #a8b0c4;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.lnr-btn:hover {
+  background: #222836;
+  border-color: #3d4658;
+  color: #e7eaf0;
+}
+
+.lnr-btn:focus-visible {
+  outline: 2px solid rgba(92, 124, 250, 0.55);
+  outline-offset: 1px;
+}
+
+.lnr-btn[data-active="true"] {
+  background: rgba(92, 124, 250, 0.2);
+  border-color: #5c7cfa;
+  color: #c5d4ff;
+  box-shadow: 0 0 0 1px rgba(92, 124, 250, 0.35);
+}
+
+.lnr-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}

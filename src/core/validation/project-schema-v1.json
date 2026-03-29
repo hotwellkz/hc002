@@ -1,0 +1,246 @@
+{
+  "$id": "https://sip-house-designer.local/schema/project-v1.json",
+  "title": "SIP House Project v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "createdAt",
+    "updatedAt",
+    "units",
+    "layers",
+    "activeLayerId",
+    "visibleLayerIds",
+    "walls",
+    "openings",
+    "rooms",
+    "foundation",
+    "roof",
+    "materialSet",
+    "sheets",
+    "dimensions",
+    "settings",
+    "viewState"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "minLength": 1 },
+    "units": { "type": "string", "const": "mm" },
+    "activeLayerId": { "type": "string", "minLength": 1 },
+    "visibleLayerIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/layer" }
+    },
+    "walls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/wall" }
+    },
+    "openings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/opening" }
+    },
+    "rooms": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/room" }
+    },
+    "foundation": { "$ref": "#/$defs/foundation" },
+    "roof": { "$ref": "#/$defs/roof" },
+    "materialSet": { "$ref": "#/$defs/materialSet" },
+    "sheets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sheet" }
+    },
+    "dimensions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dimension" }
+    },
+    "settings": { "$ref": "#/$defs/settings" },
+    "viewState": { "$ref": "#/$defs/viewState" }
+  },
+  "$defs": {
+    "point2d": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "orderIndex", "elevationMm", "isVisible", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "orderIndex": { "type": "number" },
+        "elevationMm": { "type": "number" },
+        "isVisible": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "wall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layerId", "start", "end", "thicknessMm", "heightMm"],
+      "properties": {
+        "id": { "type": "string" },
+        "layerId": { "type": "string" },
+        "start": { "$ref": "#/$defs/point2d" },
+        "end": { "$ref": "#/$defs/point2d" },
+        "thicknessMm": { "type": "number", "minimum": 0 },
+        "heightMm": { "type": "number", "minimum": 0 }
+      }
+    },
+    "opening": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "wallId", "kind", "offsetFromStartMm", "widthMm", "heightMm"],
+      "properties": {
+        "id": { "type": "string" },
+        "wallId": { "type": "string" },
+        "kind": { "type": "string", "enum": ["door", "window", "other"] },
+        "offsetFromStartMm": { "type": "number" },
+        "widthMm": { "type": "number", "minimum": 0 },
+        "heightMm": { "type": "number", "minimum": 0 },
+        "sillHeightMm": { "type": "number", "minimum": 0 }
+      }
+    },
+    "room": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "layerId", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "layerId": { "type": "string" },
+        "name": { "type": "string" },
+        "polygonMm": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/point2d" }
+        }
+      }
+    },
+    "foundation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["none", "strip", "slab", "other"] },
+        "notes": { "type": "string" }
+      }
+    },
+    "roofSlope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "azimuthDeg": { "type": "number" },
+        "pitchDeg": { "type": "number" }
+      }
+    },
+    "roof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slopes"],
+      "properties": {
+        "slopes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roofSlope" }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "materialSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "panelThicknessMm": { "type": "number", "minimum": 0 }
+      }
+    },
+    "sheet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "widthMm", "heightMm"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "widthMm": { "type": "number", "minimum": 0 },
+        "heightMm": { "type": "number", "minimum": 0 }
+      }
+    },
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "a", "b"],
+      "properties": {
+        "id": { "type": "string" },
+        "a": { "$ref": "#/$defs/point2d" },
+        "b": { "$ref": "#/$defs/point2d" },
+        "offsetMm": { "type": "number" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gridStepMm", "showGrid"],
+      "properties": {
+        "gridStepMm": { "type": "number", "exclusiveMinimum": 0 },
+        "showGrid": { "type": "boolean" }
+      }
+    },
+    "viewState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activeTab", "viewport2d", "viewport3d"],
+      "properties": {
+        "activeTab": { "type": "string", "enum": ["2d", "3d"] },
+        "viewport2d": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["panXMm", "panYMm", "zoomPixelsPerMm"],
+          "properties": {
+            "panXMm": { "type": "number" },
+            "panYMm": { "type": "number" },
+            "zoomPixelsPerMm": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "viewport3d": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "polarAngle",
+            "azimuthalAngle",
+            "distance",
+            "targetXMm",
+            "targetYMm",
+            "targetZMm"
+          ],
+          "properties": {
+            "polarAngle": { "type": "number" },
+            "azimuthalAngle": { "type": "number" },
+            "distance": { "type": "number", "exclusiveMinimum": 0 },
+            "targetXMm": { "type": "number" },
+            "targetYMm": { "type": "number" },
+            "targetZMm": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}
