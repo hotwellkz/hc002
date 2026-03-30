@@ -131,7 +131,10 @@ interface AppActions {
   openWallJointParamsModal: () => void;
   closeWallJointParamsModal: () => void;
   applyWallJointParamsModal: (kind: WallJointKind) => void;
-  cancelWallJointTool: () => void;
+  /**
+   * Esc / ПКМ: при выборе второй стены — вернуться к первой; в фазе выбора первой — выйти из инструмента.
+   */
+  wallJointBackOrExit: () => void;
   wallJointPrimaryClick: (worldMm: { readonly x: number; readonly y: number }, toleranceMm: number) => void;
   applyAddWallModal: (input: {
     readonly profileId: string;
@@ -257,7 +260,13 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({
         activeTool: tool,
         ...(tool === "select"
-          ? { wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false }
+          ? {
+              wallPlacementSession: null,
+              wallCoordinateModalOpen: false,
+              addWallModalOpen: false,
+              wallJointSession: null,
+              wallJointParamsModalOpen: false,
+            }
           : { wallJointSession: null, wallJointParamsModalOpen: false }),
       }),
 
@@ -475,7 +484,20 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
     },
 
-    cancelWallJointTool: () => set({ wallJointSession: null }),
+    wallJointBackOrExit: () => {
+      const session = get().wallJointSession;
+      if (!session) {
+        return;
+      }
+      if (session.phase === "pickSecond") {
+        set({
+          wallJointSession: { kind: session.kind, phase: "pickFirst" },
+          lastError: null,
+        });
+        return;
+      }
+      set({ wallJointSession: null, lastError: null });
+    },
 
     wallJointPrimaryClick: (worldMm, toleranceMm) => {
       const session = get().wallJointSession;
@@ -523,7 +545,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         }
         set({
           currentProject: r.project,
-          wallJointSession: null,
+          wallJointSession: { kind: session.kind, phase: "pickFirst" },
           dirty: true,
           lastError: null,
         });
@@ -554,7 +576,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       set({
         currentProject: r.project,
-        wallJointSession: null,
+        wallJointSession: { kind: session.kind, phase: "pickFirst" },
         dirty: true,
         lastError: null,
       });

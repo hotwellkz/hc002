@@ -2,7 +2,6 @@ import { useEffect, useId, useState } from "react";
 
 import { useAppStore } from "@/store/useAppStore";
 
-import "./layer-modals.css";
 import "./wall-coordinate-modal.css";
 
 export function WallCoordinateModal() {
@@ -77,7 +76,9 @@ export function WallCoordinateModal() {
         <h2 id={titleId} className="wcm-title">
           Координаты
         </h2>
-        <p className="wcm-hint muted">Смещение второй точки относительно первой (мм). Знак учитывается.</p>
+        <p className="wcm-hint">
+          Смещение второй точки относительно первой (мм). Знак учитывается.
+        </p>
         <div className="wcm-fields">
           <label className="wcm-field">
             <span className="wcm-label">X</span>

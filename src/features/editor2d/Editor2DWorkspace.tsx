@@ -15,6 +15,7 @@ import { cssHexToPixiNumber } from "@/shared/cssColor";
 import { useAppStore } from "@/store/useAppStore";
 import { useUiThemeStore } from "@/store/useUiThemeStore";
 
+import { computePlacementHudScreenPosition } from "./placementHudPosition";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
 import { buildScreenGridLines } from "./gridGeometry";
@@ -86,7 +87,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
         if (useAppStore.getState().wallJointSession) {
           e.preventDefault();
-          useAppStore.getState().cancelWallJointTool();
+          useAppStore.getState().wallJointBackOrExit();
           setWallHintRef.current(null);
           return;
         }
@@ -378,14 +379,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       const onPointerMove = (ev: FederatedPointerEvent) => {
         const w = app.renderer.width;
         const h = app.renderer.height;
-        const { viewport2d, wallPlacementSession, currentProject, wallJointSession } = useAppStore.getState();
+        const { viewport2d, wallPlacementSession, currentProject, wallJointSession, wallCoordinateModalOpen } =
+          useAppStore.getState();
         const t = buildViewportTransform(w, h, viewport2d.panXMm, viewport2d.panYMm, viewport2d.zoomPixelsPerMm);
         const p = screenToWorld(ev.global.x, ev.global.y, t);
         cursorCbRef.current({ x: p.x, y: p.y });
 
         const rect = canvas.getBoundingClientRect();
-        const left = rect.left + ev.global.x + 12;
-        const top = rect.top + ev.global.y + 12;
         if (wallPlacementSession) {
           const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
           if (wallPlacementSession.phase === "waitingSecondPoint") {
@@ -400,21 +400,37 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                     ? "Привязка: линия"
                     : "Привязка: сетка";
             }
+            const hud = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen,
+              showCoordHud: !wallCoordinateModalOpen,
+            });
             setWallHintRef.current({
-              left,
-              top,
+              left: hud.hintLeft,
+              top: hud.hintTop,
               text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}`,
             });
-            if (ws?.firstPointMm && ws.previewEndMm) {
+            if (ws?.firstPointMm && ws.previewEndMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
               const dx = ws.previewEndMm.x - ws.firstPointMm.x;
               const dy = ws.previewEndMm.y - ws.firstPointMm.y;
               const d = Math.hypot(dx, dy);
-              setCoordHudRef.current({ left, top: top + 52, dx, dy, d });
+              setCoordHudRef.current({ left: hud.coordHudLeft, top: hud.coordHudTop, dx, dy, d });
+            } else {
+              setCoordHudRef.current(null);
             }
           } else {
+            const hud = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
             setWallHintRef.current({
-              left,
-              top,
+              left: hud.hintLeft,
+              top: hud.hintTop,
               text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}`,
             });
             setCoordHudRef.current(null);
@@ -441,9 +457,16 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
           }
           jointHoverRef.current = nextHover;
+          const hudJoint = computePlacementHudScreenPosition({
+            canvasRect: rect,
+            cursorCanvasX: ev.global.x,
+            cursorCanvasY: ev.global.y,
+            wallCoordinateModalOpen: false,
+            showCoordHud: false,
+          });
           setWallHintRef.current({
-            left,
-            top,
+            left: hudJoint.hintLeft,
+            top: hudJoint.hintTop,
             text: wallJointHintRu(wallJointSession.kind, wallJointSession.phase),
           });
           setCoordHudRef.current(null);
@@ -480,7 +503,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
         if (wallJointSession && ev.button === 2) {
           ev.preventDefault();
-          useAppStore.getState().cancelWallJointTool();
+          useAppStore.getState().wallJointBackOrExit();
           jointHoverRef.current = null;
           setWallHintRef.current(null);
           paint();

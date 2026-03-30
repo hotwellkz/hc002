@@ -10,9 +10,11 @@
 }
 
 .wcm-dialog {
+  box-sizing: border-box;
   width: 100%;
-  max-width: 300px;
-  padding: var(--space-md) var(--space-lg);
+  min-width: min(100%, 280px);
+  max-width: 360px;
+  padding: var(--space-lg);
   border-radius: var(--radius-modal);
   border: 1px solid var(--color-border-subtle);
   background: var(--color-surface-raised);
@@ -30,23 +32,22 @@
   margin: 0 0 var(--space-md);
   font-size: var(--text-label);
   line-height: 1.45;
+  color: var(--color-text-secondary);
 }
 
 .wcm-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
 }
 
 .wcm-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .wcm-field--readonly {
-  grid-column: 1 / -1;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -60,6 +61,8 @@
 }
 
 .wcm-input {
+  box-sizing: border-box;
+  width: 100%;
   min-height: 36px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
@@ -90,8 +93,13 @@
 
 .wcm-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--space-sm);
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .wcm-btn {
