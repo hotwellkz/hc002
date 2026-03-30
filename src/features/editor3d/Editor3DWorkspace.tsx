@@ -5,6 +5,7 @@ import { useAppStore } from "@/store/useAppStore";
 
 import { Editor3dVisibilityPanel } from "./Editor3dVisibilityPanel";
 import { ProjectCalculationMeshes } from "./ProjectCalculationMeshes";
+import { ProjectOpeningMeshes } from "./ProjectOpeningMeshes";
 import { ProjectWalls } from "./ProjectWalls";
 import { useEditor3dThemeColors } from "./useEditor3dThemeColors";
 
@@ -15,6 +16,7 @@ function SceneFromProject() {
     <>
       <ProjectWalls project={project} />
       <ProjectCalculationMeshes project={project} visible={showCalc} />
+      <ProjectOpeningMeshes project={project} />
     </>
   );
 }

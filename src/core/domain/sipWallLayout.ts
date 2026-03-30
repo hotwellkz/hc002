@@ -1,4 +1,5 @@
 import { newEntityId } from "./ids";
+import { isOpeningPlacedOnWall, type Opening } from "./opening";
 import type { Profile } from "./profile";
 import type { Wall } from "./wall";
 import {
@@ -204,6 +205,7 @@ export function buildWallCalculationForWall(
   const opt = { ...DEFAULT_WALL_CALC_STAGE3_OPTIONS, ...ctx?.options };
   const openings = ctx?.openings ?? [];
   const wallJoints = ctx?.wallJoints ?? [];
+  const skipAutoOpeningFraming = ctx?.skipAutoOpeningFramingForOpeningIds ?? new Set<string>();
 
   const Te = m.includeEndBoards ? m.jointBoardThicknessMm : 0;
   const interiorLo = m.includeEndBoards ? Te : 0;
@@ -213,7 +215,10 @@ export function buildWallCalculationForWall(
   }
 
   const openingsOnWall = openings
-    .filter((o) => o.wallId === wall.id)
+    .filter(
+      (o): o is Opening & { wallId: string; offsetFromStartMm: number } =>
+        o.wallId === wall.id && isOpeningPlacedOnWall(o),
+    )
     .sort((a, b) => a.offsetFromStartMm - b.offsetFromStartMm);
 
   const openingBlocks = openingsOnWall.map((o) => {
@@ -361,6 +366,9 @@ export function buildWallCalculationForWall(
 
   if (opt.includeOpeningFraming) {
     for (const o of openingsOnWall) {
+      if (skipAutoOpeningFraming.has(o.id)) {
+        continue;
+      }
       const o0 = o.offsetFromStartMm;
       const o1 = o.offsetFromStartMm + o.widthMm;
       if (o1 - o0 < 2 * Tj + EPS) {

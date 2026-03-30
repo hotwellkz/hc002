@@ -3,9 +3,11 @@ import { useCallback, useState } from "react";
 import "./shell.css";
 
 import { useDeleteSelectionKeyboard } from "@/features/project/useDeleteSelectionKeyboard";
+import { useOpeningPropertiesKeyboard } from "@/features/project/useOpeningPropertiesKeyboard";
 import { AddWallModal } from "@/features/ui/AddWallModal";
 import { WallJointParamsModal } from "@/features/ui/WallJointParamsModal";
 import { WallCalculationModal } from "@/features/ui/WallCalculationModal";
+import { WindowParamsModal } from "@/features/ui/window-modal/WindowParamsModal";
 import { WallCoordinateModal } from "@/features/ui/WallCoordinateModal";
 import { LayerManagerModal } from "@/features/ui/LayerManagerModal";
 import { LayerParamsModal } from "@/features/ui/LayerParamsModal";
@@ -38,6 +40,7 @@ function ProfilesHost() {
 
 export function AppShell() {
   useDeleteSelectionKeyboard(true);
+  useOpeningPropertiesKeyboard(true);
   const [cursorWorldMm, setCursorWorldMm] = useState<{ x: number; y: number } | null>(null);
   const onWorldCursorMm = useCallback((p: { x: number; y: number } | null) => {
     setCursorWorldMm(p);
@@ -63,6 +66,7 @@ export function AppShell() {
       <WallJointParamsModal />
       <WallCoordinateModal />
       <WallCalculationModal />
+      <WindowParamsModal />
     </div>
   );
 }

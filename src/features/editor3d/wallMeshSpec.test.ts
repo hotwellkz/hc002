@@ -38,7 +38,9 @@ describe("wallToRenderSpecs (послойно)", () => {
   it("для SIP демо даёт 3 слоя при showProfileLayers=true", () => {
     const p = createDemoProject();
     const w = p.walls[0]!;
-    const specs = wallToRenderSpecs(w, p, true);
+    /** Без проёмов — по одному сегменту на слой (иначе грань режется на части). */
+    const p0 = { ...p, openings: [] };
+    const specs = wallToRenderSpecs(w, p0, true);
     expect(specs.length).toBe(3);
     const sumMm = specs.reduce((acc, s) => acc + s.width / 0.001, 0);
     expect(sumMm).toBeCloseTo(w.thicknessMm, 3);
@@ -48,7 +50,8 @@ describe("wallToRenderSpecs (послойно)", () => {
   it("при showProfileLayers=false — один меш", () => {
     const p = createDemoProject();
     const w = p.walls[0]!;
-    const specs = wallToRenderSpecs(w, p, false);
+    const p0 = { ...p, openings: [] };
+    const specs = wallToRenderSpecs(w, p0, false);
     expect(specs.length).toBe(1);
     expect(specs[0]!.width).toBeCloseTo(w.thicknessMm * 0.001, 6);
   });
@@ -60,6 +63,7 @@ describe("wallToRenderSpecs (послойно)", () => {
     const calc = buildWallCalculationForWall(w, profile);
     const proj = {
       ...p,
+      openings: [],
       wallCalculations: [calc],
       viewState: { ...p.viewState, show3dCalculation: true },
     };

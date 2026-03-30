@@ -48,6 +48,7 @@ export function createEmptyProject(): Project {
     wallCalculations: [],
     wallJoints: [],
     openings: [],
+    openingFramingPieces: [],
     rooms: [],
     foundation: { type: "none" },
     roof: { slopes: [] },

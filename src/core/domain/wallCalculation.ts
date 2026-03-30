@@ -164,6 +164,8 @@ export interface WallCalculationBuildContext {
   readonly openings: readonly Opening[];
   readonly wallJoints: readonly WallJoint[];
   readonly options: WallCalculationStage3Options;
+  /** Для этих openingId не генерировать авто-обрамление (есть openingFramingPieces в проекте). */
+  readonly skipAutoOpeningFramingForOpeningIds?: ReadonlySet<string>;
 }
 
 export function emptyLumberRoleCounters(): Record<LumberRole, number> {

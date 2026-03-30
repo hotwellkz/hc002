@@ -8,6 +8,8 @@ export * from "./wall";
 export * from "./wallOps";
 export * from "./wallPlacement";
 export * from "./opening";
+export * from "./windowFormCatalog";
+export * from "./openingMutations";
 export * from "./room";
 export * from "./foundation";
 export * from "./roof";

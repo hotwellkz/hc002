@@ -1,4 +1,5 @@
 import { getProfileById } from "./profileOps";
+import type { OpeningFramingPieceKind } from "./openingFramingPiece";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import type { LumberRole } from "./wallCalculation";
@@ -34,6 +35,47 @@ export interface WallSpecificationSipRow {
   readonly heightMm: number;
   readonly thicknessMm: number;
   readonly sequenceIndex: number;
+}
+
+/** Строка спецификации по окну / проёму. */
+export interface OpeningSpecificationRow {
+  readonly openingId: string;
+  readonly wallId: string;
+  readonly wallMark: string;
+  readonly openingMark: string;
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly formName: string;
+  readonly isEmptyOpening: boolean;
+}
+
+/** Элемент обрамления проёма (доски вокруг окна). */
+export interface OpeningFramingSpecificationRow {
+  readonly pieceId: string;
+  readonly openingId: string;
+  readonly wallId: string;
+  readonly wallMark: string;
+  readonly openingMark: string;
+  readonly pieceMark: string;
+  readonly kind: OpeningFramingPieceKind;
+  readonly kindLabelRu: string;
+  readonly profileName: string;
+  readonly lengthMm: number;
+}
+
+const FRAMING_KIND_RU: Readonly<Record<OpeningFramingPieceKind, string>> = {
+  above: "Над проёмом",
+  lintel_top: "Перемычка сверху",
+  lintel_bottom: "Перемычка снизу",
+  side_left: "Боковой (слева)",
+  side_right: "Боковой (справа)",
+  side_fix_left: "Закрепляющая стойка (слева)",
+  side_fix_right: "Закрепляющая стойка (справа)",
+  below: "Под проёмом",
+};
+
+export function openingFramingKindLabelRu(kind: OpeningFramingPieceKind): string {
+  return FRAMING_KIND_RU[kind] ?? kind;
 }
 
 /** Сводка пиломатериала по проекту (агрегация). */
@@ -124,6 +166,67 @@ export function buildWallSpecificationSipPanels(wall: Wall, project: Project): r
       thicknessMm: Math.round(r.thicknessMm),
       sequenceIndex: r.index,
     }));
+}
+
+export function buildOpeningSpecificationRows(project: Project): readonly OpeningSpecificationRow[] {
+  const rows: OpeningSpecificationRow[] = [];
+  for (const o of project.openings) {
+    if (o.kind !== "window" || o.wallId == null) {
+      continue;
+    }
+    const wall = project.walls.find((w) => w.id === o.wallId);
+    if (!wall) {
+      continue;
+    }
+    const wallMark = wall.markLabel?.trim() || wall.id.slice(0, 8);
+    const openingMark = o.markLabel?.trim() || `ОК-${o.windowSequenceNumber ?? "?"}`;
+    const formName = o.formName?.trim() || "—";
+    rows.push({
+      openingId: o.id,
+      wallId: wall.id,
+      wallMark,
+      openingMark,
+      widthMm: Math.round(o.widthMm),
+      heightMm: Math.round(o.heightMm),
+      formName,
+      isEmptyOpening: o.isEmptyOpening === true,
+    });
+  }
+  return [...rows].sort((a, b) => a.openingMark.localeCompare(b.openingMark, "ru"));
+}
+
+export function buildOpeningFramingSpecificationRows(project: Project): readonly OpeningFramingSpecificationRow[] {
+  const byOpeningMark = new Map<string, string>();
+  for (const o of project.openings) {
+    if (o.kind === "window") {
+      byOpeningMark.set(o.id, o.markLabel?.trim() || `ОК-${o.windowSequenceNumber ?? "?"}`);
+    }
+  }
+  const rows: OpeningFramingSpecificationRow[] = [];
+  for (const p of project.openingFramingPieces) {
+    const wall = project.walls.find((w) => w.id === p.wallId);
+    const wallMark = wall?.markLabel?.trim() || p.wallId.slice(0, 8);
+    const profile = getProfileById(project, p.profileId);
+    rows.push({
+      pieceId: p.id,
+      openingId: p.openingId,
+      wallId: p.wallId,
+      wallMark,
+      openingMark: byOpeningMark.get(p.openingId) ?? p.openingId.slice(0, 8),
+      pieceMark: p.markLabel,
+      kind: p.kind,
+      kindLabelRu: openingFramingKindLabelRu(p.kind),
+      profileName: profile?.name ?? profile?.id ?? p.profileId,
+      lengthMm: Math.round(p.lengthMm),
+    });
+  }
+  return [...rows].sort((a, b) => {
+    const om = a.openingMark.localeCompare(b.openingMark, "ru");
+    if (om !== 0) {
+      return om;
+    }
+    return a.pieceMark.localeCompare(b.pieceMark, "ru");
+  });
 }
 
 export function buildProjectWallSpecificationSummaries(project: Project): readonly WallSpecificationSummary[] {

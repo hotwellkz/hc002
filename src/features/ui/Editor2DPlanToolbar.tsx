@@ -13,6 +13,22 @@ function IconWallAdd() {
   );
 }
 
+function IconWindowAdd() {
+  return (
+    <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 6h16v2H4V6zm0 5h10v2H4v-2zm0 5h8v2H4v-2z"
+        opacity="0.35"
+      />
+      <path
+        fill="currentColor"
+        d="M13 11h8v11h-2v-4h-4v4h-2V11zm2 2v5h4v-5h-4z"
+      />
+    </svg>
+  );
+}
+
 function IconCalculate() {
   return (
     <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -38,6 +54,7 @@ function IconWallJoint() {
 
 export function Editor2DPlanToolbar() {
   const open = useAppStore((s) => s.openAddWallModal);
+  const openWindow = useAppStore((s) => s.openAddWindowModal);
   const openJoint = useAppStore((s) => s.openWallJointParamsModal);
   const openCalc = useAppStore((s) => s.openWallCalculationModal);
   const wallToolActive = useAppStore((s) => s.wallPlacementSession != null);
@@ -60,6 +77,15 @@ export function Editor2DPlanToolbar() {
         onClick={() => open()}
       >
         <IconWallAdd />
+      </button>
+      <button
+        type="button"
+        className="e2dpt-btn"
+        title="Добавить окно"
+        aria-label="Добавить окно"
+        onClick={() => openWindow()}
+      >
+        <IconWindowAdd />
       </button>
       <button
         type="button"

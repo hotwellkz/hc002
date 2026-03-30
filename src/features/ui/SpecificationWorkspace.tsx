@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 
 import { buildCutListCandidates } from "@/core/domain/cutListCandidates";
 import {
+  buildOpeningFramingSpecificationRows,
+  buildOpeningSpecificationRows,
   buildProjectLumberSummary,
   buildProjectWallSpecificationSummaries,
   buildWallSpecificationDetails,
@@ -16,6 +18,8 @@ export function SpecificationWorkspace() {
   const [openWallId, setOpenWallId] = useState<string | null>(null);
 
   const wallSummaries = useMemo(() => buildProjectWallSpecificationSummaries(project), [project]);
+  const openingRows = useMemo(() => buildOpeningSpecificationRows(project), [project]);
+  const openingFramingRows = useMemo(() => buildOpeningFramingSpecificationRows(project), [project]);
   const lumberSummary = useMemo(() => buildProjectLumberSummary(project), [project]);
   const cutCount = useMemo(() => buildCutListCandidates(project).length, [project]);
 
@@ -152,6 +156,78 @@ export function SpecificationWorkspace() {
               </div>
             );
           })()}
+      </section>
+
+      <section className="spec-workspace__section" aria-labelledby="spec-openings-heading">
+        <h3 id="spec-openings-heading" className="spec-workspace__h3">
+          Окна и проёмы
+        </h3>
+        {openingRows.length === 0 ? (
+          <p className="spec-workspace__empty">Нет окон, привязанных к стенам.</p>
+        ) : (
+          <div className="spec-workspace__table-wrap">
+            <table className="spec-workspace__table spec-workspace__table--compact">
+              <thead>
+                <tr>
+                  <th>Марка</th>
+                  <th>Стена</th>
+                  <th>Ширина × высота, мм</th>
+                  <th>Форма</th>
+                  <th>Пустой</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openingRows.map((r) => (
+                  <tr key={r.openingId}>
+                    <td>{r.openingMark}</td>
+                    <td>{r.wallMark}</td>
+                    <td>
+                      {r.widthMm} × {r.heightMm}
+                    </td>
+                    <td>{r.formName}</td>
+                    <td>{r.isEmptyOpening ? "да" : "нет"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="spec-workspace__section" aria-labelledby="spec-opening-framing-heading">
+        <h3 id="spec-opening-framing-heading" className="spec-workspace__h3">
+          Конструктив обрамления проёмов
+        </h3>
+        {openingFramingRows.length === 0 ? (
+          <p className="spec-workspace__empty">Нет сгенерированных элементов обрамления (после настройки окна и SIP).</p>
+        ) : (
+          <div className="spec-workspace__table-wrap">
+            <table className="spec-workspace__table spec-workspace__table--compact">
+              <thead>
+                <tr>
+                  <th>Марка детали</th>
+                  <th>Окно</th>
+                  <th>Стена</th>
+                  <th>Тип</th>
+                  <th>Профиль</th>
+                  <th>Длина, мм</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openingFramingRows.map((r) => (
+                  <tr key={r.pieceId}>
+                    <td>{r.pieceMark}</td>
+                    <td>{r.openingMark}</td>
+                    <td>{r.wallMark}</td>
+                    <td>{r.kindLabelRu}</td>
+                    <td>{r.profileName}</td>
+                    <td>{r.lengthMm}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="spec-workspace__section" aria-labelledby="spec-lumber-heading">

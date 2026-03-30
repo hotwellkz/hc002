@@ -95,8 +95,8 @@ describe("buildWallCalculationForWall", () => {
       wallJoints: [],
       options: { includeOpeningFraming: true, includeWallConnectionElements: false },
     });
-    const o0 = opening.offsetFromStartMm;
-    const o1 = opening.offsetFromStartMm + opening.widthMm;
+    const o0 = opening.offsetFromStartMm!;
+    const o1 = o0 + opening.widthMm;
     for (const r of calc.sipRegions) {
       const overlaps = r.startOffsetMm < o1 - 1e-3 && r.endOffsetMm > o0 + 1e-3;
       expect(overlaps).toBe(false);

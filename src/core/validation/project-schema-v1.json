@@ -17,6 +17,7 @@
     "wallCalculations",
     "wallJoints",
     "openings",
+    "openingFramingPieces",
     "rooms",
     "foundation",
     "roof",
@@ -62,6 +63,10 @@
     "openings": {
       "type": "array",
       "items": { "$ref": "#/$defs/opening" }
+    },
+    "openingFramingPieces": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/openingFramingPiece" }
     },
     "rooms": {
       "type": "array",
@@ -376,15 +381,132 @@
     "opening": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "wallId", "kind", "offsetFromStartMm", "widthMm", "heightMm"],
+      "required": ["id", "kind", "widthMm", "heightMm"],
       "properties": {
-        "id": { "type": "string" },
-        "wallId": { "type": "string" },
+        "id": { "type": "string", "minLength": 1 },
+        "wallId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
         "kind": { "type": "string", "enum": ["door", "window", "other"] },
-        "offsetFromStartMm": { "type": "number" },
-        "widthMm": { "type": "number", "minimum": 0 },
-        "heightMm": { "type": "number", "minimum": 0 },
-        "sillHeightMm": { "type": "number", "minimum": 0 }
+        "offsetFromStartMm": {
+          "anyOf": [{ "type": "number" }, { "type": "null" }]
+        },
+        "widthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "heightMm": { "type": "number", "exclusiveMinimum": 0 },
+        "sillHeightMm": { "type": "number", "minimum": 0 },
+        "formKey": { "type": "string", "enum": ["rectangle"] },
+        "formName": { "type": "string" },
+        "isEmptyOpening": { "type": "boolean" },
+        "viewPreset": {
+          "type": "string",
+          "enum": [
+            "form1",
+            "form2",
+            "form3",
+            "form4",
+            "form5",
+            "form6",
+            "form7",
+            "form8",
+            "form9"
+          ]
+        },
+        "sillOverhangMm": { "type": "number", "minimum": 0 },
+        "position": {
+          "anyOf": [{ "$ref": "#/$defs/openingPositionSpec" }, { "type": "null" }]
+        },
+        "sipConstruction": {
+          "anyOf": [{ "$ref": "#/$defs/openingSipConstructionSpec" }, { "type": "null" }]
+        },
+        "windowSequenceNumber": { "type": "integer", "minimum": 1 },
+        "markLabel": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "openingPositionSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchorAlongWall", "offsetAlongWallMm", "alignment", "sillLevelMm"],
+      "properties": {
+        "anchorAlongWall": {
+          "type": "string",
+          "enum": ["wall_start", "wall_end", "wall_center"]
+        },
+        "offsetAlongWallMm": { "type": "number" },
+        "alignment": {
+          "type": "string",
+          "enum": ["center", "leading", "trailing"]
+        },
+        "sillLevelMm": { "type": "number", "minimum": 0 }
+      }
+    },
+    "openingSipConstructionSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aboveProfileId",
+        "aboveDouble",
+        "lintelTopProfileId",
+        "lintelBottomProfileId",
+        "sideProfileId",
+        "sideType",
+        "sideClosingStuds",
+        "belowProfileId",
+        "belowDouble"
+      ],
+      "properties": {
+        "aboveProfileId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "aboveDouble": { "type": "boolean" },
+        "lintelTopProfileId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "lintelTopDouble": { "type": "boolean" },
+        "lintelBottomProfileId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "lintelBottomDouble": { "type": "boolean" },
+        "sideProfileId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "sideType": {
+          "type": "string",
+          "enum": ["type1", "type2", "type3"]
+        },
+        "sideClosingStuds": { "type": "boolean" },
+        "belowProfileId": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "belowDouble": { "type": "boolean" }
+      }
+    },
+    "openingFramingPiece": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "openingId", "wallId", "kind", "profileId", "lengthMm", "markLabel", "sequenceIndex"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "openingId": { "type": "string", "minLength": 1 },
+        "wallId": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "above",
+            "lintel_top",
+            "lintel_bottom",
+            "side_left",
+            "side_right",
+            "side_fix_left",
+            "side_fix_right",
+            "below"
+          ]
+        },
+        "profileId": { "type": "string", "minLength": 1 },
+        "lengthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "markLabel": { "type": "string" },
+        "sequenceIndex": { "type": "number" }
       }
     },
     "room": {

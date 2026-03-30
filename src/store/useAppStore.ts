@@ -28,6 +28,21 @@ import {
   type WallCalculationResult,
   type WallCalculationStage3Options,
 } from "@/core/domain/wallCalculation";
+import { removeUnplacedWindowDraft } from "@/core/domain/openingDraftCleanup";
+import { addUnplacedWindowToProject, type AddWindowDraftPayload } from "@/core/domain/openingMutations";
+import {
+  finalizeWindowPlacementWithDefaults,
+  placeDraftWindowOnWall,
+  repositionPlacedWindowLeftEdge,
+  saveWindowParamsAndRegenerateFraming,
+  type SaveWindowParamsPayload,
+} from "@/core/domain/openingWindowMutations";
+import {
+  clampOpeningLeftEdgeMm,
+  offsetFromStartForCursorCentered,
+  pickClosestWallAlongPoint,
+  validateWindowPlacementOnWall,
+} from "@/core/domain/openingWindowGeometry";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import { resolveSnap2d } from "@/core/geometry/snap2d";
@@ -54,6 +69,19 @@ import type { LinearProfilePlacementMode } from "@/core/geometry/linearPlacement
 
 export type ActiveTool = "select" | "pan";
 
+/** Окно создано из модалки, ожидает привязку к стене (этап 2). */
+export interface PendingWindowPlacement {
+  readonly openingId: string;
+}
+
+export type WindowEditModalTab = "form" | "position" | "sip";
+
+/** Редактирование размещённого окна (вкладки после установки на стену). */
+export interface WindowEditModalState {
+  readonly openingId: string;
+  readonly initialTab: WindowEditModalTab;
+}
+
 export interface UiPanelsState {
   readonly rightPropertiesOpen: boolean;
 }
@@ -75,6 +103,9 @@ interface AppState {
   readonly layerParamsModalOpen: boolean;
   readonly profilesModalOpen: boolean;
   readonly addWallModalOpen: boolean;
+  readonly addWindowModalOpen: boolean;
+  readonly pendingWindowPlacement: PendingWindowPlacement | null;
+  readonly windowEditModal: WindowEditModalState | null;
   readonly wallJointParamsModalOpen: boolean;
   /** Ручной инструмент «Угловое соединение» после выбора типа в модалке. */
   readonly wallJointSession: WallJointSession | null;
@@ -149,6 +180,19 @@ interface AppActions {
   duplicateProfileById: (profileId: string) => void;
   openAddWallModal: () => void;
   closeAddWallModal: () => void;
+  openAddWindowModal: () => void;
+  closeAddWindowModal: () => void;
+  /** Создать окно в проекте по данным вкладки «Форма окна». */
+  applyWindowFormModal: (input: AddWindowDraftPayload) => void;
+  /** Отмена режима установки: удалить черновик окна без стены. */
+  clearPendingWindowPlacement: () => void;
+  tryCommitPendingWindowPlacementAtWorld: (worldMm: { readonly x: number; readonly y: number }) => void;
+  closeWindowEditModal: () => void;
+  applyWindowEditModal: (payload: SaveWindowParamsPayload) => void;
+  /** Повторное открытие модалки для окна, уже стоящего на стене. */
+  openWindowEditModal: (openingId: string, initialTab?: WindowEditModalTab) => void;
+  /** Перемещение окна вдоль стены (левый край, мм); без lastError — для drag. false если невалидно. */
+  applyOpeningRepositionLeftEdge: (openingId: string, leftEdgeMm: number) => boolean;
   openWallJointParamsModal: () => void;
   closeWallJointParamsModal: () => void;
   applyWallJointParamsModal: (kind: WallJointKind) => void;
@@ -246,6 +290,9 @@ export const useAppStore = create<AppStore>((set, get) => {
     layerParamsModalOpen: false,
     profilesModalOpen: false,
     addWallModalOpen: false,
+    addWindowModalOpen: false,
+    pendingWindowPlacement: null,
+    windowEditModal: null,
     wallJointParamsModalOpen: false,
     wallJointSession: null,
     wallPlacementSession: null,
@@ -292,6 +339,7 @@ export const useAppStore = create<AppStore>((set, get) => {
               wallPlacementSession: null,
               wallCoordinateModalOpen: false,
               addWallModalOpen: false,
+              addWindowModalOpen: false,
               wallJointSession: null,
               wallJointParamsModalOpen: false,
             }
@@ -313,17 +361,28 @@ export const useAppStore = create<AppStore>((set, get) => {
       })),
 
     setActiveTab: (tab) =>
-      set((s) => ({
-        activeTab: tab,
-        activeTool: tab === "2d" ? "select" : s.activeTool,
-        wallPlacementSession: tab === "2d" ? s.wallPlacementSession : null,
-        wallJointSession: tab === "2d" ? s.wallJointSession : null,
-        wallJointParamsModalOpen: tab === "2d" ? s.wallJointParamsModalOpen : false,
-        addWallModalOpen: tab === "2d" ? s.addWallModalOpen : false,
-        wallCoordinateModalOpen: tab === "2d" ? s.wallCoordinateModalOpen : false,
-        currentProject: mergeViewState(s.currentProject, { activeTab: tab }),
-        dirty: true,
-      })),
+      set((s) => {
+        let proj = s.currentProject;
+        if (tab !== "2d" && s.pendingWindowPlacement) {
+          proj = removeUnplacedWindowDraft(proj, s.pendingWindowPlacement.openingId);
+        }
+        return {
+          activeTab: tab,
+          activeTool: tab === "2d" ? "select" : s.activeTool,
+          wallPlacementSession: tab === "2d" ? s.wallPlacementSession : null,
+          wallJointSession: tab === "2d" ? s.wallJointSession : null,
+          wallJointParamsModalOpen: tab === "2d" ? s.wallJointParamsModalOpen : false,
+          addWallModalOpen: tab === "2d" ? s.addWallModalOpen : false,
+          addWindowModalOpen: tab === "2d" ? s.addWindowModalOpen : false,
+          pendingWindowPlacement: tab === "2d" ? s.pendingWindowPlacement : null,
+          windowEditModal: tab === "2d" ? s.windowEditModal : null,
+          wallCoordinateModalOpen: tab === "2d" ? s.wallCoordinateModalOpen : false,
+          currentProject: mergeViewState(tab !== "2d" && s.pendingWindowPlacement ? proj : s.currentProject, {
+            activeTab: tab,
+          }),
+          dirty: true,
+        };
+      }),
 
     toggleRightPanel: () =>
       set((s) => ({
@@ -496,9 +555,145 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     openAddWallModal: () =>
-      set({ addWallModalOpen: true, wallJointSession: null, wallJointParamsModalOpen: false }),
+      set({
+        addWallModalOpen: true,
+        addWindowModalOpen: false,
+        wallJointSession: null,
+        wallJointParamsModalOpen: false,
+      }),
 
     closeAddWallModal: () => set({ addWallModalOpen: false }),
+
+    openAddWindowModal: () =>
+      set({
+        addWindowModalOpen: true,
+        addWallModalOpen: false,
+        wallPlacementSession: null,
+        wallJointSession: null,
+        wallJointParamsModalOpen: false,
+        wallCoordinateModalOpen: false,
+        windowEditModal: null,
+        lastError: null,
+      }),
+
+    closeAddWindowModal: () => set({ addWindowModalOpen: false }),
+
+    applyWindowFormModal: (input) => {
+      const p = get().currentProject;
+      const r = addUnplacedWindowToProject(p, input);
+      set({
+        currentProject: r.project,
+        addWindowModalOpen: false,
+        pendingWindowPlacement: { openingId: r.openingId },
+        dirty: true,
+        lastError: null,
+      });
+    },
+
+    clearPendingWindowPlacement: () =>
+      set((s) => {
+        if (!s.pendingWindowPlacement) {
+          return { pendingWindowPlacement: null };
+        }
+        return {
+          pendingWindowPlacement: null,
+          currentProject: removeUnplacedWindowDraft(s.currentProject, s.pendingWindowPlacement.openingId),
+          dirty: true,
+          lastError: null,
+        };
+      }),
+
+    tryCommitPendingWindowPlacementAtWorld: (worldMm) => {
+      const pend = get().pendingWindowPlacement;
+      if (!pend) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const layerSlice = narrowProjectToActiveLayer(p0);
+      const walls = layerSlice.walls;
+      const v = get().viewport2d;
+      const sz = get().viewportCanvas2dPx;
+      const tol =
+        sz && sz.width > 0
+          ? Math.max(14, 22 / v.zoomPixelsPerMm)
+          : Math.max(14, 22 / Math.max(0.01, v.zoomPixelsPerMm));
+      const hit = pickClosestWallAlongPoint(worldMm, walls, tol);
+      if (!hit) {
+        set({ lastError: "Наведите курсор на стену и кликните по ней." });
+        return;
+      }
+      const op = p0.openings.find((o) => o.id === pend.openingId);
+      if (!op) {
+        set({ pendingWindowPlacement: null, lastError: null });
+        return;
+      }
+      const wall = p0.walls.find((w) => w.id === hit.wallId);
+      if (!wall) {
+        set({ lastError: "Стена не найдена." });
+        return;
+      }
+      const rawLeft = offsetFromStartForCursorCentered(hit.alongMm, op.widthMm);
+      const left = clampOpeningLeftEdgeMm(wall, op.widthMm, rawLeft);
+      const vPl = validateWindowPlacementOnWall(wall, left, op.widthMm, p0, op.id);
+      if (!vPl.ok) {
+        set({ lastError: vPl.reason });
+        return;
+      }
+      const placed = placeDraftWindowOnWall(p0, pend.openingId, hit.wallId, rawLeft);
+      if ("error" in placed) {
+        set({ lastError: placed.error });
+        return;
+      }
+      const fin = finalizeWindowPlacementWithDefaults(placed.project, pend.openingId);
+      if ("error" in fin) {
+        set({ lastError: fin.error });
+        return;
+      }
+      set({
+        currentProject: fin.project,
+        pendingWindowPlacement: null,
+        windowEditModal: { openingId: pend.openingId, initialTab: "position" },
+        dirty: true,
+        lastError: null,
+      });
+    },
+
+    closeWindowEditModal: () => set({ windowEditModal: null }),
+
+    applyWindowEditModal: (payload) => {
+      const m = get().windowEditModal;
+      if (!m) {
+        return;
+      }
+      const r = saveWindowParamsAndRegenerateFraming(get().currentProject, m.openingId, payload);
+      if ("error" in r) {
+        set({ lastError: r.error });
+        return;
+      }
+      set({
+        currentProject: r.project,
+        windowEditModal: null,
+        dirty: true,
+        lastError: null,
+      });
+    },
+
+    openWindowEditModal: (openingId, initialTab = "form") =>
+      set({
+        windowEditModal: { openingId, initialTab: initialTab ?? "form" },
+        addWindowModalOpen: false,
+        pendingWindowPlacement: null,
+        lastError: null,
+      }),
+
+    applyOpeningRepositionLeftEdge: (openingId, leftEdgeMm) => {
+      const r = repositionPlacedWindowLeftEdge(get().currentProject, openingId, leftEdgeMm);
+      if ("error" in r) {
+        return false;
+      }
+      set({ currentProject: r.project, dirty: true });
+      return true;
+    },
 
     openWallJointParamsModal: () =>
       set({
@@ -507,6 +702,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: null,
         wallCoordinateModalOpen: false,
         addWallModalOpen: false,
+        addWindowModalOpen: false,
         lastError: null,
       }),
 
@@ -519,6 +715,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
         addWallModalOpen: false,
+        addWindowModalOpen: false,
         selectedEntityIds: [],
         lastError: null,
       });
@@ -661,6 +858,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           lastSnapKind: null,
         },
         addWallModalOpen: false,
+        addWindowModalOpen: false,
         wallJointSession: null,
         wallJointParamsModalOpen: false,
         selectedEntityIds: [],
@@ -669,7 +867,12 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     cancelWallPlacement: () =>
-      set({ wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false }),
+      set({
+        wallPlacementSession: null,
+        wallCoordinateModalOpen: false,
+        addWallModalOpen: false,
+        addWindowModalOpen: false,
+      }),
 
     wallPlacementBackOrExit: () => {
       const session = get().wallPlacementSession;
@@ -689,7 +892,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         });
         return;
       }
-      set({ wallPlacementSession: null, wallCoordinateModalOpen: false, addWallModalOpen: false });
+      set({
+        wallPlacementSession: null,
+        wallCoordinateModalOpen: false,
+        addWallModalOpen: false,
+        addWindowModalOpen: false,
+      });
     },
 
     wallPlacementPreviewMove: (worldMm, viewport) => {
@@ -862,6 +1070,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             buildWallCalculationForWall(wall, prof, {
               openings: proj.openings,
               wallJoints: proj.wallJoints,
+              skipAutoOpeningFramingForOpeningIds: new Set(proj.openingFramingPieces.map((p) => p.openingId)),
               options: {
                 ...DEFAULT_WALL_CALC_STAGE3_OPTIONS,
                 ...input.stage3Options,
@@ -978,6 +1187,9 @@ export const useAppStore = create<AppStore>((set, get) => {
           layerParamsModalOpen: false,
           profilesModalOpen: false,
           addWallModalOpen: false,
+          addWindowModalOpen: false,
+          pendingWindowPlacement: null,
+          windowEditModal: null,
           wallJointParamsModalOpen: false,
           wallJointSession: null,
           wallPlacementSession: null,
@@ -1016,6 +1228,9 @@ export const useAppStore = create<AppStore>((set, get) => {
           layerParamsModalOpen: false,
           profilesModalOpen: false,
           addWallModalOpen: false,
+          addWindowModalOpen: false,
+          pendingWindowPlacement: null,
+          windowEditModal: null,
           wallJointParamsModalOpen: false,
           wallJointSession: null,
           wallPlacementSession: null,
@@ -1049,6 +1264,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         layerParamsModalOpen: false,
         profilesModalOpen: false,
         addWallModalOpen: false,
+        addWindowModalOpen: false,
+        pendingWindowPlacement: null,
+        windowEditModal: null,
         wallJointParamsModalOpen: false,
         wallJointSession: null,
         wallPlacementSession: null,
@@ -1115,6 +1333,9 @@ export const useAppStore = create<AppStore>((set, get) => {
           layerParamsModalOpen: false,
           profilesModalOpen: false,
           addWallModalOpen: false,
+          addWindowModalOpen: false,
+          pendingWindowPlacement: null,
+          windowEditModal: null,
           wallJointParamsModalOpen: false,
           wallJointSession: null,
           wallPlacementSession: null,

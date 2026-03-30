@@ -108,6 +108,7 @@ export function createDemoProject(): Project {
         markLabel: "1S_4",
       },
     ],
+    openingFramingPieces: [],
     openings: [
       {
         id: newEntityId(),

@@ -1,6 +1,5 @@
 import { Graphics } from "pixi.js";
 
-import { openingCenterOnWallMm } from "@/core/domain/openingPlacement";
 import type { Project } from "@/core/domain/project";
 import { getProfileById } from "@/core/domain/profileOps";
 import type { Wall } from "@/core/domain/wall";
@@ -11,6 +10,7 @@ import {
 } from "@/core/domain/wallProfileLayers";
 
 import { fillColor2dForMaterialType } from "./materials2d";
+import { openingSlotCornersMm } from "./openingPlanGeometry2d";
 import { quadCornersAlongWallMm } from "./wallPlanGeometry2d";
 import type { ViewportTransform } from "./viewportTransforms";
 import { worldToScreen } from "./viewportTransforms";
@@ -19,9 +19,10 @@ import { worldToScreen } from "./viewportTransforms";
 const WALL_NORMAL = 0x5aa7ff;
 const WALL_CONTEXT = 0x4a6a8a;
 const WALL_SELECTED = 0xe7b65c;
-const OPENING_DOT = 0x8a919c;
-const OPENING_CONTEXT = 0x6a7280;
-const OPENING_SELECTED = 0xe7b65c;
+const OPENING_SLOT_FILL = 0x5aa7ff;
+const OPENING_SLOT_EMPTY = 0x8b939e;
+const OPENING_SLOT_STROKE = 0x2563eb;
+const OPENING_SLOT_STROKE_SEL = 0xe7b65c;
 
 export type Draw2dLayerAppearance = "active" | "context";
 
@@ -215,21 +216,41 @@ export function drawWallsAndOpenings2d(
 
   for (const o of project.openings) {
     const wall = project.walls.find((wall) => wall.id === o.wallId);
-    if (!wall) {
+    if (!wall || o.wallId == null || o.offsetFromStartMm == null) {
       continue;
     }
-    const p = openingCenterOnWallMm(wall, o);
-    const s = worldToScreen(p.x, p.y, t);
+    const corners = openingSlotCornersMm(wall, o.offsetFromStartMm, o.widthMm, 1);
+    if (!corners) {
+      continue;
+    }
     const sel = selectedIds.has(o.id);
     const showSel = !ctx && sel;
-    const r = showSel ? 6 : ctx ? 3 : 4;
-    openingsG.circle(s.x, s.y, r);
-    openingsG.fill({
-      color: showSel ? OPENING_SELECTED : ctx ? OPENING_CONTEXT : OPENING_DOT,
-      alpha: ctx ? 0.45 : showSel ? 1 : 0.75,
-    });
+    const empty = o.isEmptyOpening === true;
+    const fillCol = empty ? OPENING_SLOT_EMPTY : OPENING_SLOT_FILL;
+    const fillA = ctx ? (empty ? 0.32 : 0.22) : empty ? 0.55 : 0.38;
+    fillQuadMm(openingsG, corners, t, fillCol, fillA);
+    const strokeCol = showSel ? OPENING_SLOT_STROKE_SEL : OPENING_SLOT_STROKE;
+    const strokeW = showSel ? 2.2 : ctx ? 1 : 1.35;
+    strokeQuadMm(openingsG, corners, t, strokeCol, ctx ? 0.45 : showSel ? 1 : 0.88, strokeW);
     if (showSel) {
-      openingsG.stroke({ width: 1, color: 0xffffff, alpha: 0.6 });
+      const hr = Math.max(2.5, 3);
+      for (const c of corners) {
+        const sc = worldToScreen(c.x, c.y, t);
+        openingsG.circle(sc.x, sc.y, hr);
+        openingsG.fill({ color: OPENING_SLOT_STROKE_SEL, alpha: 0.95 });
+        openingsG.stroke({ width: 1, color: 0xffffff, alpha: 0.42 });
+      }
+    }
+    if (empty && !ctx) {
+      const mid = {
+        x: (corners[0]!.x + corners[2]!.x) / 2,
+        y: (corners[0]!.y + corners[2]!.y) / 2,
+      };
+      const s0 = worldToScreen(mid.x - 40, mid.y - 40, t);
+      const s1 = worldToScreen(mid.x + 40, mid.y + 40, t);
+      openingsG.moveTo(s0.x, s0.y);
+      openingsG.lineTo(s1.x, s1.y);
+      openingsG.stroke({ width: 1, color: 0x2a3038, alpha: 0.5 });
     }
   }
 }

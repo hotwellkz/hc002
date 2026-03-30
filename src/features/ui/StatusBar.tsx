@@ -36,10 +36,16 @@ export function StatusBar({ cursorWorldMm }: StatusBarProps) {
   const persistenceReady = useAppStore((s) => s.persistenceReady);
   const firestoreEnabled = useAppStore((s) => s.firestoreEnabled);
   const persistenceStatus = useAppStore((s) => s.persistenceStatus);
+  const pendingWindow = useAppStore((s) => s.pendingWindowPlacement);
 
   return (
     <footer className="shell-status">
       <span>Курсор (мир, мм): {cursor}</span>
+      {pendingWindow ? (
+        <span className="muted" title="Наведите на стену активного слоя и нажмите ЛКМ; Esc или ПКМ — отмена">
+          Режим: установка окна на стену
+        </span>
+      ) : null}
       <span className="muted">{persistenceHint(persistenceReady, firestoreEnabled, persistenceStatus)}</span>
       <span className="muted">ЛКМ: выбор · СКМ / инструмент «Панорама»: перетаскивание · Колёсико: масштаб</span>
     </footer>

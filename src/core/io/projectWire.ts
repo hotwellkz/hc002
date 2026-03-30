@@ -46,6 +46,8 @@ export interface ProjectFileV1 {
   /** В старых файлах может отсутствовать — []. */
   readonly wallJoints?: readonly WallJoint[];
   readonly openings: Project["openings"];
+  /** В старых файлах может отсутствовать — []. */
+  readonly openingFramingPieces?: Project["openingFramingPieces"];
   readonly rooms: Project["rooms"];
   readonly foundation: Project["foundation"];
   readonly roof: Project["roof"];
@@ -102,6 +104,7 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     wallCalculations: wire.wallCalculations ?? [],
     wallJoints: wire.wallJoints ?? [],
     openings: wire.openings,
+    openingFramingPieces: wire.openingFramingPieces ?? [],
     rooms: wire.rooms,
     foundation: wire.foundation,
     roof: wire.roof,

@@ -3,6 +3,7 @@ import type { Foundation } from "./foundation";
 import type { Layer } from "./layer";
 import type { MaterialSet } from "./materialSet";
 import type { Opening } from "./opening";
+import type { OpeningFramingPiece } from "./openingFramingPiece";
 import type { ProjectMeta } from "./projectMeta";
 import type { Room } from "./room";
 import type { Roof } from "./roof";
@@ -29,6 +30,8 @@ export interface Project {
   /** Узлы соединения стен (углы, примыкания); персистится в snapshot. */
   readonly wallJoints: readonly WallJoint[];
   readonly openings: readonly Opening[];
+  /** Конструктив обрамления проёмов (окна); при наличии — авто-обрамление расчёта для этого openingId отключается. */
+  readonly openingFramingPieces: readonly OpeningFramingPiece[];
   readonly rooms: readonly Room[];
   readonly foundation: Foundation;
   readonly roof: Roof;

@@ -12,15 +12,18 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
   const wallJointsKept = project.wallJoints.filter(
     (j) => keptWallIds.has(j.wallAId) && keptWallIds.has(j.wallBId),
   );
-  const openingsKept = project.openings.filter((o) => {
-    if (selectedIds.has(o.id)) {
-      return false;
+  const removedOpeningIds = new Set(
+    project.openings.filter((o) => selectedIds.has(o.id)).map((o) => o.id),
+  );
+  for (const o of project.openings) {
+    if (o.wallId != null && removedWallIds.has(o.wallId)) {
+      removedOpeningIds.add(o.id);
     }
-    if (removedWallIds.has(o.wallId)) {
-      return false;
-    }
-    return true;
-  });
+  }
+  const openingsKept = project.openings.filter((o) => !removedOpeningIds.has(o.id));
+  const framingKept = project.openingFramingPieces.filter(
+    (p) => !removedOpeningIds.has(p.openingId) && !removedWallIds.has(p.wallId),
+  );
 
   const dimensionsKept = project.dimensions.filter((d) => {
     if (!d.wallIds?.length) {
@@ -35,6 +38,7 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
     wallCalculations: wallCalculationsKept,
     wallJoints: wallJointsKept,
     openings: openingsKept,
+    openingFramingPieces: framingKept,
     dimensions: dimensionsKept,
   });
 }

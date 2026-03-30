@@ -3,6 +3,8 @@ import { getProfileById } from "@/core/domain/profileOps";
 import type { Profile, ProfileMaterialType } from "@/core/domain/profile";
 import type { Project } from "@/core/domain/project";
 import type { Wall } from "@/core/domain/wall";
+import { wallLengthMm } from "@/core/domain/wallCalculationGeometry";
+import { subtractOpeningFacesFromWallRect, type WallOpeningFaceMm } from "@/core/domain/wallFaceOpeningSubdivide";
 import {
   coreLayerNormalOffsetsMm,
   isInsulationCoreMaterial,
@@ -35,61 +37,97 @@ function wallBottomElevationMm(wall: Wall, project: Project): number {
   return getLayerById(project, wall.layerId)?.elevationMm ?? 0;
 }
 
-/** Единичная нормаль к стене в плане XZ (перпендикуляр к оси), «слева» от направления start→end. */
-function thicknessNormalUnit(sx: number, sy: number, ex: number, ey: number): { readonly nx: number; readonly nz: number; readonly lenMm: number } {
+/** Нормаль к толщине и единичный вектор вдоль стены в плане XZ. */
+function thicknessNormalUnit(
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number,
+): { readonly nx: number; readonly nz: number; readonly lenMm: number; readonly ux: number; readonly uy: number } {
   const dxMm = ex - sx;
   const dyMm = ey - sy;
   const lenMm = Math.hypot(dxMm, dyMm);
   if (lenMm < MIN_LEN_MM) {
-    return { nx: 1, nz: 0, lenMm: 0 };
+    return { nx: 1, nz: 0, lenMm: 0, ux: 1, uy: 0 };
   }
+  const ux = dxMm / lenMm;
+  const uy = dyMm / lenMm;
   const nx = -dyMm / lenMm;
   const nz = dxMm / lenMm;
-  return { nx, nz, lenMm };
+  return { nx, nz, lenMm, ux, uy };
 }
 
-function singleSolidSpec(
+function openingsOnWallFaceMm(wall: Wall, project: Project): WallOpeningFaceMm[] {
+  const L = wallLengthMm(wall);
+  const out: WallOpeningFaceMm[] = [];
+  for (const o of project.openings) {
+    if (o.wallId !== wall.id || o.offsetFromStartMm == null) {
+      continue;
+    }
+    const sill = o.kind === "window" ? (o.sillHeightMm ?? o.position?.sillLevelMm ?? 900) : 0;
+    const lo = Math.max(0, o.offsetFromStartMm);
+    const hi = Math.min(L, o.offsetFromStartMm + o.widthMm);
+    const y0 = Math.max(0, sill);
+    const y1 = Math.min(wall.heightMm, sill + o.heightMm);
+    if (hi - lo < MIN_LEN_MM || y1 - y0 < MIN_LEN_MM) {
+      continue;
+    }
+    out.push({ lo, hi, y0, y1 });
+  }
+  return out;
+}
+
+function singleSolidSpecs(
   wall: Wall,
   project: Project,
   materialType: ProfileMaterialType | "default",
-): WallRenderMeshSpec | null {
+): WallRenderMeshSpec[] {
   if (!(wall.thicknessMm > 0) || !(wall.heightMm > 0)) {
-    return null;
+    return [];
   }
   const sx = wall.start.x;
   const sy = wall.start.y;
   const ex = wall.end.x;
   const ey = wall.end.y;
-  const { lenMm } = thicknessNormalUnit(sx, sy, ex, ey);
+  const { lenMm, ux, uy } = thicknessNormalUnit(sx, sy, ex, ey);
   if (lenMm < MIN_LEN_MM) {
-    return null;
+    return [];
   }
-
   const dxMm = ex - sx;
   const dyMm = ey - sy;
   const dxM = dxMm * MM_TO_M;
   const dzM = dyMm * MM_TO_M;
-  const lenM = lenMm * MM_TO_M;
   const bottomMm = wallBottomElevationMm(wall, project);
   const heightMm = wall.heightMm;
-  const halfH = (heightMm * MM_TO_M) / 2;
   const bottomM = bottomMm * MM_TO_M;
-
-  const cx = ((sx + ex) * MM_TO_M) / 2;
-  const cz = ((sy + ey) * MM_TO_M) / 2;
-  const cy = bottomM + halfH;
   const rotationY = Math.atan2(dxM, dzM);
 
-  return {
-    reactKey: wall.id,
-    wallId: wall.id,
-    position: [cx, cy, cz],
-    rotationY,
-    width: wall.thicknessMm * MM_TO_M,
-    height: heightMm * MM_TO_M,
-    depth: lenM,
-    materialType,
-  };
+  const openings = openingsOnWallFaceMm(wall, project);
+  const rects = subtractOpeningFacesFromWallRect(lenMm, heightMm, openings);
+  const out: WallRenderMeshSpec[] = [];
+  let ri = 0;
+  for (const r of rects) {
+    const uMid = (r.u0 + r.u1) / 2;
+    const yMid = (r.y0 + r.y1) / 2;
+    const px = sx + ux * uMid;
+    const py = sy + uy * uMid;
+    const cx = px * MM_TO_M;
+    const cz = py * MM_TO_M;
+    const cy = bottomM + yMid * MM_TO_M;
+    const depth = (r.u1 - r.u0) * MM_TO_M;
+    const h = (r.y1 - r.y0) * MM_TO_M;
+    out.push({
+      reactKey: openings.length ? `${wall.id}-shell-${ri++}` : wall.id,
+      wallId: wall.id,
+      position: [cx, cy, cz],
+      rotationY,
+      width: wall.thicknessMm * MM_TO_M,
+      height: h,
+      depth,
+      materialType,
+    });
+  }
+  return out;
 }
 
 /**
@@ -141,7 +179,7 @@ function layeredSpecsFromProfile(wall: Wall, project: Project, profile: Profile)
   const sy = wall.start.y;
   const ex = wall.end.x;
   const ey = wall.end.y;
-  const { nx, nz, lenMm } = thicknessNormalUnit(sx, sy, ex, ey);
+  const { nx, nz, lenMm, ux, uy } = thicknessNormalUnit(sx, sy, ex, ey);
   if (lenMm < MIN_LEN_MM) {
     return null;
   }
@@ -150,21 +188,20 @@ function layeredSpecsFromProfile(wall: Wall, project: Project, profile: Profile)
   const dyMm = ey - sy;
   const dxM = dxMm * MM_TO_M;
   const dzM = dyMm * MM_TO_M;
-  const lenM = lenMm * MM_TO_M;
   const bottomMm = wallBottomElevationMm(wall, project);
   const heightMm = wall.heightMm;
-  const halfH = (heightMm * MM_TO_M) / 2;
   const bottomM = bottomMm * MM_TO_M;
-  const cy = bottomM + halfH;
 
-  const cx0 = ((sx + ex) * MM_TO_M) / 2;
-  const cz0 = ((sy + ey) * MM_TO_M) / 2;
   const rotationY = Math.atan2(dxM, dzM);
+
+  const openings = openingsOnWallFaceMm(wall, project);
+  const faceRects = subtractOpeningFacesFromWallRect(lenMm, heightMm, openings);
 
   const T = wall.thicknessMm;
 
   const out: WallRenderMeshSpec[] = [];
   let acc = -T / 2;
+  let stripIdx = 0;
   for (const strip of strips) {
     const tMm = strip.thicknessMm;
     if (tMm < 1e-6) {
@@ -179,20 +216,33 @@ function layeredSpecsFromProfile(wall: Wall, project: Project, profile: Profile)
       continue;
     }
 
-    const cx = cx0 + centerOffMm * MM_TO_M * nx;
-    const cz = cz0 + centerOffMm * MM_TO_M * nz;
-
-    out.push({
-      reactKey: `${wall.id}-${strip.layerId}`,
-      wallId: wall.id,
-      layerId: strip.layerId,
-      position: [cx, cy, cz],
-      rotationY,
-      width: tMm * MM_TO_M,
-      height: heightMm * MM_TO_M,
-      depth: lenM,
-      materialType: strip.materialType,
-    });
+    let ri = 0;
+    for (const r of faceRects) {
+      const uMid = (r.u0 + r.u1) / 2;
+      const yMid = (r.y0 + r.y1) / 2;
+      const px = sx + ux * uMid;
+      const py = sy + uy * uMid;
+      const cx = px * MM_TO_M + centerOffMm * MM_TO_M * nx;
+      const cz = py * MM_TO_M + centerOffMm * MM_TO_M * nz;
+      const cySub = bottomM + yMid * MM_TO_M;
+      const depth = (r.u1 - r.u0) * MM_TO_M;
+      const h = (r.y1 - r.y0) * MM_TO_M;
+      out.push({
+        reactKey:
+          openings.length > 0
+            ? `${wall.id}-${strip.layerId}-${stripIdx}-${ri++}`
+            : `${wall.id}-${strip.layerId}`,
+        wallId: wall.id,
+        layerId: strip.layerId,
+        position: [cx, cySub, cz],
+        rotationY,
+        width: tMm * MM_TO_M,
+        height: h,
+        depth,
+        materialType: strip.materialType,
+      });
+    }
+    stripIdx += 1;
   }
 
   return out.length > 0 ? out : null;
@@ -219,8 +269,7 @@ export function wallToRenderSpecs(wall: Wall, project: Project, showProfileLayer
     }
   }
 
-  const solid = singleSolidSpec(wall, project, solidMat);
-  return solid ? [solid] : [];
+  return singleSolidSpecs(wall, project, solidMat);
 }
 
 export function wallsToRenderSpecs(project: Project, walls: readonly Wall[], showProfileLayers: boolean): readonly WallRenderMeshSpec[] {
@@ -236,6 +285,8 @@ export function wallToMeshSpec(wall: Wall, project: Project): WallRenderMeshSpec
   const specs = wallToRenderSpecs(wall, project, false);
   return specs[0] ?? null;
 }
+
+/** Первый меш для совместимости; при проёмах может быть несколько сегментов — см. wallToRenderSpecs. */
 
 export function wallsToMeshSpecs(project: Project, walls: readonly Wall[]): readonly WallRenderMeshSpec[] {
   const show = project.viewState.show3dProfileLayers !== false;

@@ -1,3 +1,4 @@
+import type { Opening3dMeshSpec } from "@/core/domain/opening3dAssemblySpecs";
 import type { ProfileMaterialType } from "@/core/domain/profile";
 import type { Project } from "@/core/domain/project";
 import type { CalculationSolidSpec } from "@/core/domain/wallCalculation3dSpecs";
@@ -39,9 +40,18 @@ export function isCalculationSolidVisible(spec: CalculationSolidSpec, project: P
   }
 }
 
-/** Заготовки окон/дверей: отдельной геометрии пока нет — флаги зарезервированы. */
+/** Окна и обрамление проёмов строятся из project.openings и openingFramingPieces. */
 export function hasWindowGeometry3d(_project: Project): boolean {
-  return false;
+  return true;
+}
+
+/** Видимость мешей из opening3dAssemblySpecs. */
+export function isOpening3dMeshVisible(spec: Opening3dMeshSpec, project: Project): boolean {
+  const vs = project.viewState;
+  if (spec.kind === "opening_framing") {
+    return vs.show3dLayerFrame !== false;
+  }
+  return vs.show3dLayerWindows !== false;
 }
 
 export function hasDoorGeometry3d(_project: Project): boolean {

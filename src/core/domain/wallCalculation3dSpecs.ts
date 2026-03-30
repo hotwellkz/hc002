@@ -2,6 +2,7 @@ import { getLayerById } from "./layerOps";
 import type { ProfileMaterialType } from "./profile";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
+import { subtractIntervalsFromRange } from "./wallCalculationIntervals";
 import { boardCoreNormalOffsetsMm } from "./wallLumberBoard2dOffsets";
 import type { LumberPiece, WallCalculationResult } from "./wallCalculation";
 
@@ -466,6 +467,52 @@ function lumberSpecsForWall(
         depth,
         materialType: wood,
       });
+      continue;
+    }
+
+    /** Верхняя/нижняя обвязка: разрезать по проёмам, чтобы не проходить через отверстие. */
+    if (
+      piece.orientation === "along_wall" &&
+      (piece.role === "upper_plate" || piece.role === "lower_plate")
+    ) {
+      const s0 = Math.min(piece.startOffsetMm, piece.endOffsetMm);
+      const s1 = Math.max(piece.startOffsetMm, piece.endOffsetMm);
+      const blocks = project.openings
+        .filter(
+          (o): o is typeof o & { offsetFromStartMm: number } =>
+            o.wallId === wall.id && o.offsetFromStartMm != null,
+        )
+        .map((o) => ({ lo: o.offsetFromStartMm, hi: o.offsetFromStartMm + o.widthMm }));
+      const segs = subtractIntervalsFromRange(s0, s1, blocks);
+      let segIdx = 0;
+      for (const [a, b] of segs) {
+        const alongSeg = b - a;
+        if (alongSeg < 1e-3) {
+          continue;
+        }
+        const sMid = (a + b) / 2;
+        const pSeg = pointAlongWallMm(sx, sy, ux, uy, sMid);
+        const depthSeg = alongSeg * MM_TO_M;
+        const widthSeg = sd * MM_TO_M;
+        const heightSeg = st * MM_TO_M;
+        const cx = (pSeg.x + nx * coreMid) * MM_TO_M;
+        const cz = (pSeg.y + nz * coreMid) * MM_TO_M;
+        const cy = lumberPieceCenterYWorld(piece, wall, project, bottomMm, plateT, vCoreMm);
+        out.push({
+          reactKey: `${wall.id}-${piece.id}-seg${segIdx}`,
+          wallId: wall.id,
+          calculationId: calc.id,
+          source: "lumber",
+          pieceId: piece.id,
+          position: [cx, cy, cz],
+          rotationY,
+          width: widthSeg,
+          height: heightSeg,
+          depth: depthSeg,
+          materialType: wood,
+        });
+        segIdx += 1;
+      }
       continue;
     }
 

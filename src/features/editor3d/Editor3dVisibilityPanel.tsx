@@ -7,7 +7,7 @@ import { useEditor3dThemeColors } from "./useEditor3dThemeColors";
 
 import "./editor3d-visibility.css";
 
-/** Компактный popover: видимость категорий 3D (OSB, EPS, каркас; окна/двери — заготовка). */
+/** Компактный popover: видимость категорий 3D (OSB, EPS, каркас, окна; двери — заготовка). */
 export function Editor3dVisibilityPanel() {
   const idBase = useId();
   const wrapRef = useRef<HTMLDivElement>(null);

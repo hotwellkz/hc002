@@ -131,7 +131,8 @@ export function deleteLayerAndEntities(project: Project, layerId: string): Proje
   const wallIds = new Set(project.walls.filter((w) => w.layerId === layerId).map((w) => w.id));
   const walls = project.walls.filter((w) => w.layerId !== layerId);
   const wallJoints = project.wallJoints.filter((j) => !wallIds.has(j.wallAId) && !wallIds.has(j.wallBId));
-  const openings = project.openings.filter((o) => !wallIds.has(o.wallId));
+  const openings = project.openings.filter((o) => o.wallId == null || !wallIds.has(o.wallId));
+  const openingFramingPieces = project.openingFramingPieces.filter((p) => !wallIds.has(p.wallId));
   const rooms = project.rooms.filter((r) => r.layerId !== layerId);
   const layersLeft = project.layers.filter((l) => l.id !== layerId);
   const sorted = sortLayersByOrder(layersLeft);
@@ -144,6 +145,7 @@ export function deleteLayerAndEntities(project: Project, layerId: string): Proje
     wallCalculations: project.wallCalculations.filter((c) => !wallIds.has(c.wallId)),
     wallJoints,
     openings,
+    openingFramingPieces,
     rooms,
     activeLayerId: nextActive,
   };

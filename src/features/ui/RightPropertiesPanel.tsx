@@ -1,3 +1,4 @@
+import { projectCommands } from "@/features/project/commands";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./right-properties-panel.css";
@@ -27,7 +28,11 @@ export function RightPropertiesPanel() {
   const activeId = project.activeLayerId;
   const wallsOnLayer = project.walls.filter((w) => w.layerId === activeId).length;
   const wallIds = new Set(project.walls.filter((w) => w.layerId === activeId).map((w) => w.id));
-  const openingsOnLayer = project.openings.filter((o) => wallIds.has(o.wallId)).length;
+  const openingsOnLayer = project.openings.filter((o) => o.wallId != null && wallIds.has(o.wallId)).length;
+  const selectedPlacedWindow =
+    selected.length === 1
+      ? project.openings.find((o) => o.id === selected[0] && o.kind === "window" && o.wallId != null)
+      : undefined;
 
   if (!open) {
     return null;
@@ -65,8 +70,22 @@ export function RightPropertiesPanel() {
       </header>
       <div className="rpp-body">
         <p className="muted" style={{ margin: "0 0 12px", lineHeight: 1.45 }}>
-          Этап 1: панель без редактирования сущностей. Выбрано элементов: {selected.length}.
+          Выбрано элементов: {selected.length}.
         </p>
+        {selectedPlacedWindow ? (
+          <div style={{ marginBottom: 14 }}>
+            <button
+              type="button"
+              className="rpp-action-btn"
+              onClick={() => projectCommands.openSelectedWindowProperties()}
+            >
+              Параметры окна…
+            </button>
+            <p className="muted" style={{ margin: "8px 0 0", fontSize: 11, lineHeight: 1.4 }}>
+              Двойной клик по окну на плане или клавиша Enter — то же окно свойств. Перетаскивание — вдоль стены.
+            </p>
+          </div>
+        ) : null}
         <dl style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
           <dt className="muted">Стен (активный слой)</dt>
           <dd style={{ margin: "0 0 8px 0" }}>{wallsOnLayer}</dd>
