@@ -11,7 +11,7 @@ export const WD_DIM_TICK_HALF_PX = 5;
 export const WD_DIM_V_LABEL_GAP_PX = 12;
 /** Дополнительный зазор для узких вертикальных цепочек (напр. толщина в «Вид сверху»). */
 export const WD_DIM_V_LABEL_GAP_EXTRA_PX = 4;
-/** Горизонтальные размеры: подпись выше линии (меньше Y в SVG). */
+/** Горизонтальные размеры: зазор подписи от оси линии (подпись ниже линии — в сторону белого поля). */
 export const WD_DIM_H_TEXT_GAP_PX = 16;
 /** Вынос короткого сегмента (px). */
 export const WD_DIM_SHORT_LEADER_RUN_PX = 24;
@@ -59,6 +59,11 @@ export function VerticalDimensionMm({
 export interface DrawDimensionLevelOptions {
   /** Все сегменты на одной базовой линии (без «шахматного» смещения по Y). */
   readonly singleBaseline?: boolean;
+  /**
+   * Расстояние от оси размерной линии до верха подписи (px), `dominant-baseline: hanging`.
+   * По умолчанию: засечка + {@link WD_DIM_H_TEXT_GAP_PX}.
+   */
+  readonly horizontalLabelBelowLinePx?: number;
 }
 
 /**
@@ -74,7 +79,7 @@ export function drawDimensionLevel(
 ): ReactNode[] {
   const placed: { x0: number; x1: number; row: number }[] = [];
   const tick = WD_DIM_TICK_HALF_PX;
-  const textGap = WD_DIM_H_TEXT_GAP_PX;
+  const textBelowLinePx = options?.horizontalLabelBelowLinePx ?? tick + WD_DIM_H_TEXT_GAP_PX;
   const singleBaseline = options?.singleBaseline === true;
 
   return segments.map((s, i) => {
@@ -110,20 +115,20 @@ export function drawDimensionLevel(
               x1={x1}
               y1={yLine}
               x2={x1 + WD_DIM_SHORT_LEADER_RUN_PX}
-              y2={yLine - WD_DIM_SHORT_LEADER_RISE_PX}
+              y2={yLine + Math.min(WD_DIM_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2))}
               className="wd-dim-line"
               vectorEffect="non-scaling-stroke"
             />
             <text
               x={x1 + WD_DIM_SHORT_LEADER_RUN_PX + 6}
-              y={yLine - WD_DIM_SHORT_LEADER_RISE_PX - 4}
-              className="wd-dim-text-out"
+              y={yLine + Math.min(WD_DIM_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2)) + 3}
+              className="wd-dim-text-out wd-dim-text-h-below"
             >
               {s.text}
             </text>
           </>
         ) : (
-          <text x={mid} y={yLine - textGap} className="wd-dim-text">
+          <text x={mid} y={yLine + textBelowLinePx} className="wd-dim-text wd-dim-text-h-below">
             {s.text}
           </text>
         )}

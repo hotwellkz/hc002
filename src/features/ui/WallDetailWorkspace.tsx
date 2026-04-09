@@ -28,22 +28,28 @@ import { WallDetailTopViewPlan } from "@/features/ui/wallDetailTopView2d";
 
 /** Верх фасада стены (мм по листу). */
 const SHEET_WALL_TOP_MM = 96;
-/** Отступ от верха листа до заголовка стены. */
-const TITLE_ABOVE_WALL_MM = 44;
+/** Baseline заголовка стены выше верхней кромки фасада (мм листа) — воздух между подписью и стеной. */
+const wallTitleBaselineAboveWallTopMm = 60;
 /** Горизонтальная зона слева под вертикальные размеры фасада (мм). */
 const LEFT_DIM_X0_MM = -118;
-/** Вертикальный зазор: низ фасада → первая размерная линия (SIP по ширине). */
-const GAP_WALL_TO_PANEL_DIMS_MM = 80;
-/** Между соседними рядами горизонтальных размеров (SIP / общий / пролёты). */
-const GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM = 96;
-/** Между последним рядом горизонтальных размеров и заголовком «Вид сверху». */
-const GAP_LAST_DIM_ROW_TO_TOPVIEW_TITLE_MM = 100;
-/** Подпись «Вид сверху» над прямоугольником плана. */
-const TOPVIEW_TITLE_SPACE_MM = 44;
+/** Пиксели: верх подписи от оси горизонтальной размерной линии — ряд SIP (1250, 963, …). */
+const wallPanelDimLabelOffsetY = 8;
+/** Пиксели: то же для общего габарита стены (8463, …). */
+const wallOverallDimLabelOffsetY = 8;
+/** Низ фасада → первая размерная линия (SIP по ширине). */
+const gapWallToPanelDimsMm = 220;
+/** Ряд SIP → ряд общего габарита стены. */
+const gapPanelDimsToOverallDimsMm = 140;
+/** Ряд общего/предыдущий → ряд пролётов у проёмов. */
+const gapOpeningDimRowAfterPreviousMm = 140;
+/** Последний горизонтальный ряд размеров стены → заголовок «Вид сверху» (заметный разрыв групп). */
+const gapOverallDimsToTopViewTitleMm = 300;
+/** Заголовок «Вид сверху» → верх полосы плана. */
+const gapTopViewTitleToTopViewMm = 96;
+/** Низ блока «Вид сверху» → нижнее поле листа (воздух под планом и вертикальным размером толщины). */
+const gapTopViewToTopViewDimsMm = 48;
 /** Дополнительная высота на строки внутри одного уровня при пересечении сегментов по X. */
 const DIM_ROW_STACK_STEP_MM = 38;
-/** Запас под подпись/засечки ниже базовой линии размера. */
-const DIM_ROW_BELOW_BASELINE_MM = 26;
 /** Ниже последнего ряда размеров — запас под подписи. */
 const SHEET_PAD_BOTTOM_MM = 56;
 /** Ниже и справа/слева листа — поля для fit. */
@@ -74,9 +80,18 @@ function dimStackDepth(segments: readonly { a: number; b: number }[]): number {
   return maxRow + 1;
 }
 
+/**
+ * Запас под подпись горизонтального размера под линией (мм листа).
+ * Подписи в px; при типичном fit (zoom ~0.08–0.15) даёт ~30–45 px — без налезания на следующий блок.
+ * Layout не привязываем к zoom, иначе срабатывает fit и сбивает масштаб пользователя.
+ */
+const DIM_H_LABEL_TAIL_BELOW_LINE_MM = 300;
+
+/** Нижняя граница последней размерной линии уровня + хвост под подпись. */
 function bottomOfDimLevel(baseYMm: number, segments: readonly { a: number; b: number }[]): number {
   const depth = Math.max(1, segments.length === 0 ? 1 : dimStackDepth(segments));
-  return baseYMm + (depth - 1) * DIM_ROW_STACK_STEP_MM + DIM_ROW_BELOW_BASELINE_MM;
+  const lastLineMm = baseYMm + (depth - 1) * DIM_ROW_STACK_STEP_MM;
+  return lastLineMm + DIM_H_LABEL_TAIL_BELOW_LINE_MM;
 }
 
 /** Прямоугольник в мм листа (y вниз, как в SVG). */
@@ -202,7 +217,7 @@ export function WallDetailWorkspace() {
     if (!wall) return null;
     const wallTop = SHEET_WALL_TOP_MM;
     const wallBottom = wallTop + H;
-    const titleBaseline = wallTop - TITLE_ABOVE_WALL_MM;
+    const titleBaseline = wallTop - wallTitleBaselineAboveWallTopMm;
 
     /** Высота полосы «вида сверху» в мм листа = реальная толщина стены (как на 2D, 1:1 с длиной). */
     const topViewH = wall.thicknessMm;
@@ -238,30 +253,30 @@ export function WallDetailWorkspace() {
       frontLevel1,
     );
 
-    /** Сверху вниз: SIP по ширине → общий габарит → пролёты у проёмов (если есть) → отступ → «Вид сверху». */
-    let y = wallBottom + GAP_WALL_TO_PANEL_DIMS_MM;
+    /** Сверху вниз: SIP по ширине → общий габарит → пролёты у проёмов (если есть) → большой отступ → «Вид сверху» → план → поле под размер толщины. */
+    let y = wallBottom + gapWallToPanelDimsMm;
     const dimRowSipY = y;
     y = bottomOfDimLevel(dimRowSipY, frontLevel1);
 
     let dimRowOverallY: number | null = null;
     if (showOverallLengthRow) {
-      y += GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM;
+      y += gapPanelDimsToOverallDimsMm;
       dimRowOverallY = y;
       y = bottomOfDimLevel(dimRowOverallY, frontLevel3);
     }
 
     let dimRowOpeningY: number | null = null;
     if (frontLevel2.length > 0) {
-      y += GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM;
+      y += gapOpeningDimRowAfterPreviousMm;
       dimRowOpeningY = y;
       y = bottomOfDimLevel(dimRowOpeningY, frontLevel2);
     }
 
     const dimsEndAfterHorizontal = y;
-    const topViewSubtitleBaselineY = dimsEndAfterHorizontal + GAP_LAST_DIM_ROW_TO_TOPVIEW_TITLE_MM;
-    const topViewY = topViewSubtitleBaselineY + TOPVIEW_TITLE_SPACE_MM;
+    const topViewSubtitleBaselineY = dimsEndAfterHorizontal + gapOverallDimsToTopViewTitleMm;
+    const topViewY = topViewSubtitleBaselineY + gapTopViewTitleToTopViewMm;
     const topViewBottom = topViewY + topViewH;
-    const sheetBottom = topViewBottom + SHEET_PAD_BOTTOM_MM;
+    const sheetBottom = topViewBottom + gapTopViewToTopViewDimsMm + SHEET_PAD_BOTTOM_MM;
 
     return {
       wallTop,
@@ -641,14 +656,20 @@ export function WallDetailWorkspace() {
                 ))
               : null}
 
-            {drawDimensionLevel(frontLevel1, dimRowSipY, sx, sy, DIM_ROW_STACK_STEP_MM, { singleBaseline: true })}
+            {drawDimensionLevel(frontLevel1, dimRowSipY, sx, sy, DIM_ROW_STACK_STEP_MM, {
+              singleBaseline: true,
+              horizontalLabelBelowLinePx: wallPanelDimLabelOffsetY,
+            })}
             {showOverallLengthRow && dimRowOverallY != null
               ? drawDimensionLevel(frontLevel3, dimRowOverallY, sx, sy, DIM_ROW_STACK_STEP_MM, {
                   singleBaseline: true,
+                  horizontalLabelBelowLinePx: wallOverallDimLabelOffsetY,
                 })
               : null}
             {frontLevel2.length > 0 && dimRowOpeningY != null
-              ? drawDimensionLevel(frontLevel2, dimRowOpeningY, sx, sy, DIM_ROW_STACK_STEP_MM)
+              ? drawDimensionLevel(frontLevel2, dimRowOpeningY, sx, sy, DIM_ROW_STACK_STEP_MM, {
+                  horizontalLabelBelowLinePx: wallPanelDimLabelOffsetY,
+                })
               : null}
 
             <text x={sx(0)} y={sy(topViewSubtitleBaselineY)} className="wd-subtitle">
