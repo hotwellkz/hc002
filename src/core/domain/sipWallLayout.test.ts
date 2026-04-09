@@ -5,7 +5,9 @@ import type { Opening } from "./opening";
 import type { WallJoint } from "./wallJoint";
 import {
   buildWallCalculationForWall,
-  computePanelWidthsMm,
+  calculateSipPanelLayoutOnWall,
+  computeSipPanelWidthsOpeningAdjacentMm,
+  computeSipPanelWidthsSolidMm,
   SipWallLayoutError,
   splitLengthMm,
 } from "./sipWallLayout";
@@ -36,27 +38,67 @@ describe("splitLengthMm", () => {
   });
 });
 
-describe("computePanelWidthsMm", () => {
-  it("одна панель на всю внутреннюю длину", () => {
-    const w = computePanelWidthsMm(800, 1250, 250, 45);
-    expect(w).toEqual([800]);
+describe("computeSipPanelWidthsSolidMm / calculateSipPanelLayoutOnWall", () => {
+  it("5295 => четыре полных 1250 и добор 295", () => {
+    const w = computeSipPanelWidthsSolidMm(5295, 1250, 250);
+    expect(w).toEqual([1250, 1250, 1250, 1250, 295]);
+    expect(calculateSipPanelLayoutOnWall(5295, 1250, 250)).toEqual(w);
   });
-  it("не даёт последней панели меньше min (перераспределение)", () => {
-    const Tj = 45;
-    const L = 1300;
-    const w = computePanelWidthsMm(L, 1250, 250, Tj);
-    expect(w.length).toBeGreaterThanOrEqual(1);
-    expect(Math.min(...w)).toBeGreaterThanOrEqual(250);
-    const sumPanels = w.reduce((a, b) => a + b, 0);
-    const joints = (w.length - 1) * Tj;
-    expect(sumPanels + joints).toBe(L);
+  it("5000 => четыре панели по 1250", () => {
+    expect(computeSipPanelWidthsSolidMm(5000, 1250, 250)).toEqual([1250, 1250, 1250, 1250]);
+  });
+  it("6250 => ровно пять панелей по 1250", () => {
+    expect(computeSipPanelWidthsSolidMm(6250, 1250, 250)).toEqual([1250, 1250, 1250, 1250, 1250]);
+  });
+  it("6363 => четыре целых + 1113 + 250 (не два симметричных нестандарта)", () => {
+    expect(computeSipPanelWidthsSolidMm(6363, 1250, 250)).toEqual([1250, 1250, 1250, 1250, 1113, 250]);
+  });
+  it("6100 => без кусков меньше 250", () => {
+    const w = computeSipPanelWidthsSolidMm(6100, 1250, 250);
+    expect(w.every((x) => x >= 250)).toBe(true);
+    expect(w.reduce((a, b) => a + b, 0)).toBe(6100);
+  });
+  it("одна панель на коротком участке", () => {
+    expect(computeSipPanelWidthsSolidMm(800, 1250, 250)).toEqual([800]);
+  });
+  it("остаток < min: MIN + широкий добор (1300 => 1050 + 250)", () => {
+    const w = computeSipPanelWidthsSolidMm(1300, 1250, 250);
+    expect(w).toEqual([1050, 250]);
+    expect(w.reduce((a, b) => a + b, 0)).toBe(1300);
   });
   it("бросает на слишком короткой длине", () => {
-    expect(() => computePanelWidthsMm(100, 1250, 250, 45)).toThrow(SipWallLayoutError);
+    expect(() => computeSipPanelWidthsSolidMm(100, 1250, 250)).toThrow(SipWallLayoutError);
+  });
+});
+
+describe("computeSipPanelWidthsOpeningAdjacentMm", () => {
+  it("допускает последний кусок < 250 у проёма", () => {
+    const w = computeSipPanelWidthsOpeningAdjacentMm(6363, 1250);
+    expect(w).toEqual([1250, 1250, 1250, 1250, 1250, 113]);
+    expect(w[w.length - 1]).toBeLessThan(250);
   });
 });
 
 describe("buildWallCalculationForWall", () => {
+  it("SIP-панели начинаются с края стены (0) и идут модулями 1250 + добор только последней", () => {
+    const p = createDemoProject();
+    const wall = { ...p.walls[0]!, end: { x: 5295, y: 0 } };
+    const profile = p.profiles[0]!;
+    const calc = buildWallCalculationForWall(wall, profile);
+    const widths = calc.sipRegions.map((r) => Math.round(r.widthMm));
+    expect(calc.sipRegions[0]!.startOffsetMm).toBe(0);
+    expect(widths).toEqual([1250, 1250, 1250, 1250, 295]);
+  });
+
+  it("глухая стена 6363: раскладка 1250×4 + 1113 + 250", () => {
+    const p = createDemoProject();
+    const wall = { ...p.walls[0]!, end: { x: 6363, y: 0 } };
+    const profile = p.profiles[0]!;
+    const calc = buildWallCalculationForWall(wall, profile);
+    const widths = calc.sipRegions.map((r) => Math.round(r.widthMm));
+    expect(widths).toEqual([1250, 1250, 1250, 1250, 1113, 250]);
+  });
+
   it("верхняя обвязка от 0 до L чанками без укорачивания под вертикальные доски", () => {
     const p = createDemoProject();
     const wall = p.walls[0]!;

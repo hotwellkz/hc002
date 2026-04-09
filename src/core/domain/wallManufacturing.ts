@@ -6,6 +6,8 @@ import type { Profile } from "./profile";
  */
 export interface WallManufacturingSettings {
   readonly panelNominalWidthMm: number;
+  /** Номинальная высота листа SIP (мм); если задана, высота панели в расчёте не превышает min(между обвязками, это значение). */
+  readonly panelNominalHeightMm?: number;
   readonly minPanelWidthMm: number;
   readonly jointBoardThicknessMm: number;
   readonly jointBoardDepthMm: number;
@@ -19,6 +21,7 @@ export interface WallManufacturingSettings {
 
 export const DEFAULT_WALL_MANUFACTURING: WallManufacturingSettings = {
   panelNominalWidthMm: 1250,
+  panelNominalHeightMm: 2500,
   minPanelWidthMm: 250,
   jointBoardThicknessMm: 45,
   jointBoardDepthMm: 145,

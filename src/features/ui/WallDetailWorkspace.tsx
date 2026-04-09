@@ -8,6 +8,7 @@ import "./wall-detail-workspace.css";
 import {
   internalWallJointSeamCentersAlongMm,
   lumberPieceWallElevationRectMm,
+  sipPanelHorizontalDimensionSegmentsByOsbSeamsMm,
 } from "@/core/domain/wallCalculation3dSpecs";
 import {
   formatLumberFullDisplayMark,
@@ -31,14 +32,18 @@ const SHEET_WALL_TOP_MM = 96;
 const TITLE_ABOVE_WALL_MM = 44;
 /** Горизонтальная зона слева под вертикальные размеры фасада (мм). */
 const LEFT_DIM_X0_MM = -118;
-/** Ниже фасада: большой зон до блока «Вид сверху». */
-const GAP_WALL_BOTTOM_TO_TOPVIEW_MM = 320;
+/** Вертикальный зазор: низ фасада → первая размерная линия (SIP по ширине). */
+const GAP_WALL_TO_PANEL_DIMS_MM = 80;
+/** Между соседними рядами горизонтальных размеров (SIP / общий / пролёты). */
+const GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM = 96;
+/** Между последним рядом горизонтальных размеров и заголовком «Вид сверху». */
+const GAP_LAST_DIM_ROW_TO_TOPVIEW_TITLE_MM = 100;
 /** Подпись «Вид сверху» над прямоугольником плана. */
-const TOPVIEW_TITLE_SPACE_MM = 36;
-/** Вертикальный зазор между рядами размерных цепочек (базовая линия → базовая линия). */
-const GAP_BETWEEN_DIM_ROWS_MM = 88;
-/** Дополнительная высота на строки внутри одного уровня (пересечения сегментов). */
+const TOPVIEW_TITLE_SPACE_MM = 44;
+/** Дополнительная высота на строки внутри одного уровня при пересечении сегментов по X. */
 const DIM_ROW_STACK_STEP_MM = 38;
+/** Запас под подпись/засечки ниже базовой линии размера. */
+const DIM_ROW_BELOW_BASELINE_MM = 26;
 /** Ниже последнего ряда размеров — запас под подписи. */
 const SHEET_PAD_BOTTOM_MM = 56;
 /** Ниже и справа/слева листа — поля для fit. */
@@ -50,12 +55,19 @@ const ZOOM_MAX = 0.45;
 function dimStackDepth(segments: readonly { a: number; b: number }[]): number {
   const placed: { x0: number; x1: number; row: number }[] = [];
   let maxRow = 0;
-  const gap = DIM_ROW_STACK_STEP_MM;
   for (const s of segments) {
     const minX = Math.min(s.a, s.b);
     const maxX = Math.max(s.a, s.b);
     let row = 0;
-    while (placed.some((p) => p.row === row && !(maxX < p.x0 - gap || minX > p.x1 + gap))) row += 1;
+    while (
+      placed.some((p) => {
+        if (p.row !== row) return false;
+        const overlap = Math.min(maxX, p.x1) - Math.max(minX, p.x0);
+        return overlap > 0.5;
+      })
+    ) {
+      row += 1;
+    }
     placed.push({ x0: minX, x1: maxX, row });
     maxRow = Math.max(maxRow, row);
   }
@@ -63,8 +75,8 @@ function dimStackDepth(segments: readonly { a: number; b: number }[]): number {
 }
 
 function bottomOfDimLevel(baseYMm: number, segments: readonly { a: number; b: number }[]): number {
-  const depth = Math.max(1, dimStackDepth(segments));
-  return baseYMm + (depth - 1) * DIM_ROW_STACK_STEP_MM + 22;
+  const depth = Math.max(1, segments.length === 0 ? 1 : dimStackDepth(segments));
+  return baseYMm + (depth - 1) * DIM_ROW_STACK_STEP_MM + DIM_ROW_BELOW_BASELINE_MM;
 }
 
 /** Прямоугольник в мм листа (y вниз, как в SVG). */
@@ -194,11 +206,20 @@ export function WallDetailWorkspace() {
 
     /** Высота полосы «вида сверху» в мм листа = реальная толщина стены (как на 2D, 1:1 с длиной). */
     const topViewH = wall.thicknessMm;
-    const topViewY = wallBottom + GAP_WALL_BOTTOM_TO_TOPVIEW_MM + TOPVIEW_TITLE_SPACE_MM;
-    const topViewBottom = topViewY + topViewH;
 
-    const frontLevel1 = calc ? calc.sipRegions.map((r) => ({ a: r.startOffsetMm, b: r.endOffsetMm, text: `${Math.round(r.widthMm)}` })) : [];
-    const frontLevel2 = buildOpeningGapSegments(L, openingsOnWall);
+    const sipShell =
+      calc && calc.sipRegions.length > 0
+        ? {
+            x0: Math.min(...calc.sipRegions.map((r) => r.startOffsetMm)),
+            x1: Math.max(...calc.sipRegions.map((r) => r.endOffsetMm)),
+          }
+        : { x0: 0, x1: L };
+    const seamCenters = calc ? internalWallJointSeamCentersAlongMm(calc) : [];
+    const frontLevel1 =
+      calc && calc.sipRegions.length > 0
+        ? sipPanelHorizontalDimensionSegmentsByOsbSeamsMm(sipShell.x0, sipShell.x1, seamCenters)
+        : [];
+    const frontLevel2Raw = buildOpeningGapSegments(L, openingsOnWall);
     const frontLevel3 = [{ a: 0, b: L, text: `${Math.round(L)}` }];
 
     /** Одна SIP-панель на всю длину — общий габарит уже в первой цепочке; третья строка дублировала бы число (напр. 5937). */
@@ -209,26 +230,50 @@ export function WallDetailWorkspace() {
       Math.abs(calc.sipRegions[0]!.endOffsetMm - L) < 0.5
     );
 
-    let y = topViewBottom + GAP_BETWEEN_DIM_ROWS_MM;
-    const dimRow1Y = y;
-    y = bottomOfDimLevel(dimRow1Y, frontLevel1) + GAP_BETWEEN_DIM_ROWS_MM;
-    const dimRow2Y = y;
-    y = bottomOfDimLevel(dimRow2Y, frontLevel2) + GAP_BETWEEN_DIM_ROWS_MM;
-    const dimRow3Y = y;
-    const sheetBottom = showOverallLengthRow
-      ? bottomOfDimLevel(dimRow3Y, frontLevel3) + SHEET_PAD_BOTTOM_MM
-      : bottomOfDimLevel(dimRow2Y, frontLevel2) + SHEET_PAD_BOTTOM_MM;
+    /** Без проёмов `buildOpeningGapSegments` даёт один сегмент 0…L — тот же общий габарит, что и в `frontLevel3`. */
+    const frontLevel2 = filterDuplicateFullWallHorizontalDim(
+      frontLevel2Raw,
+      L,
+      showOverallLengthRow,
+      frontLevel1,
+    );
+
+    /** Сверху вниз: SIP по ширине → общий габарит → пролёты у проёмов (если есть) → отступ → «Вид сверху». */
+    let y = wallBottom + GAP_WALL_TO_PANEL_DIMS_MM;
+    const dimRowSipY = y;
+    y = bottomOfDimLevel(dimRowSipY, frontLevel1);
+
+    let dimRowOverallY: number | null = null;
+    if (showOverallLengthRow) {
+      y += GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM;
+      dimRowOverallY = y;
+      y = bottomOfDimLevel(dimRowOverallY, frontLevel3);
+    }
+
+    let dimRowOpeningY: number | null = null;
+    if (frontLevel2.length > 0) {
+      y += GAP_BETWEEN_HORIZONTAL_DIM_ROWS_MM;
+      dimRowOpeningY = y;
+      y = bottomOfDimLevel(dimRowOpeningY, frontLevel2);
+    }
+
+    const dimsEndAfterHorizontal = y;
+    const topViewSubtitleBaselineY = dimsEndAfterHorizontal + GAP_LAST_DIM_ROW_TO_TOPVIEW_TITLE_MM;
+    const topViewY = topViewSubtitleBaselineY + TOPVIEW_TITLE_SPACE_MM;
+    const topViewBottom = topViewY + topViewH;
+    const sheetBottom = topViewBottom + SHEET_PAD_BOTTOM_MM;
 
     return {
       wallTop,
       wallBottom,
       titleBaseline,
+      topViewSubtitleBaselineY,
       topViewY,
       topViewH,
       topViewBottom,
-      dimRow1Y,
-      dimRow2Y,
-      dimRow3Y,
+      dimRowSipY,
+      dimRowOverallY,
+      dimRowOpeningY,
       sheetBottom,
       frontLevel1,
       frontLevel2,
@@ -247,9 +292,11 @@ export function WallDetailWorkspace() {
       titleBaseline,
       topViewY,
       topViewH,
-      dimRow2Y,
-      dimRow3Y,
+      dimRowSipY,
+      dimRowOverallY,
+      dimRowOpeningY,
       sheetBottom,
+      frontLevel1,
       frontLevel2,
       frontLevel3,
       showOverallLengthRow,
@@ -285,10 +332,12 @@ export function WallDetailWorkspace() {
 
     minY = Math.min(minY, titleBaseline - 40);
     maxY = Math.max(maxY, topViewY + topViewH + 8);
-    if (showOverallLengthRow) {
-      maxY = Math.max(maxY, bottomOfDimLevel(dimRow3Y, frontLevel3));
-    } else {
-      maxY = Math.max(maxY, bottomOfDimLevel(dimRow2Y, frontLevel2));
+    maxY = Math.max(maxY, bottomOfDimLevel(dimRowSipY, frontLevel1));
+    if (showOverallLengthRow && dimRowOverallY != null) {
+      maxY = Math.max(maxY, bottomOfDimLevel(dimRowOverallY, frontLevel3));
+    }
+    if (frontLevel2.length > 0 && dimRowOpeningY != null) {
+      maxY = Math.max(maxY, bottomOfDimLevel(dimRowOpeningY, frontLevel2));
     }
 
     minX = Math.min(minX, -128);
@@ -348,11 +397,12 @@ export function WallDetailWorkspace() {
     wallTop,
     wallBottom,
     titleBaseline,
+    topViewSubtitleBaselineY,
     topViewY,
     topViewH,
-    dimRow1Y,
-    dimRow2Y,
-    dimRow3Y,
+    dimRowSipY,
+    dimRowOverallY,
+    dimRowOpeningY,
     frontLevel1,
     frontLevel2,
     frontLevel3,
@@ -591,7 +641,17 @@ export function WallDetailWorkspace() {
                 ))
               : null}
 
-            <text x={sx(0)} y={sy(wallBottom + GAP_WALL_BOTTOM_TO_TOPVIEW_MM)} className="wd-subtitle">
+            {drawDimensionLevel(frontLevel1, dimRowSipY, sx, sy, DIM_ROW_STACK_STEP_MM, { singleBaseline: true })}
+            {showOverallLengthRow && dimRowOverallY != null
+              ? drawDimensionLevel(frontLevel3, dimRowOverallY, sx, sy, DIM_ROW_STACK_STEP_MM, {
+                  singleBaseline: true,
+                })
+              : null}
+            {frontLevel2.length > 0 && dimRowOpeningY != null
+              ? drawDimensionLevel(frontLevel2, dimRowOpeningY, sx, sy, DIM_ROW_STACK_STEP_MM)
+              : null}
+
+            <text x={sx(0)} y={sy(topViewSubtitleBaselineY)} className="wd-subtitle">
               Вид сверху
             </text>
             <WallDetailTopViewPlan
@@ -614,10 +674,6 @@ export function WallDetailWorkspace() {
               sy={sy}
               labelGapPx={WD_DIM_V_LABEL_GAP_PX + WD_DIM_V_LABEL_GAP_EXTRA_PX}
             />
-
-            {drawDimensionLevel(frontLevel1, dimRow1Y, sx, sy, DIM_ROW_STACK_STEP_MM)}
-            {drawDimensionLevel(frontLevel2, dimRow2Y, sx, sy, DIM_ROW_STACK_STEP_MM)}
-            {showOverallLengthRow ? drawDimensionLevel(frontLevel3, dimRow3Y, sx, sy, DIM_ROW_STACK_STEP_MM) : null}
           </svg>
           <div className="wd-hint">Колесо: масштаб · ЛКМ+drag: панорама · двойной клик по полю — вписать лист</div>
         </div>
@@ -677,6 +733,30 @@ export function WallDetailWorkspace() {
       </div>
     </div>
   );
+}
+
+/**
+ * Убирает из ряда «пролёты между проёмами» сегмент 0…L, если он дублирует уже показанный общий габарит
+ * (строка `frontLevel3`) или одну SIP-цепочку на всю длину (`frontLevel1`).
+ */
+function filterDuplicateFullWallHorizontalDim(
+  segments: readonly { a: number; b: number; text: string }[],
+  wallLenMm: number,
+  showOverallLengthRow: boolean,
+  sipRowSegments: readonly { a: number; b: number; text: string }[],
+): { a: number; b: number; text: string }[] {
+  const tol = 0.5;
+  const overallText = `${Math.round(wallLenMm)}`;
+  const isFullWallSpan = (s: { a: number; b: number; text: string }) =>
+    Math.abs(s.a) < tol && Math.abs(s.b - wallLenMm) < tol && s.text === overallText;
+  const sipIsSingleFullWallSpan =
+    sipRowSegments.length === 1 && isFullWallSpan(sipRowSegments[0]!);
+  return segments.filter((s) => {
+    if (!isFullWallSpan(s)) return true;
+    if (showOverallLengthRow) return false;
+    if (sipIsSingleFullWallSpan) return false;
+    return true;
+  });
 }
 
 function buildOpeningGapSegments(

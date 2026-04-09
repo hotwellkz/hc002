@@ -101,6 +101,32 @@ export function internalWallJointSeamCentersAlongMm(calc: WallCalculationResult)
   return out;
 }
 
+/**
+ * Горизонтальные размеры ширины SIP-панелей по стыкам OSB (вид стены):
+ * края — внешние границы оболочки SIP по расчёту; внутренние точки — центры joint_board.
+ * Интервалы: [левый край → 1-й стык], [стык → стык], …, [последний стык → правый край].
+ */
+export function sipPanelHorizontalDimensionSegmentsByOsbSeamsMm(
+  sipShellX0Mm: number,
+  sipShellX1Mm: number,
+  seamCentersAlongMm: readonly number[],
+): { a: number; b: number; text: string }[] {
+  const left = Math.min(sipShellX0Mm, sipShellX1Mm);
+  const right = Math.max(sipShellX0Mm, sipShellX1Mm);
+  const eps = 0.5;
+  const sorted = [...seamCentersAlongMm].sort((a, b) => a - b);
+  const inner = sorted.filter((x) => x > left + eps && x < right - eps);
+  const boundaries = [left, ...inner, right];
+  const out: { a: number; b: number; text: string }[] = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const a = boundaries[i]!;
+    const b = boundaries[i + 1]!;
+    if (b - a < 0.5) continue;
+    out.push({ a, b, text: `${Math.round(b - a)}` });
+  }
+  return out;
+}
+
 function pieceVerticalIntervalMm(
   piece: LumberPiece,
   wall: Wall,
@@ -275,13 +301,13 @@ function expandSipRegionAlongForCenteredJointBoard(
   const next = regionIndex + 1 < regions.length ? regions[regionIndex + 1] : null;
   if (prev) {
     const leftGap = region.startOffsetMm - prev.endOffsetMm;
-    if (Math.abs(leftGap - jointThicknessMm) <= tol) {
+    if (Math.abs(leftGap - jointThicknessMm) <= tol || Math.abs(leftGap) <= tol) {
       s0 -= jointThicknessMm / 2;
     }
   }
   if (next) {
     const rightGap = next.startOffsetMm - region.endOffsetMm;
-    if (Math.abs(rightGap - jointThicknessMm) <= tol) {
+    if (Math.abs(rightGap - jointThicknessMm) <= tol || Math.abs(rightGap) <= tol) {
       s1 += jointThicknessMm / 2;
     }
   }
@@ -532,7 +558,9 @@ function sipSeamSpecsForWall(
     const a = regions[i]!;
     const b = regions[i + 1]!;
     const gap = b.startOffsetMm - a.endOffsetMm;
-    if (Math.abs(gap - Tj) > tol) {
+    /** Стык «встык» (граница панелей = ось joint_board) или зазор под старую модель с вычитанием Tj между зонами. */
+    const alignedSeam = Math.abs(gap) <= tol || Math.abs(gap - Tj) <= tol;
+    if (!alignedSeam) {
       continue;
     }
     const s = a.endOffsetMm;

@@ -56,6 +56,11 @@ export function VerticalDimensionMm({
   );
 }
 
+export interface DrawDimensionLevelOptions {
+  /** Все сегменты на одной базовой линии (без «шахматного» смещения по Y). */
+  readonly singleBaseline?: boolean;
+}
+
 /**
  * Горизонтальные размерные цепочки (фасад: длины сегментов).
  */
@@ -65,10 +70,12 @@ export function drawDimensionLevel(
   sx: (x: number) => number,
   sy: (y: number) => number,
   dimRowStackStepMm: number,
+  options?: DrawDimensionLevelOptions,
 ): ReactNode[] {
   const placed: { x0: number; x1: number; row: number }[] = [];
   const tick = WD_DIM_TICK_HALF_PX;
   const textGap = WD_DIM_H_TEXT_GAP_PX;
+  const singleBaseline = options?.singleBaseline === true;
 
   return segments.map((s, i) => {
     const x0 = sx(s.a);
@@ -76,13 +83,17 @@ export function drawDimensionLevel(
     const minX = Math.min(x0, x1);
     const maxX = Math.max(x0, x1);
     let row = 0;
-    while (
-      placed.some(
-        (p) =>
-          p.row === row && !(maxX < p.x0 - dimRowStackStepMm || minX > p.x1 + dimRowStackStepMm),
-      )
-    ) {
-      row += 1;
+    if (!singleBaseline) {
+      while (
+        placed.some((p) => {
+          if (p.row !== row) return false;
+          /** Пересечение по X в пикселях: только реальное перекрытие, не касание границ. */
+          const overlap = Math.min(maxX, p.x1) - Math.max(minX, p.x0);
+          return overlap > 0.5;
+        })
+      ) {
+        row += 1;
+      }
     }
     placed.push({ x0: minX, x1: maxX, row });
     const yLine = sy(yMm + row * dimRowStackStepMm);

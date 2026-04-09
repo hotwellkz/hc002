@@ -225,6 +225,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardDepthMm": { "type": "number", "exclusiveMinimum": 0 },
@@ -251,6 +252,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardDepthMm": { "type": "number", "exclusiveMinimum": 0 },

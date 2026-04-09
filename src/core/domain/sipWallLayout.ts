@@ -70,59 +70,96 @@ export function splitLengthMm(totalMm: number, stockLengthMm: number, minSegment
   return out;
 }
 
-export function computePanelWidthsMm(
-  L_interior: number,
-  Wn: number,
-  Wmin: number,
-  Tj: number,
-): readonly number[] {
-  if (L_interior < Wmin - 1e-6) {
+/**
+ * Сплошной участок стены (без примыкания к проёму): каждая панель Wmin…Wmax, не больше номинала W.
+ * При остатке &lt; Wmin после набора целых W: одна целая панель «возвращается» в перераспределение:
+ * (W + rem) = один доборный кусок (≤ W) + один минимальный Wmin у торца, без симметричного «пополам».
+ */
+export function computeSipPanelWidthsSolidMm(
+  lengthMm: number,
+  panelNominalWidthMm: number,
+  minPanelWidthMm: number,
+): number[] {
+  const L = Math.round(lengthMm);
+  const W = Math.round(panelNominalWidthMm);
+  const Wmin = Math.round(minPanelWidthMm);
+  if (Wmin > W || Wmin <= 0 || W <= 0) {
+    throw new SipWallLayoutError("Некорректные параметры панелей.");
+  }
+  if (L < Wmin) {
     throw new SipWallLayoutError(
-      `Длина под панели слишком мала (${Math.round(L_interior)} мм, минимум панели ${Wmin} мм).`,
+      `Длина под панели слишком мала (${L} мм, минимум панели ${Wmin} мм).`,
     );
   }
-  if (Wmin > Wn || Wmin <= 0 || Wn <= 0 || Tj < 0) {
-    throw new SipWallLayoutError("Некорректные параметры панелей или стыка.");
+  if (L <= W) {
+    return [L];
   }
-
-  let n = 1;
-  while (n <= 10_000) {
-    const minL = n * Wmin + (n - 1) * Tj;
-    const maxL = n * Wn + (n - 1) * Tj;
-    if (L_interior + 1e-6 >= minL && L_interior <= maxL + 1e-6) {
-      const S = L_interior - (n - 1) * Tj;
-      return distributePanelWidths(S, n, Wmin, Wn);
-    }
-    if (L_interior + 1e-6 < minL) {
-      break;
-    }
-    n++;
+  const widths: number[] = [];
+  let remaining = L;
+  while (remaining > W) {
+    widths.push(W);
+    remaining -= W;
   }
-
-  throw new SipWallLayoutError("Не удалось уложить SIP-панели с заданными ограничениями.");
+  if (remaining === 0) {
+    return widths;
+  }
+  if (remaining >= Wmin) {
+    widths.push(remaining);
+    return widths;
+  }
+  const lastFull = widths.pop();
+  if (lastFull == null) {
+    throw new SipWallLayoutError("Внутренняя ошибка раскладки SIP (нет целой панели для перераспределения).");
+  }
+  const merged = lastFull + remaining;
+  const widePiece = merged - Wmin;
+  const narrowPiece = Wmin;
+  if (widePiece > W || widePiece < Wmin) {
+    throw new SipWallLayoutError(
+      `Не удалось рационально разложить ${L} мм при номинале ${W} мм и минимуме ${Wmin} мм.`,
+    );
+  }
+  /** Вдоль стены: сначала более широкий добор, у края — минимальный кусок. */
+  widths.push(widePiece, narrowPiece);
+  return widths;
 }
 
-function distributePanelWidths(S: number, n: number, Wmin: number, Wn: number): number[] {
-  const w = Array.from({ length: n }, () => Wmin);
-  let rem = Math.round(S - n * Wmin);
-  for (let i = 0; i < n && rem > 0; i++) {
-    const cap = Math.round(Wn - w[i]!);
-    const add = Math.min(rem, cap);
-    w[i]! += add;
-    rem -= add;
+/**
+ * Участок у проёма: панели не шире W; последний кусок может быть &lt; Wmin (узкая полоса у откоса).
+ */
+export function computeSipPanelWidthsOpeningAdjacentMm(
+  lengthMm: number,
+  panelNominalWidthMm: number,
+): number[] {
+  const L = Math.round(lengthMm);
+  const W = Math.round(panelNominalWidthMm);
+  if (W <= 0) {
+    throw new SipWallLayoutError("Некорректный номинал панели.");
   }
-  if (rem > 0) {
-    throw new SipWallLayoutError("Не удалось распределить ширины панелей.");
+  if (L <= W) {
+    return [L];
   }
-  const sum = w.reduce((a, b) => a + b, 0);
-  const target = Math.round(S);
-  if (Math.abs(sum - target) > 1) {
-    w[n - 1]! += target - sum;
+  const out: number[] = [];
+  let remaining = L;
+  while (remaining > W) {
+    out.push(W);
+    remaining -= W;
   }
-  if (w[n - 1]! < Wmin - 1e-6) {
-    throw new SipWallLayoutError("Последняя панель получилась уже минимума.");
+  if (remaining > 0) {
+    out.push(remaining);
   }
-  return w;
+  return out;
+}
+
+/**
+ * Единая точка входа для раскладки SIP по длине сплошного участка (как на глухой стене).
+ */
+export function calculateSipPanelLayoutOnWall(
+  lengthMm: number,
+  panelNominalWidthMm: number,
+  minPanelWidthMm: number,
+): readonly number[] {
+  return computeSipPanelWidthsSolidMm(lengthMm, panelNominalWidthMm, minPanelWidthMm);
 }
 
 const EPS = 1e-3;
@@ -236,10 +273,11 @@ export function buildWallCalculationForWall(
   const skipAutoOpeningFraming = ctx?.skipAutoOpeningFramingForOpeningIds ?? new Set<string>();
 
   const Te = m.includeEndBoards ? m.jointBoardThicknessMm : 0;
-  const interiorLo = m.includeEndBoards ? Te : 0;
-  const interiorHi = m.includeEndBoards ? L - Te : L;
+  /** SIP/OSB по длине стены — от фактического начала до конца (0…L); торцевые доски не сдвигают раскладку панелей. */
+  const interiorLo = 0;
+  const interiorHi = L;
   if (interiorHi - interiorLo < EPS) {
-    throw new SipWallLayoutError("Нет длины под SIP-панели после торцевых досок.");
+    throw new SipWallLayoutError("Нет длины под SIP-панели.");
   }
 
   const openingsOnWall = openings
@@ -288,9 +326,15 @@ export function buildWallCalculationForWall(
     0,
     Math.round(wall.heightMm - m.plateBoardThicknessMm - m.plateBoardThicknessMm),
   );
+  const nominalH = m.panelNominalHeightMm;
+  const sipPanelHeightMm =
+    nominalH != null && nominalH > 0
+      ? Math.min(verticalBetweenPlatesMm, Math.round(nominalH))
+      : verticalBetweenPlatesMm;
 
   const calculationId = newEntityId();
   const generatedAt = new Date().toISOString();
+  const Tj = m.jointBoardThicknessMm;
 
   const snapshot: WallCalcSettingsSnapshot = {
     ...m,
@@ -323,10 +367,13 @@ export function buildWallCalculationForWall(
   let sipIndex = 0;
   for (const [segLo, segHi] of segments) {
     const segLen = segHi - segLo;
-    const allowNarrowPanelForOpening = segmentTouchesFlexibleOpening(segLo, segHi);
-    const widths = allowNarrowPanelForOpening && segLen < m.minPanelWidthMm
-      ? [segLen]
-      : computePanelWidthsMm(segLen, m.panelNominalWidthMm, m.minPanelWidthMm, m.jointBoardThicknessMm);
+    const openingAdjacentSegment = segmentTouchesFlexibleOpening(segLo, segHi);
+    const widths =
+      openingAdjacentSegment && segLen < m.minPanelWidthMm
+        ? [Math.round(segLen)]
+        : openingAdjacentSegment
+          ? computeSipPanelWidthsOpeningAdjacentMm(segLen, m.panelNominalWidthMm)
+          : computeSipPanelWidthsSolidMm(segLen, m.panelNominalWidthMm, m.minPanelWidthMm);
     const n = widths.length;
     let p = segLo;
     for (let i = 0; i < n; i++) {
@@ -343,13 +390,15 @@ export function buildWallCalculationForWall(
         endOffsetMm: s1,
         widthMm: wi,
         pieceMark: buildSipPanelPieceMark(wallMark, sipIdx),
-        heightMm: verticalBetweenPlatesMm,
+        heightMm: sipPanelHeightMm,
         thicknessMm: sipThicknessMm,
       });
       p = s1;
       if (i < n - 1) {
-        const j0 = p;
-        const j1 = p + m.jointBoardThicknessMm;
+        /** Как раньше: [seam, seam+Tj] вдоль стены — `pieceAlongIntervalMm` центрирует доску на линии стыка. */
+        const seam = s1;
+        const j0 = seam;
+        const j1 = seam + Tj;
         lumberDrafts.push({
           id: newEntityId(),
           wallId: wall.id,
@@ -362,7 +411,6 @@ export function buildWallCalculationForWall(
           lengthMm: verticalBetweenPlatesMm,
           orientation: "across_wall",
         });
-        p = j1;
       }
     }
   }
@@ -385,7 +433,6 @@ export function buildWallCalculationForWall(
   }
 
   const teeOnMain = opt.includeWallConnectionElements ? teeOffsetsOnMainWall(wall.id, wall, wallJoints) : [];
-  const Tj = m.jointBoardThicknessMm;
   let verticalDrafts = filterJointsOverlappingTee(lumberDrafts, teeOnMain, Tj);
 
   for (const s of teeOnMain) {
