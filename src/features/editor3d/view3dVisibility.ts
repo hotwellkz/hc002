@@ -25,15 +25,13 @@ export function isWallMeshSpecVisible(spec: WallRenderMeshSpec, project: Project
   return layerOn(vs.show3dLayerOsb) || layerOn(vs.show3dLayerEps);
 }
 
-/** Расчётные объёмы: SIP/EPS и швы — категория EPS; пиломатериал — каркас. */
+/** Расчётные объёмы: SIP/EPS — слой утеплителя; пиломатериал — каркас. */
 export function isCalculationSolidVisible(spec: CalculationSolidSpec, project: Project): boolean {
   const vs = project.viewState;
   switch (spec.source) {
     case "sip":
-    case "sip_seam":
       return layerOn(vs.show3dLayerEps);
     case "lumber":
-    case "lumber_seam":
       return layerOn(vs.show3dLayerFrame);
     default:
       return true;

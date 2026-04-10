@@ -11,6 +11,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { Editor3dVisibilityPanel } from "./Editor3dVisibilityPanel";
 import { ProjectCalculationMeshes } from "./ProjectCalculationMeshes";
 import { ProjectOpeningMeshes } from "./ProjectOpeningMeshes";
+import { ProjectSipSeamLines } from "./ProjectSipSeamLines";
 import { ProjectWalls } from "./ProjectWalls";
 import { useEditor3dThemeColors } from "./useEditor3dThemeColors";
 import type { WallRenderMeshSpec } from "./wallMeshSpec";
@@ -34,6 +35,9 @@ function SceneFromProject({
 }) {
   const project = useAppStore((s) => s.currentProject);
   const showCalc = project.viewState.show3dCalculation !== false;
+  const vs = project.viewState;
+  const showSipSeamLines =
+    showCalc && (vs.show3dLayerEps !== false || vs.show3dLayerOsb !== false);
   return (
     <>
       <ProjectWalls
@@ -47,6 +51,7 @@ function SceneFromProject({
         selectedReactKey={selected?.kind === "calc" ? selected.reactKey : null}
         onSelect={onSelectCalculation}
       />
+      <ProjectSipSeamLines project={project} visible={showSipSeamLines} />
       <ProjectOpeningMeshes
         project={project}
         selectedReactKey={selected?.kind === "opening" ? selected.reactKey : null}

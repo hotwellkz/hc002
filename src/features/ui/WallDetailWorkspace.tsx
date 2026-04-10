@@ -8,14 +8,17 @@ import "./wall-detail-workspace.css";
 import {
   internalWallJointSeamCentersAlongMm,
   lumberPieceWallElevationRectMm,
-  sipPanelHorizontalDimensionSegmentsByOsbSeamsMm,
 } from "@/core/domain/wallCalculation3dSpecs";
+import {
+  buildWallDetailSipFacadeSlices,
+  sipPanelHorizontalDimensionSegmentsWallDetailMm,
+  wallDetailSipVerticalBoundaryXsMm,
+} from "@/core/domain/wallDetailSipElevation";
 import {
   formatLumberFullDisplayMark,
   formatSipPanelDisplayMark,
   lumberDisplayIndexByPieceId,
   lumberPiecesSortedForDisplay,
-  sipRegionsSortedForDisplay,
   wallMarkLabelForDisplay,
 } from "@/core/domain/pieceDisplayMark";
 import {
@@ -198,17 +201,44 @@ export function WallDetailWorkspace() {
     });
   }, [calc, wall]);
 
+  const wallDetailSipFrameMm = useMemo(() => {
+    if (!wall || !calc) return null;
+    const wallTop = SHEET_WALL_TOP_MM;
+    const wallBottom = wallTop + wall.heightMm;
+    return {
+      wallTopMm: wallTop,
+      wallBottomMm: wallBottom,
+      wallHeightMm: wall.heightMm,
+    };
+  }, [wall, calc]);
+
+  const sipFacadeSlices = useMemo(() => {
+    if (!wall || !calc || !wallDetailSipFrameMm || calc.sipRegions.length === 0) {
+      return [];
+    }
+    return buildWallDetailSipFacadeSlices(calc.sipRegions, openingsOnWall, wall, wallDetailSipFrameMm);
+  }, [wall, calc, openingsOnWall, wallDetailSipFrameMm]);
+
   const sipRows = useMemo(() => {
-    if (!calc || !wall) return [];
+    if (!calc || !wall || sipFacadeSlices.length === 0) return [];
     const wallThicknessMm = wall.thicknessMm;
-    const panelHeightMm = wall.heightMm;
-    return sipRegionsSortedForDisplay(calc.sipRegions).map((r, i) => ({
-      mark: formatSipPanelDisplayMark(wallLabel, i),
-      size: `${Math.round(r.widthMm)}x${Math.round(panelHeightMm)}x${Math.round(wallThicknessMm)}`,
-      qty: 1,
-      region: r,
-    }));
-  }, [calc, wall, wallLabel]);
+    return sipFacadeSlices.map((sl, i) => {
+      if (sl.kind === "column") {
+        return {
+          mark: formatSipPanelDisplayMark(wallLabel, i),
+          size: `${Math.round(sl.specWidthMm)}x${Math.round(sl.specHeightMm)}x${Math.round(wallThicknessMm)}`,
+          qty: 1,
+          rowKey: sl.region.id,
+        };
+      }
+      return {
+        mark: formatSipPanelDisplayMark(wallLabel, i),
+        size: `${Math.round(sl.specWidthMm)}x${Math.round(sl.specHeightMm)}x${Math.round(wallThicknessMm)}`,
+        qty: 1,
+        rowKey: `above-${sl.openingId}`,
+      };
+    });
+  }, [calc, wall, wallLabel, sipFacadeSlices]);
 
   const L = wall ? Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y) : 0;
   const H = wall?.heightMm ?? 0;
@@ -232,7 +262,7 @@ export function WallDetailWorkspace() {
     const seamCenters = calc ? internalWallJointSeamCentersAlongMm(calc) : [];
     const frontLevel1 =
       calc && calc.sipRegions.length > 0
-        ? sipPanelHorizontalDimensionSegmentsByOsbSeamsMm(sipShell.x0, sipShell.x1, seamCenters)
+        ? sipPanelHorizontalDimensionSegmentsWallDetailMm(sipShell.x0, sipShell.x1, seamCenters, openingsOnWall)
         : [];
     const frontLevel2Raw = buildOpeningGapSegments(L, openingsOnWall);
     const frontLevel3 = [{ a: 0, b: L, text: `${Math.round(L)}` }];
@@ -426,11 +456,7 @@ export function WallDetailWorkspace() {
 
   const panelHeightMm = H;
   const panelTop = wallTop;
-  const plateT = calc?.settingsSnapshot.plateBoardThicknessMm ?? 45;
-  /** Ядро SIP между обвязками — заливка/маски панелей, 3D EPS в core. */
-  const coreTop = wallTop + plateT;
-  const coreBottom = wallBottom - plateT;
-  /** Вертикальные штрих-пунктиры стыков OSB на фасаде — полная высота стены (как вертикальные швы панели в 3D), не полоса ядра. */
+  /** Вертикальные штрих-пунктиры стыков OSB на фасаде — полная высота стены. */
   const sipOsbSeamYTop = wallTop;
   const sipOsbSeamYBottom = wallBottom;
 
@@ -447,6 +473,14 @@ export function WallDetailWorkspace() {
   const internalSeamCentersAlong = useMemo(
     () => (calc ? internalWallJointSeamCentersAlongMm(calc) : []),
     [calc],
+  );
+
+  const verticalSipBoundaryXsMm = useMemo(
+    () =>
+      sipFacadeSlices.length > 0
+        ? wallDetailSipVerticalBoundaryXsMm(sipFacadeSlices, internalSeamCentersAlong)
+        : [],
+    [sipFacadeSlices, internalSeamCentersAlong],
   );
 
   const onWheel = (e: React.WheelEvent) => {
@@ -550,33 +584,54 @@ export function WallDetailWorkspace() {
             ) : null}
 
             {calc
-              ? calc.sipRegions.map((r) => {
-                  const px0 = r.startOffsetMm;
-                  const px1 = r.endOffsetMm;
-                  const wMm = px1 - px0;
-                  const hCoreMm = coreBottom - coreTop;
-                  const holes = sipPanelHoleRectsMm(px0, px1, coreTop, coreBottom, openingsOnWall, wallBottom);
-                  const maskId = `${svgUid}-sipmask-${r.index}`;
-                  const wPx = Math.max(1, wMm * zoom);
-                  const hPx = Math.max(1, hCoreMm * zoom);
+              ? sipFacadeSlices.map((sl) => {
+                  if (sl.kind === "column") {
+                    const r = sl.region;
+                    const holes = sipPanelHoleRectsMm(
+                      sl.drawX0,
+                      sl.drawX1,
+                      sl.drawY0,
+                      sl.drawY1,
+                      openingsOnWall,
+                      wallBottom,
+                    );
+                    const maskId = `${svgUid}-sipmask-${r.index}`;
+                    const wPx = Math.max(1, (sl.drawX1 - sl.drawX0) * zoom);
+                    const hPx = Math.max(1, (sl.drawY1 - sl.drawY0) * zoom);
+                    return (
+                      <g key={r.id} className="wd-sip-panel-layer">
+                        <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} className="wd-sip" />
+                        <mask id={maskId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+                          <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} fill="white" />
+                          {holes.map((h, hi) => {
+                            const hw = Math.max(1, (h.x1 - h.x0) * zoom);
+                            const hh = Math.max(1, (h.y1 - h.y0) * zoom);
+                            return <rect key={hi} x={sx(h.x0)} y={sy(h.y0)} width={hw} height={hh} fill="black" />;
+                          })}
+                        </mask>
+                        <rect
+                          x={sx(sl.drawX0)}
+                          y={sy(sl.drawY0)}
+                          width={wPx}
+                          height={hPx}
+                          fill={`url(#${svgUid}-sip-hatch)`}
+                          mask={`url(#${maskId})`}
+                          className="wd-sip-hatch-layer"
+                        />
+                      </g>
+                    );
+                  }
+                  const wPx = Math.max(1, (sl.drawX1 - sl.drawX0) * zoom);
+                  const hPx = Math.max(1, (sl.drawY1 - sl.drawY0) * zoom);
                   return (
-                    <g key={r.id} className="wd-sip-panel-layer">
-                      <rect x={sx(px0)} y={sy(coreTop)} width={wPx} height={hPx} className="wd-sip" />
-                      <mask id={maskId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
-                        <rect x={sx(px0)} y={sy(coreTop)} width={wPx} height={hPx} fill="white" />
-                        {holes.map((h, hi) => {
-                          const hw = Math.max(1, (h.x1 - h.x0) * zoom);
-                          const hh = Math.max(1, (h.y1 - h.y0) * zoom);
-                          return <rect key={hi} x={sx(h.x0)} y={sy(h.y0)} width={hw} height={hh} fill="black" />;
-                        })}
-                      </mask>
+                    <g key={`sip-above-${sl.openingId}`} className="wd-sip-panel-layer">
+                      <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} className="wd-sip" />
                       <rect
-                        x={sx(px0)}
-                        y={sy(coreTop)}
+                        x={sx(sl.drawX0)}
+                        y={sy(sl.drawY0)}
                         width={wPx}
                         height={hPx}
                         fill={`url(#${svgUid}-sip-hatch)`}
-                        mask={`url(#${maskId})`}
                         className="wd-sip-hatch-layer"
                       />
                     </g>
@@ -605,10 +660,12 @@ export function WallDetailWorkspace() {
               const x = o.offsetFromStartMm ?? 0;
               const y = o.kind === "door" ? wallBottom - o.heightMm : wallBottom - o.heightMm - (o.sillHeightMm ?? 0);
               const mark = o.markLabel?.trim() || (o.kind === "door" ? `Д_${o.doorSequenceNumber ?? "?"}` : `OK_${o.windowSequenceNumber ?? "?"}`);
+              /** Ниже верхней кромки проёма — в верхней трети светового проёма, без «прилипания» к перемычке. */
+              const labelCenterYMm = y + o.heightMm * 0.28;
               return (
                 <g key={o.id}>
                   <rect x={sx(x)} y={sy(y)} width={Math.max(1, o.widthMm * zoom)} height={Math.max(1, o.heightMm * zoom)} className="wd-opening" />
-                  <text x={sx(x + o.widthMm / 2)} y={sy(y - 12)} className="wd-open-label">{`${mark} ${Math.round(o.widthMm)}/${Math.round(o.heightMm)}`}</text>
+                  <text x={sx(x + o.widthMm / 2)} y={sy(labelCenterYMm)} className="wd-open-label">{`${mark} ${Math.round(o.widthMm)}/${Math.round(o.heightMm)}`}</text>
                 </g>
               );
             })}
@@ -630,7 +687,7 @@ export function WallDetailWorkspace() {
                   y2={sy(sipOsbSeamYBottom)}
                   className="wd-sip-seam"
                 />
-                {internalSeamCentersAlong.map((cx) => (
+                {verticalSipBoundaryXsMm.map((cx) => (
                   <line
                     key={`sip-seam-v-${cx.toFixed(2)}`}
                     x1={sx(cx)}
@@ -644,11 +701,11 @@ export function WallDetailWorkspace() {
             ) : null}
 
             {calc
-              ? sipRegionsSortedForDisplay(calc.sipRegions).map((r, i) => (
+              ? sipFacadeSlices.map((sl, i) => (
                   <text
-                    key={`sip-label-${r.id}`}
-                    x={sx((r.startOffsetMm + r.endOffsetMm) / 2)}
-                    y={sy((coreTop + coreBottom) / 2)}
+                    key={sl.kind === "column" ? `sip-label-${sl.region.id}` : `sip-label-above-${sl.openingId}`}
+                    x={sx((sl.drawX0 + sl.drawX1) / 2)}
+                    y={sy((sl.drawY0 + sl.drawY1) / 2)}
                     className="wd-panel-mark"
                   >
                     {formatSipPanelDisplayMark(wallLabel, i)}
@@ -735,9 +792,11 @@ export function WallDetailWorkspace() {
                   <tr><th>Марк</th><th>Размер</th><th>Кол</th></tr>
                 </thead>
                 <tbody>
-                  {sipRows.map((r, i) => (
-                    <tr key={`${r.mark}-${i}`}>
-                      <td>{r.mark}</td><td>{r.size}</td><td>{r.qty}</td>
+                  {sipRows.map((r) => (
+                    <tr key={r.rowKey}>
+                      <td>{r.mark}</td>
+                      <td>{r.size}</td>
+                      <td>{r.qty}</td>
                     </tr>
                   ))}
                 </tbody>

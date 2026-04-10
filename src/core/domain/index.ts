@@ -43,6 +43,8 @@ export * from "./sipWallLayout";
 export * from "./wallCalculationNormalize";
 export * from "./lumberCutList";
 export * from "./wallCalculation3dSpecs";
+export * from "./sipSeamLines3d";
+export * from "./wallDetailSipElevation";
 export * from "./wallSpecification";
 export * from "./cutListCandidates";
 export * from "./wallCalculationPlan2dPolicy";

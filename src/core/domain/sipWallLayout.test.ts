@@ -158,6 +158,46 @@ describe("buildWallCalculationForWall", () => {
     expect(calc.lumberPieces.some((x) => x.role === "opening_sill")).toBe(true);
   });
 
+  it("дверной проём: боковые стойки на нижней обвязке — длина heightMm − plate, над проёмом +plate к верху ядра", () => {
+    const p = createDemoProject();
+    const wall = { ...p.walls[0]!, heightMm: 2500 };
+    const profile = p.profiles[0]!;
+    const plateT = profile.wallManufacturing?.plateBoardThicknessMm ?? 45;
+    const vCore = wall.heightMm - 2 * plateT;
+    const door: Opening = {
+      id: "o-door",
+      wallId: wall.id,
+      kind: "door",
+      offsetFromStartMm: 1500,
+      widthMm: 1000,
+      heightMm: 2100,
+    };
+    const calc = buildWallCalculationForWall(wall, profile, {
+      openings: [door],
+      wallJoints: [],
+      options: { includeOpeningFraming: true, includeWallConnectionElements: false },
+    });
+    const middles = calc.lumberPieces.filter(
+      (x) =>
+        (x.role === "opening_left_stud" || x.role === "opening_right_stud") &&
+        (x.metadata as { studSegment?: string })?.studSegment === "middle",
+    );
+    expect(middles.length).toBeGreaterThan(0);
+    for (const m of middles) {
+      expect(m.lengthMm).toBe(Math.round(door.heightMm - plateT));
+    }
+    const tops = calc.lumberPieces.filter(
+      (x) =>
+        (x.role === "opening_left_stud" || x.role === "opening_right_stud") &&
+        (x.metadata as { studSegment?: string })?.studSegment === "top",
+    );
+    expect(tops.length).toBeGreaterThan(0);
+    const expectedTopLen = Math.round(vCore - door.heightMm);
+    for (const t of tops) {
+      expect(t.lengthMm).toBe(expectedTopLen);
+    }
+  });
+
   it("Т-узел на основной стене добавляет tee_joint_board", () => {
     const p = createDemoProject();
     const wall = p.walls[0]!;

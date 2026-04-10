@@ -474,15 +474,23 @@ export function buildWallCalculationForWall(
       const isDoor = o.kind === "door";
       const sill = o.kind === "window" ? Math.max(0, o.sillHeightMm ?? 0) : 0;
       const splitLower = o.kind === "window" ? Math.max(0, sill - OPENING_NODE_SHIFT_MM) : 0;
+      /**
+       * Дверь: `heightMm` — от низа стены (уровень нижней кромки фасада) до низа перемычки/шапки проёма.
+       * Стойки стоят на нижней обвязке → длина = `heightMm − толщина нижней обвязки`.
+       */
       const openTop = o.kind === "window" ? sill + o.heightMm : o.heightMm;
       const horT = m.plateBoardThicknessMm;
       const topGap = isDoor ? 0 : OPENING_NODE_SHIFT_MM;
       const lowerSegLen = isDoor ? 0 : Math.max(0, Math.min(verticalBetweenPlatesMm, splitLower - horT));
       const middleSegLen = isDoor
-        ? Math.max(0, Math.min(verticalBetweenPlatesMm, openTop))
+        ? Math.max(0, Math.min(verticalBetweenPlatesMm, openTop - horT))
         : Math.max(0, Math.min(verticalBetweenPlatesMm - lowerSegLen, openTop - splitLower - horT));
+      /**
+       * Дверь, сегмент «top»: от верхней грани перемычки (`openTop + horT`) до нижней плоскости верхней обвязки
+       * (`wall.heightMm − horT`). Эквивалентно `verticalBetweenPlatesMm − openTop` при равной толщине плит и шапки (`horT`).
+       */
       const upperSegLen = isDoor
-        ? Math.max(0, verticalBetweenPlatesMm - openTop - horT)
+        ? Math.max(0, Math.round(wall.heightMm - horT - openTop - horT))
         : Math.max(0, verticalBetweenPlatesMm - lowerSegLen - middleSegLen - horT - topGap);
 
       const pushStudSegment = (

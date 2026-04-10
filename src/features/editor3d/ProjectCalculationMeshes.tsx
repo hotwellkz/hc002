@@ -31,27 +31,15 @@ export function ProjectCalculationMeshes({ project, visible, selectedReactKey, o
   return (
     <group name="project-calculation-derived">
       {specs.map((s) => {
-        const isSipSeam = s.source === "sip_seam";
-        const isLumberSeam = s.source === "lumber_seam";
-        const isSeam = isSipSeam || isLumberSeam;
-        const mat =
-          s.source === "lumber"
-            ? materials.lumber
-            : s.source === "sip"
-              ? materials.eps
-              : isSipSeam
-                ? materials.sipSeam
-                : isLumberSeam
-                  ? materials.lumberSeam
-                  : materials.eps;
+        const mat = s.source === "lumber" ? materials.lumber : materials.eps;
         return (
           <group key={s.reactKey}>
             <mesh
               material={mat}
               position={s.position}
               rotation={[0, s.rotationY, 0]}
-              castShadow={!isSeam}
-              receiveShadow={!isSeam}
+              castShadow
+              receiveShadow
               onPointerDown={(e) => {
                 e.stopPropagation();
                 onSelect(s);
