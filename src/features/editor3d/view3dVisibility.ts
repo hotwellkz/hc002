@@ -9,10 +9,18 @@ function layerOn(v: boolean | undefined): boolean {
   return v !== false;
 }
 
+/** ГКЛ в модели профиля: `ProfileLayer.materialType === "gypsum"`. */
+export function isProfileMaterialGypsumBoard(mt: ProfileMaterialType | "default"): boolean {
+  return mt === "gypsum";
+}
+
 /** Слой оболочки стены (послойный профиль): OSB / EPS-подобные. */
 export function isWallMeshSpecVisible(spec: WallRenderMeshSpec, project: Project): boolean {
   const vs = project.viewState;
   const mt = spec.materialType;
+  if (isProfileMaterialGypsumBoard(mt)) {
+    return layerOn(vs.show3dLayerGypsum);
+  }
   if (mt === "osb") {
     return layerOn(vs.show3dLayerOsb);
   }
@@ -30,6 +38,9 @@ export function isCalculationSolidVisible(spec: CalculationSolidSpec, project: P
   const vs = project.viewState;
   switch (spec.source) {
     case "sip":
+      if (isProfileMaterialGypsumBoard(spec.materialType)) {
+        return layerOn(vs.show3dLayerGypsum);
+      }
       return layerOn(vs.show3dLayerEps);
     case "lumber":
       return layerOn(vs.show3dLayerFrame);
@@ -59,7 +70,7 @@ export function hasDoorGeometry3d(project: Project): boolean {
   return project.openings.some((o) => o.kind === "door" && o.wallId != null && o.offsetFromStartMm != null && o.isEmptyOpening !== true);
 }
 
-export type WallMeshMaterialCategory = "osb" | "eps" | "other";
+export type WallMeshMaterialCategory = "osb" | "eps" | "gypsum" | "other";
 
 export function wallMeshMaterialCategory(mt: ProfileMaterialType | "default"): WallMeshMaterialCategory {
   if (mt === "osb") {
@@ -67,6 +78,9 @@ export function wallMeshMaterialCategory(mt: ProfileMaterialType | "default"): W
   }
   if (mt === "eps" || mt === "xps" || mt === "insulation") {
     return "eps";
+  }
+  if (mt === "gypsum") {
+    return "gypsum";
   }
   return "other";
 }

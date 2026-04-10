@@ -180,6 +180,7 @@ interface AppActions {
         | "show3dLayerOsb"
         | "show3dLayerEps"
         | "show3dLayerFrame"
+        | "show3dLayerGypsum"
         | "show3dLayerWindows"
         | "show3dLayerDoors"
       >
@@ -776,7 +777,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const rawLeft = offsetFromStartForCursorCentered(hit.alongMm, op.widthMm);
-      const left = clampOpeningLeftEdgeMm(wall, op.widthMm, rawLeft);
+      const left = clampOpeningLeftEdgeMm(wall, op.widthMm, rawLeft, p0);
       const vPl = validateWindowPlacementOnWall(wall, left, op.widthMm, p0, op.id);
       if (!vPl.ok) {
         set({ lastError: vPl.reason });

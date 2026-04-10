@@ -225,6 +225,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "calculationModel": { "type": "string", "enum": ["sip", "frame"] },
         "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },
@@ -233,7 +234,19 @@
         "plateBoardDepthMm": { "type": "number", "exclusiveMinimum": 0 },
         "maxBoardLengthMm": { "type": "number", "exclusiveMinimum": 0 },
         "includeEndBoards": { "type": "boolean" },
-        "coreDepthMm": { "type": "number", "exclusiveMinimum": 0 }
+        "coreDepthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "studSpacingMm": { "type": "number", "exclusiveMinimum": 0 },
+        "frameMaterial": { "type": "string", "enum": ["wood", "steel"] },
+        "frameMemberWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionStudWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionStudDepthAlongWallMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionTrackWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionTrackDepthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "doorOpeningFramingPreset": { "type": "string", "enum": ["sip_standard", "frame_gkl_door"] },
+        "windowOpeningFramingPreset": {
+          "type": "string",
+          "enum": ["sip_standard", "frame_gkl_window", "frame_reinforced"]
+        }
       }
     },
     "wallCalcSettingsSnapshot": {
@@ -252,6 +265,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "calculationModel": { "type": "string", "enum": ["sip", "frame"] },
         "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },
@@ -261,6 +275,18 @@
         "maxBoardLengthMm": { "type": "number", "exclusiveMinimum": 0 },
         "includeEndBoards": { "type": "boolean" },
         "coreDepthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "studSpacingMm": { "type": "number", "exclusiveMinimum": 0 },
+        "frameMaterial": { "type": "string", "enum": ["wood", "steel"] },
+        "frameMemberWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionStudWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionStudDepthAlongWallMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionTrackWidthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "framePartitionTrackDepthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "doorOpeningFramingPreset": { "type": "string", "enum": ["sip_standard", "frame_gkl_door"] },
+        "windowOpeningFramingPreset": {
+          "type": "string",
+          "enum": ["sip_standard", "frame_gkl_window", "frame_reinforced"]
+        },
         "wallLengthMm": { "type": "number", "exclusiveMinimum": 0 },
         "profileId": { "type": "string" },
         "stage3OpeningFraming": { "type": "boolean" },
@@ -324,6 +350,7 @@
             "opening_left_stud",
             "opening_right_stud",
             "opening_header",
+            "opening_cripple",
             "opening_sill",
             "tee_joint_board",
             "corner_joint_board",
@@ -644,6 +671,7 @@
         "show3dLayerOsb": { "type": "boolean" },
         "show3dLayerEps": { "type": "boolean" },
         "show3dLayerFrame": { "type": "boolean" },
+        "show3dLayerGypsum": { "type": "boolean" },
         "show3dLayerWindows": { "type": "boolean" },
         "show3dLayerDoors": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall"] },

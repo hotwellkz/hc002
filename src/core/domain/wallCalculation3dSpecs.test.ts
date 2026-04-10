@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { createDemoProject } from "./demoProject";
 import type { Opening } from "./opening";
+import { newEntityId } from "./ids";
+import type { Profile } from "./profile";
 import { buildWallCalculationForWall } from "./sipWallLayout";
 import {
   buildCalculationSolidSpecsForProject,
@@ -12,6 +14,36 @@ import {
 import { buildSipSeamVerticalLineSegmentsForProject } from "./sipSeamLines3d";
 
 describe("wallCalculation3dSpecs", () => {
+  it("каркас ГКЛ: 3D-габарит вертикали = сечение профиля (не 145 мм SIP)", () => {
+    const p = createDemoProject();
+    const wall = { ...p.walls[0]!, end: { x: 3000, y: 0 } };
+    const gklProfile = {
+      ...p.profiles[0]!,
+      id: newEntityId(),
+      name: "ГКЛ100",
+      defaultWidthMm: 1200,
+      compositionMode: "layered" as const,
+      layers: [
+        { id: newEntityId(), orderIndex: 0, materialName: "ГКЛ", materialType: "gypsum" as const, thicknessMm: 12 },
+        { id: newEntityId(), orderIndex: 1, materialName: "ПС", materialType: "steel" as const, thicknessMm: 80 },
+        { id: newEntityId(), orderIndex: 2, materialName: "ГКЛ", materialType: "gypsum" as const, thicknessMm: 12 },
+      ],
+      wallManufacturing: {
+        calculationModel: "frame" as const,
+        studSpacingMm: 400,
+        frameMaterial: "steel" as const,
+      },
+    } satisfies Profile;
+    const calc = buildWallCalculationForWall(wall, gklProfile);
+    const stud = calc.lumberPieces.find((x) => x.role === "framing_member_generic");
+    expect(stud?.sectionDepthMm).toBe(75);
+    const proj = { ...p, wallCalculations: [calc] };
+    const specs = buildCalculationSolidSpecsForWall(wall, proj, calc);
+    const mesh = specs.find((s) => s.source === "lumber" && s.pieceId === stud?.id);
+    expect(mesh).toBeTruthy();
+    expect(mesh!.width).toBeCloseTo(0.075, 6);
+  });
+
   it("строит SIP и пиломатериал для стены с расчётом", () => {
     const p = createDemoProject();
     const wall = p.walls[0]!;

@@ -13,6 +13,13 @@ import {
   formatProfileSummary,
   sortProfileLayersByOrder,
 } from "@/core/domain/profileOps";
+import {
+  DEFAULT_WALL_MANUFACTURING,
+  inferFrameMemberWidthMmFromProfile,
+  type DoorOpeningFramingPreset,
+  type WallManufacturingSettings,
+  type WindowOpeningFramingPreset,
+} from "@/core/domain/wallManufacturing";
 import { validateProfile } from "@/core/domain/profileValidation";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -65,6 +72,34 @@ function createEmptyDraft(): Profile {
     createdAt: t,
     updatedAt: t,
   };
+}
+
+function normalizeWallManufacturing(
+  wm: Partial<WallManufacturingSettings> | undefined,
+  profile?: Profile,
+): WallManufacturingSettings {
+  const base = { ...DEFAULT_WALL_MANUFACTURING, ...(wm ?? {}) };
+  const model = base.calculationModel ?? DEFAULT_WALL_MANUFACTURING.calculationModel;
+  const extra: {
+    panelNominalWidthMm?: number;
+    panelNominalHeightMm?: number;
+    frameMemberWidthMm?: number;
+  } = {};
+  if (model === "frame" && profile) {
+    if (profile.defaultWidthMm != null && profile.defaultWidthMm > 0) {
+      extra.panelNominalWidthMm = Math.round(profile.defaultWidthMm);
+    }
+    if (profile.defaultHeightMm != null && profile.defaultHeightMm > 0) {
+      extra.panelNominalHeightMm = Math.round(profile.defaultHeightMm);
+    }
+    if (base.frameMemberWidthMm == null) {
+      const inferred = inferFrameMemberWidthMmFromProfile(profile);
+      if (inferred != null && inferred > 0) {
+        extra.frameMemberWidthMm = inferred;
+      }
+    }
+  }
+  return { ...base, ...extra } as WallManufacturingSettings;
 }
 
 interface ProfilesModalProps {
@@ -120,16 +155,36 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
     setLocalErrors([]);
   };
 
+  const patchWallManufacturing = (patch: Partial<WallManufacturingSettings>) => {
+    if (!draft) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      wallManufacturing: normalizeWallManufacturing(
+        {
+          ...draft.wallManufacturing,
+          ...patch,
+        },
+        draft,
+      ),
+    });
+  };
+
   const handleSave = () => {
     if (!draft) {
       return;
     }
-    const errs = validateProfile(draft);
+    const toSave: Profile = {
+      ...draft,
+      wallManufacturing: normalizeWallManufacturing(draft.wallManufacturing, draft),
+    };
+    const errs = validateProfile(toSave);
     if (errs.length > 0) {
       setLocalErrors(errs);
       return;
     }
-    const ok = upsertProfile(draft);
+    const ok = upsertProfile(toSave);
     if (ok) {
       setLocalErrors([]);
     }
@@ -287,12 +342,19 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
               {sortedProfiles.length === 0 && (
                 <div className="pm-empty">Список пуст. Создайте профиль или сохраните черновик справа.</div>
               )}
-              {sortedProfiles.map((p) => (
+                {sortedProfiles.map((p) => (
                 <div key={p.id}>
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     className={`pm-row ${draft?.id === p.id ? "pm-row--active" : ""}`}
                     onClick={() => syncDraftFromId(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        syncDraftFromId(p.id);
+                      }
+                    }}
                   >
                     <span className="pm-row-title">{p.name}</span>
                     <span className="pm-row-meta">
@@ -320,7 +382,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                         Удалить
                       </button>
                     </div>
-                  </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -457,6 +519,206 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                     }}
                   />
                 </div>
+
+                {draft.category === "wall" ? (
+                  <div className="pm-row2">
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-calc-model">
+                        Модель расчёта
+                      </label>
+                      <select
+                        id="pm-calc-model"
+                        className="pm-select"
+                        value={draft.wallManufacturing?.calculationModel ?? "frame"}
+                        onChange={(e) =>
+                          patchWallManufacturing({
+                            calculationModel: e.target.value as "sip" | "frame",
+                          })}
+                      >
+                        <option value="frame">Каркас/перегородка</option>
+                        <option value="sip">SIP</option>
+                      </select>
+                    </div>
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-stud-spacing">
+                        Шаг каркаса, мм
+                      </label>
+                      <input
+                        id="pm-stud-spacing"
+                        className="pm-input"
+                        type="number"
+                        value={draft.wallManufacturing?.studSpacingMm ?? ""}
+                        placeholder="400 / 600"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          patchWallManufacturing({
+                            studSpacingMm: v === "" ? DEFAULT_WALL_MANUFACTURING.studSpacingMm : Number(v),
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {draft.category === "wall" &&
+                (draft.wallManufacturing?.calculationModel ?? "frame") === "frame" ? (
+                  <div className="pm-row2">
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-door-opening-preset">
+                        Схема проёма: дверь
+                      </label>
+                      <select
+                        id="pm-door-opening-preset"
+                        className="pm-select"
+                        value={draft.wallManufacturing?.doorOpeningFramingPreset ?? "frame_gkl_door"}
+                        onChange={(e) =>
+                          patchWallManufacturing({
+                            doorOpeningFramingPreset: e.target.value as DoorOpeningFramingPreset,
+                          })
+                        }
+                      >
+                        <option value="frame_gkl_door">Каркас / ГКЛ</option>
+                        <option value="sip_standard">Как у SIP (3 сегмента)</option>
+                      </select>
+                    </div>
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-window-opening-preset">
+                        Схема проёма: окно
+                      </label>
+                      <select
+                        id="pm-window-opening-preset"
+                        className="pm-select"
+                        value={draft.wallManufacturing?.windowOpeningFramingPreset ?? "frame_gkl_window"}
+                        onChange={(e) =>
+                          patchWallManufacturing({
+                            windowOpeningFramingPreset: e.target.value as WindowOpeningFramingPreset,
+                          })
+                        }
+                      >
+                        <option value="frame_gkl_window">Каркас / ГКЛ</option>
+                        <option value="sip_standard">Как у SIP</option>
+                        <option value="frame_reinforced">Усиленный каркас</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
+
+                {draft.category === "wall" ? (
+                  <div className="pm-row2">
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-frame-material">
+                        Материал каркаса
+                      </label>
+                      <select
+                        id="pm-frame-material"
+                        className="pm-select"
+                        value={draft.wallManufacturing?.frameMaterial ?? "wood"}
+                        onChange={(e) =>
+                          patchWallManufacturing({
+                            frameMaterial: e.target.value as "wood" | "steel",
+                          })}
+                      >
+                        <option value="wood">Дерево</option>
+                        <option value="steel">Металл</option>
+                      </select>
+                    </div>
+                    {(draft.wallManufacturing?.calculationModel ?? "frame") === "frame" ? (
+                      <div className="pm-field">
+                        <label className="pm-label" htmlFor="pm-frame-member-w">
+                          Ширина профиля каркаса, мм
+                        </label>
+                        <input
+                          id="pm-frame-member-w"
+                          className="pm-input"
+                          type="number"
+                          value={draft.wallManufacturing?.frameMemberWidthMm ?? ""}
+                          placeholder="из слоя стали"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            patchWallManufacturing({
+                              frameMemberWidthMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {draft.category === "wall" &&
+                (draft.wallManufacturing?.calculationModel ?? "frame") === "frame" &&
+                draft.wallManufacturing?.frameMaterial === "steel" ? (
+                  <div className="pm-row2" style={{ alignItems: "flex-start" }}>
+                    <div className="pm-field" style={{ flex: 1, minWidth: 200 }}>
+                      <label className="pm-label" htmlFor="pm-partition-stud">
+                        Стойка (шир×полка), мм
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          id="pm-partition-stud"
+                          className="pm-input"
+                          type="number"
+                          title="Ширина профиля по нормали к стене"
+                          value={draft.wallManufacturing?.framePartitionStudWidthMm ?? ""}
+                          placeholder="75"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            patchWallManufacturing({
+                              framePartitionStudWidthMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                        <input
+                          className="pm-input"
+                          type="number"
+                          title="Полка вдоль стены"
+                          value={draft.wallManufacturing?.framePartitionStudDepthAlongWallMm ?? ""}
+                          placeholder="50"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            patchWallManufacturing({
+                              framePartitionStudDepthAlongWallMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="pm-field" style={{ flex: 1, minWidth: 200 }}>
+                      <label className="pm-label" htmlFor="pm-partition-track">
+                        Направляющая (шир×высота), мм
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          id="pm-partition-track"
+                          className="pm-input"
+                          type="number"
+                          title="Ширина направляющей"
+                          value={draft.wallManufacturing?.framePartitionTrackWidthMm ?? ""}
+                          placeholder="75"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            patchWallManufacturing({
+                              framePartitionTrackWidthMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                        <input
+                          className="pm-input"
+                          type="number"
+                          title="Высота профиля в фасаде"
+                          value={draft.wallManufacturing?.framePartitionTrackDepthMm ?? ""}
+                          placeholder="40"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            patchWallManufacturing({
+                              framePartitionTrackDepthMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="pm-field">
                   <label className="pm-label" htmlFor="pm-notes">

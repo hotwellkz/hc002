@@ -7,6 +7,7 @@ export function openingSillLevelMm(opening: Opening): number {
 /**
  * Верх светового проёма / низ перемычки по оси стены (мм от низа стены), без искусственных сдвигов.
  * Согласовано с расчётом каркаса в sipWallLayout (`heightMm` двери до низа шапки проёма).
+ * Для стен каркас/ГКЛ `widthMm` двери — ширина чистого проёма; стойки снаружи от неё по толщине профиля.
  */
 export function openingTopLevelMmForShell(opening: Opening): number {
   const sill = openingSillLevelMm(opening);

@@ -57,6 +57,13 @@ export function validateProfile(p: Profile): string[] {
     } else if (!/^[\p{L}\p{N}_-]+$/u.test(mp)) {
       errors.push("Префикс марки: только буквы, цифры, «_» и «-» (без пробелов).");
     }
+    const wm = p.wallManufacturing;
+    if (wm?.studSpacingMm != null && !(wm.studSpacingMm > 0 && Number.isFinite(wm.studSpacingMm))) {
+      errors.push("Шаг каркаса должен быть числом больше 0.");
+    }
+    if (wm?.frameMemberWidthMm != null && !(wm.frameMemberWidthMm > 0 && Number.isFinite(wm.frameMemberWidthMm))) {
+      errors.push("Ширина профиля каркаса должна быть числом больше 0.");
+    }
   }
 
   return errors;

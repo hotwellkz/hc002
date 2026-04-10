@@ -183,6 +183,61 @@ export function wallDetailSipVerticalBoundaryXsMm(
   return [...s].sort((a, b) => a - b);
 }
 
+/** Только вертикали границ листов/секций облицовки (без осей стоек каркаса). */
+export function wallDetailSheetPanelVerticalBoundaryXsMm(facadeSlices: readonly WallDetailSipFacadeSlice[]): number[] {
+  const s = new Set<number>();
+  for (const sl of facadeSlices) {
+    s.add(sl.drawX0);
+    s.add(sl.drawX1);
+  }
+  return [...s].sort((a, b) => a - b);
+}
+
+/**
+ * Линии стыков листов по оси стены — граница между соседними sipRegions на одном участке (стык 1200|1200|остаток).
+ */
+export function sheetSeamCentersBetweenSipRegionsMm(
+  regions: readonly { startOffsetMm: number; endOffsetMm: number }[],
+): number[] {
+  if (regions.length < 2) {
+    return [];
+  }
+  const sorted = [...regions].sort((a, b) => a.startOffsetMm - b.startOffsetMm || a.endOffsetMm - b.endOffsetMm);
+  const out: number[] = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i]!;
+    const b = sorted[i + 1]!;
+    if (Math.abs(a.endOffsetMm - b.startOffsetMm) < 0.5) {
+      out.push(a.endOffsetMm);
+    }
+  }
+  return out;
+}
+
+/**
+ * Все внутренние точки разреза вдоль стены по границам `sipRegions` (в т.ч. у проёма, где соседние листы не смежны).
+ * Для ГКЛ с дверью нужно для размерной линии, иначе остаются только «стыки подряд» и добавляются срезы по световому
+ * проёму — получается несогласованная ширина с таблицей листов.
+ */
+export function sheetInteriorCutXsAlongWallFromRegionsMm(
+  regions: readonly { startOffsetMm: number; endOffsetMm: number }[],
+  sipShellX0Mm: number,
+  sipShellX1Mm: number,
+): number[] {
+  const left = Math.min(sipShellX0Mm, sipShellX1Mm);
+  const right = Math.max(sipShellX0Mm, sipShellX1Mm);
+  const eps = 0.5;
+  const xs = new Set<number>();
+  for (const r of regions) {
+    for (const x of [r.startOffsetMm, r.endOffsetMm]) {
+      if (x > left + eps && x < right - eps) {
+        xs.add(x);
+      }
+    }
+  }
+  return [...xs].sort((a, b) => a - b);
+}
+
 /**
  * Горизонтальные размеры ширины SIP на «Вид стены»: стыки OSB + внешние границы проёмов,
  * чтобы не показывать одну ширину через дверной проём (напр. 3137 через зазор).
@@ -192,6 +247,7 @@ export function sipPanelHorizontalDimensionSegmentsWallDetailMm(
   sipShellX1Mm: number,
   seamCentersAlongMm: readonly number[],
   openingsOnWall: readonly Opening[],
+  options?: { readonly omitClearOpeningCutsAlongWall?: boolean },
 ): { a: number; b: number; text: string }[] {
   const left = Math.min(sipShellX0Mm, sipShellX1Mm);
   const right = Math.max(sipShellX0Mm, sipShellX1Mm);
@@ -202,20 +258,22 @@ export function sipPanelHorizontalDimensionSegmentsWallDetailMm(
       cut.add(x);
     }
   }
-  for (const o of openingsOnWall) {
-    if (o.offsetFromStartMm == null) {
-      continue;
+  if (!options?.omitClearOpeningCutsAlongWall) {
+    for (const o of openingsOnWall) {
+      if (o.offsetFromStartMm == null) {
+        continue;
+      }
+      if (o.kind !== "door" && o.kind !== "window") {
+        continue;
+      }
+      const lo = o.offsetFromStartMm;
+      const hi = lo + o.widthMm;
+      if (hi <= left + eps || lo >= right - eps) {
+        continue;
+      }
+      cut.add(Math.max(left, lo));
+      cut.add(Math.min(right, hi));
     }
-    if (o.kind !== "door" && o.kind !== "window") {
-      continue;
-    }
-    const lo = o.offsetFromStartMm;
-    const hi = lo + o.widthMm;
-    if (hi <= left + eps || lo >= right - eps) {
-      continue;
-    }
-    cut.add(Math.max(left, lo));
-    cut.add(Math.min(right, hi));
   }
   const boundaries = [...cut].sort((a, b) => a - b);
   const out: { a: number; b: number; text: string }[] = [];

@@ -72,7 +72,7 @@ export function placeDraftWindowOnWall(
   }
 
   const W = prev.widthMm;
-  const clamped = clampOpeningLeftEdgeMm(wall, W, leftEdgeAlongMm);
+  const clamped = clampOpeningLeftEdgeMm(wall, W, leftEdgeAlongMm, project);
   const v = validateWindowPlacementOnWall(wall, clamped, W, project, prev.id);
   if (!v.ok) {
     return { error: v.reason };
@@ -188,7 +188,7 @@ export function saveWindowParamsAndRegenerateFraming(
   }
 
   const W = payload.widthMm;
-  const left = offsetFromStartFromPositionSpec(wall, W, payload.position);
+  const left = offsetFromStartFromPositionSpec(wall, W, payload.position, project, "window");
   const v = validateWindowPlacementOnWall(wall, left, W, project, openingId);
   if (!v.ok) {
     return { error: v.reason };
@@ -274,7 +274,7 @@ export function repositionPlacedWindowLeftEdge(
   if (!wall) {
     return { error: "Стена не найдена." };
   }
-  const clamped = clampOpeningLeftEdgeMm(wall, o.widthMm, leftEdgeMm);
+  const clamped = clampOpeningLeftEdgeMm(wall, o.widthMm, leftEdgeMm, project);
   const v = validateWindowPlacementOnWall(wall, clamped, o.widthMm, project, openingId);
   if (!v.ok) {
     return { error: v.reason };

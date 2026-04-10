@@ -80,6 +80,27 @@
   vector-effect: non-scaling-stroke;
 }
 
+/** Границы листов/секций облицовки (каркас/ГКЛ), без сетки стоек. */
+.wd-sheet-panel-seam {
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 1.25;
+  stroke-dasharray: 6 8;
+  stroke-linecap: round;
+  opacity: 0.88;
+  vector-effect: non-scaling-stroke;
+}
+
+/** Вертикали каркаса (шаг стоек), тоньше и суше границ листов. */
+.wd-frame-stud-line {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 0.65;
+  stroke-dasharray: none;
+  opacity: 0.72;
+  vector-effect: non-scaling-stroke;
+}
+
 /** Линии штриховки внутри панели (заливка pattern). */
 .wd-sip-hatch-line {
   stroke: #64748b;
@@ -109,6 +130,11 @@
   fill: #8b5e34;
   stroke: #4b2e12;
   stroke-width: 1;
+}
+
+.wd-piece--steel {
+  fill: #8d98a5;
+  stroke: #5f6a77;
 }
 
 /** Компактная тёмная подложка под белый номер (в тон обводке доски, чуть глубже заливки). */

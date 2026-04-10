@@ -1,19 +1,22 @@
-import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Opening } from "@/core/domain/opening";
 import { getProfileById } from "@/core/domain/profileOps";
-import { resolveWallProfileCoreBandMm } from "@/core/domain/wallProfileLayers";
+import { resolveWallCalculationModel } from "@/core/domain/wallManufacturing";
 
 import { useAppStore } from "@/store/useAppStore";
 
 import "./wall-detail-workspace.css";
 import {
+  frameStudCentersAlongWallMm,
   internalWallJointSeamCentersAlongMm,
   lumberPieceWallElevationRectMm,
 } from "@/core/domain/wallCalculation3dSpecs";
 import {
   buildWallDetailSipFacadeSlices,
+  sheetInteriorCutXsAlongWallFromRegionsMm,
   sipPanelHorizontalDimensionSegmentsWallDetailMm,
+  wallDetailSheetPanelVerticalBoundaryXsMm,
   wallDetailSipVerticalBoundaryXsMm,
 } from "@/core/domain/wallDetailSipElevation";
 import { buildWallDetailSipPanelDisplayGrouping } from "@/core/domain/wallDetailSipPanelGrouping";
@@ -193,8 +196,7 @@ export function WallDetailWorkspace() {
 
   const wallLabel = wall ? wallMarkLabelForDisplay(wall.markLabel, wall.id.slice(0, 8)) : "";
   const wallProfile = wall?.profileId ? getProfileById(project, wall.profileId) : undefined;
-  const wallCoreBand = wall && wallProfile ? resolveWallProfileCoreBandMm(wall.thicknessMm, wallProfile) : null;
-  const isSipLikeWall = wallCoreBand != null && ["eps", "xps", "insulation"].includes(wallCoreBand.materialType);
+  const isSipLikeWall = wallProfile ? resolveWallCalculationModel(wallProfile) === "sip" : true;
   const wallSystemLabel = isSipLikeWall ? "SIP" : "Листовая";
 
   const L = wall ? Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y) : 0;
@@ -297,10 +299,20 @@ export function WallDetailWorkspace() {
             x1: Math.max(...calc.sipRegions.map((r) => r.endOffsetMm)),
           }
         : { x0: 0, x1: L };
-    const seamCenters = calc ? internalWallJointSeamCentersAlongMm(calc) : [];
+    const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+    const isFrameWallModel = prof ? resolveWallCalculationModel(prof) === "frame" : false;
+    /** Каркас/ГКЛ: разрезы по всем границам листов (в т.ч. у проёма); SIP — стыки OSB по joint_board. */
+    const seamCentersForSheetDims =
+      calc && isFrameWallModel && calc.sipRegions.length > 0
+        ? sheetInteriorCutXsAlongWallFromRegionsMm(calc.sipRegions, sipShell.x0, sipShell.x1)
+        : calc
+          ? internalWallJointSeamCentersAlongMm(calc)
+          : [];
     const frontLevel1 =
       calc && calc.sipRegions.length > 0
-        ? sipPanelHorizontalDimensionSegmentsWallDetailMm(sipShell.x0, sipShell.x1, seamCenters, openingsOnWall)
+        ? sipPanelHorizontalDimensionSegmentsWallDetailMm(sipShell.x0, sipShell.x1, seamCentersForSheetDims, openingsOnWall, {
+            omitClearOpeningCutsAlongWall: isFrameWallModel,
+          })
         : [];
     const frontLevel2Raw = buildOpeningGapSegments(L, openingsOnWall);
     const frontLevel3 = [{ a: 0, b: L, text: `${Math.round(L)}` }];
@@ -363,7 +375,7 @@ export function WallDetailWorkspace() {
       frontLevel3,
       showOverallLengthRow,
     };
-  }, [wall, H, L, calc, openingsOnWall]);
+  }, [wall, H, L, calc, openingsOnWall, project]);
 
   const sheetBounds = useMemo(() => {
     if (!wall || !layout) {
@@ -513,15 +525,30 @@ export function WallDetailWorkspace() {
     [calc],
   );
 
+  /** Границы листов/секций облицовки (без сетки каркаса). */
+  const sheetPanelVerticalBoundaryXsMm = useMemo(
+    () => (sipFacadeSlices.length > 0 ? wallDetailSheetPanelVerticalBoundaryXsMm(sipFacadeSlices) : []),
+    [sipFacadeSlices],
+  );
+
+  /** SIP: стыки OSB + границы панелей. Каркас/ГКЛ: только границы листов — сетка каркаса отдельно. */
   const verticalSipBoundaryXsMm = useMemo(
     () =>
       sipFacadeSlices.length > 0
-        ? wallDetailSipVerticalBoundaryXsMm(sipFacadeSlices, internalSeamCentersAlong)
+        ? isSipLikeWall
+          ? wallDetailSipVerticalBoundaryXsMm(sipFacadeSlices, internalSeamCentersAlong)
+          : sheetPanelVerticalBoundaryXsMm
         : [],
-    [sipFacadeSlices, internalSeamCentersAlong],
+    [sipFacadeSlices, internalSeamCentersAlong, isSipLikeWall, sheetPanelVerticalBoundaryXsMm],
   );
 
-  const onWheel = (e: React.WheelEvent) => {
+  /** Центры вертикалей каркаса (шаг 400 мм и т.д.) — только для режима frame. */
+  const frameStudCenterXsMm = useMemo(
+    () => (calc && !isSipLikeWall ? frameStudCentersAlongWallMm(calc) : []),
+    [calc, isSipLikeWall],
+  );
+
+  const onWheelZoom = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const el = svgRef.current;
     if (!el) return;
@@ -535,7 +562,16 @@ export function WallDetailWorkspace() {
     setPanX(mx - sheetX * next);
     setPanY(my - sheetY * next);
     setZoom(next);
-  };
+  }, [panX, panY, zoom]);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) {
+      return;
+    }
+    el.addEventListener("wheel", onWheelZoom, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelZoom);
+  }, [onWheelZoom]);
 
   return (
     <div className="wd-root">
@@ -565,7 +601,6 @@ export function WallDetailWorkspace() {
         <div
           ref={wrapRef}
           className="wd-canvas-wrap"
-          onWheel={onWheel}
           onPointerDown={(e) => {
             setDrag({ x: e.clientX, y: e.clientY, panX, panY });
           }}
@@ -711,7 +746,13 @@ export function WallDetailWorkspace() {
                   const lay = computeLumberPieceNumberLabelPx({ leftPx, topPx, wPx, hPx, n });
                   return (
                     <g key={`piece-${p.id}`} pointerEvents="none">
-                      <rect x={leftPx} y={topPx} width={wPx} height={hPx} className="wd-piece" />
+                      <rect
+                        x={leftPx}
+                        y={topPx}
+                        width={wPx}
+                        height={hPx}
+                        className={`wd-piece ${p.materialType === "steel" ? "wd-piece--steel" : "wd-piece--wood"}`}
+                      />
                       <rect
                         x={lay.pillX}
                         y={lay.pillY}
@@ -763,7 +804,7 @@ export function WallDetailWorkspace() {
               );
             })}
 
-            {/* Пунктир стыков OSB: Y = полная высота стены (wallTop…wallBottom), X = internalWallJointSeamCentersAlongMm. */}
+            {/* SIP: пунктир стыков OSB. Каркас/ГКЛ: границы листов (крупный шаг) + отдельно тонкие линии стоек каркаса. */}
             {calc ? (
               <g className="wd-sip-seam-overlay" pointerEvents="none">
                 <line
@@ -787,9 +828,21 @@ export function WallDetailWorkspace() {
                     y1={sy(sipOsbSeamYTop)}
                     x2={sx(cx)}
                     y2={sy(sipOsbSeamYBottom)}
-                    className="wd-sip-seam"
+                    className={isSipLikeWall ? "wd-sip-seam" : "wd-sheet-panel-seam"}
                   />
                 ))}
+                {!isSipLikeWall
+                  ? frameStudCenterXsMm.map((cx) => (
+                      <line
+                        key={`frame-stud-v-${cx.toFixed(2)}`}
+                        x1={sx(cx)}
+                        y1={sy(sipOsbSeamYTop)}
+                        x2={sx(cx)}
+                        y2={sy(sipOsbSeamYBottom)}
+                        className="wd-frame-stud-line"
+                      />
+                    ))
+                  : null}
               </g>
             ) : null}
 
@@ -859,7 +912,7 @@ export function WallDetailWorkspace() {
         </div>
         <aside className="wd-side">
           <section className="wd-card">
-            <h3>Доски по стене</h3>
+            <h3>{isSipLikeWall ? "Доски по стене" : "Металлопрофили по стене"}</h3>
             {!calc ? (
               <div className="wd-empty-note">Стена ещё не рассчитана. Нажмите «Пересчитать стену».</div>
             ) : (

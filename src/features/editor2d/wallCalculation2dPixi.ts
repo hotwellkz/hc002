@@ -4,7 +4,7 @@ import type { Project } from "@/core/domain/project";
 import { getProfileById } from "@/core/domain/profileOps";
 
 import {
-  lumberPlan2dFillForRole,
+  lumberPlan2dFillForRoleAndMaterial,
   wallCalcCorePlan2dFill,
 } from "./wallCalculationPlan2dColors";
 import { collectWallCalculationPlanQuads } from "./wallCalculationPlan2dQuads";
@@ -54,7 +54,7 @@ export function drawWallCalculationOverlay2d(
       if (q.kind === "sip") {
         fillQuadMm(g, q.corners, t, coreFill.color, coreFill.alpha);
       } else {
-        const { color, alpha } = lumberPlan2dFillForRole(q.role);
+        const { color, alpha } = lumberPlan2dFillForRoleAndMaterial(q.role, q.materialType);
         fillQuadMm(g, q.corners, t, color, alpha);
       }
     }

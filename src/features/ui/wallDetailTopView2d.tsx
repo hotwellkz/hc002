@@ -16,7 +16,7 @@ import {
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
 import {
-  lumberPlan2dFillForRole,
+  lumberPlan2dFillForRoleAndMaterial,
   wallCalcCorePlan2dFill,
 } from "@/features/editor2d/wallCalculationPlan2dColors";
 import { collectWallCalculationPlanQuads } from "@/features/editor2d/wallCalculationPlan2dQuads";
@@ -63,7 +63,7 @@ function wallCalculationPlanOverlaySvg(
       q.kind === "sip"
         ? pixiHexToCss(coreFill.color, coreFill.alpha)
         : (() => {
-            const { color, alpha } = lumberPlan2dFillForRole(q.role);
+            const { color, alpha } = lumberPlan2dFillForRoleAndMaterial(q.role, q.materialType);
             return pixiHexToCss(color, alpha);
           })();
     return (

@@ -98,6 +98,7 @@ const ROLE_LABEL_RU: Readonly<Partial<Record<LumberRole, string>>> = {
   opening_left_stud: "Стойка проёма (левая)",
   opening_right_stud: "Стойка проёма (правая)",
   opening_header: "Перемычка проёма",
+  opening_cripple: "Вставка над проёмом (укороченная стойка)",
   opening_sill: "Подоконник / нижняя планка",
   tee_joint_board: "Т-узел",
   corner_joint_board: "Угловой узел",
@@ -106,6 +107,19 @@ const ROLE_LABEL_RU: Readonly<Partial<Record<LumberRole, string>>> = {
 
 export function lumberRoleLabelRu(role: LumberRole): string {
   return ROLE_LABEL_RU[role] ?? role;
+}
+
+export function lumberPieceRoleLabelRu(p: { readonly role: LumberRole; readonly metadata?: Readonly<Record<string, unknown>> }): string {
+  const seg = p.metadata?.["studSegment"];
+  if (seg === "full" && (p.role === "opening_left_stud" || p.role === "opening_right_stud")) {
+    return p.role === "opening_left_stud"
+      ? "Стойка проёма, полная высота (левая)"
+      : "Стойка проёма, полная высота (правая)";
+  }
+  if (seg === "door_jamb_jack" && (p.role === "opening_left_stud" || p.role === "opening_right_stud")) {
+    return p.role === "opening_left_stud" ? "Стойка проёма слева (до перемычки)" : "Стойка проёма справа (до перемычки)";
+  }
+  return lumberRoleLabelRu(p.role);
 }
 
 function wallLengthMm(w: Wall): number {
@@ -149,7 +163,7 @@ export function buildWallSpecificationDetails(wall: Wall, project: Project): rea
     pieceMark: p.pieceMark,
     wallMark: p.wallMark,
     role: p.role,
-    roleLabelRu: lumberRoleLabelRu(p.role),
+    roleLabelRu: lumberPieceRoleLabelRu(p),
     sectionKey: sectionKeyForLumber(p),
     lengthMm: Math.round(p.lengthMm),
     quantity: 1,

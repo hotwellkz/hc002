@@ -3,8 +3,10 @@
  */
 
 import { normalizeLumberRole, type LumberRole } from "@/core/domain/wallCalculation";
+import type { ProfileMaterialType } from "@/core/domain/profile";
 import type { Profile } from "@/core/domain/profile";
 import { resolveWallProfileCoreBandMm } from "@/core/domain/wallProfileLayers";
+import { resolveWallCalculationModel } from "@/core/domain/wallManufacturing";
 import { fillColor2dForMaterialType } from "./materials2d";
 
 export const SIP_PLAN2D_FILL_HEX = 0x2d6a3e;
@@ -25,6 +27,9 @@ export function wallCalcCorePlan2dFill(
   if (!profile) {
     return { color: SIP_PLAN2D_FILL_HEX, alpha: SIP_PLAN2D_FILL_ALPHA };
   }
+  if (resolveWallCalculationModel(profile) === "frame") {
+    return { color: 0x94a3b8, alpha: 0.22 };
+  }
   const core = resolveWallProfileCoreBandMm(wallThicknessMm, profile);
   const mt = core?.materialType;
   if (!mt || mt === "eps" || mt === "xps" || mt === "insulation") {
@@ -34,6 +39,16 @@ export function wallCalcCorePlan2dFill(
 }
 
 export function lumberPlan2dFillForRole(role: LumberRole): { readonly color: number; readonly alpha: number } {
+  return lumberPlan2dFillForRoleAndMaterial(role, "wood");
+}
+
+export function lumberPlan2dFillForRoleAndMaterial(
+  role: LumberRole,
+  materialType: ProfileMaterialType,
+): { readonly color: number; readonly alpha: number } {
+  if (materialType === "steel") {
+    return { color: 0x8a9098, alpha: 0.58 };
+  }
   const r = normalizeLumberRole(role);
   if (r === "upper_plate" || r === "lower_plate") {
     return { color: PLATE_FILL, alpha: PLATE_ALPHA };
@@ -41,7 +56,7 @@ export function lumberPlan2dFillForRole(role: LumberRole): { readonly color: num
   if (r === "opening_left_stud" || r === "opening_right_stud") {
     return { color: OPENING_STUD_FILL, alpha: LUMBER_ALPHA };
   }
-  if (r === "opening_header" || r === "opening_sill") {
+  if (r === "opening_header" || r === "opening_cripple" || r === "opening_sill") {
     return { color: OPENING_HEADER_FILL, alpha: LUMBER_ALPHA };
   }
   if (r === "tee_joint_board" || r === "corner_joint_board") {

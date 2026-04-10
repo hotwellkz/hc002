@@ -7,6 +7,7 @@ import type { Profile } from "./profile";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import { computeProfileThickness } from "./wallOps";
+import { resolveEffectiveWallManufacturing, resolveWallCalculationModel } from "./wallManufacturing";
 import { viewPresetByKey, type WindowViewPresetKey } from "./windowFormCatalog";
 
 const MM_TO_M = 0.001;
@@ -73,6 +74,16 @@ function profileDepthAlongNormalMm(profile: Profile | undefined): number {
   }
   const t = computeProfileThickness(profile);
   return Math.max(40, Math.min(200, t));
+}
+
+/** Для каркасной стены — сечение каркаса из профиля стены, не из SIP-дефолта 145 мм. */
+function frameWallMemberSizeMm(wall: Wall, project: Project): number | null {
+  const wp = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  if (!wp || resolveWallCalculationModel(wp) !== "frame") {
+    return null;
+  }
+  const m = resolveEffectiveWallManufacturing(wp);
+  return Math.max(1, Math.round(m.jointBoardDepthMm));
 }
 
 const FRAME_MM = 55;
@@ -465,10 +476,11 @@ export function buildOpeningFramingPieceSpecs(wall: Wall, project: Project): rea
     const sideVerticalExtra3dMm = 200;
 
     const kindCount = new Map<OpeningFramingPieceKind, number>();
+    const frameMm = frameWallMemberSizeMm(wall, project);
     for (const piece of pieces) {
       const prof = getProfileById(project, piece.profileId);
-      const th = profileBoardThicknessMm(prof);
-      const dep = profileDepthAlongNormalMm(prof);
+      const th = frameMm != null ? frameMm : profileBoardThicknessMm(prof);
+      const dep = frameMm != null ? frameMm : profileDepthAlongNormalMm(prof);
       const idx = kindCount.get(piece.kind) ?? 0;
       kindCount.set(piece.kind, idx + 1);
 

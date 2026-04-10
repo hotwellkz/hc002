@@ -43,6 +43,8 @@ export interface ViewState {
   readonly show3dLayerEps: boolean;
   /** Видимость пиломатериала из расчёта стены (каркас). */
   readonly show3dLayerFrame: boolean;
+  /** Слои обшивки гипсокартоном в 3D (`materialType: gypsum` в профиле). */
+  readonly show3dLayerGypsum: boolean;
   /** Заготовка: проёмы / окна в 3D (пока без отдельной геометрии). */
   readonly show3dLayerWindows: boolean;
   /** Заготовка: двери в 3D. */
@@ -61,6 +63,7 @@ export function normalizeViewState(
     readonly show3dLayerOsb?: boolean;
     readonly show3dLayerEps?: boolean;
     readonly show3dLayerFrame?: boolean;
+    readonly show3dLayerGypsum?: boolean;
     readonly show3dLayerWindows?: boolean;
     readonly show3dLayerDoors?: boolean;
   },
@@ -77,6 +80,7 @@ export function normalizeViewState(
     show3dLayerOsb: input.show3dLayerOsb !== false,
     show3dLayerEps: input.show3dLayerEps !== false,
     show3dLayerFrame: input.show3dLayerFrame !== false,
+    show3dLayerGypsum: input.show3dLayerGypsum !== false,
     show3dLayerWindows: input.show3dLayerWindows !== false,
     show3dLayerDoors: input.show3dLayerDoors !== false,
   };

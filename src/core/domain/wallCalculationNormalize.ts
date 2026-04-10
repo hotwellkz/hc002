@@ -11,8 +11,10 @@ import {
   type LumberPiece,
   type LumberRole,
   type SipPanelRegion,
+  type WallCalcSettingsSnapshot,
   type WallCalculationResult,
 } from "./wallCalculation";
+import { resolveWallCalculationModel } from "./wallManufacturing";
 
 /** Черновик детали до нумерации (sipWallLayout → numberAndSortLumberPieces). */
 export type LumberPieceDraftInput = {
@@ -66,6 +68,78 @@ function isLegacyRole(role: string): boolean {
   return role in LEGACY_LUMBER_ROLE_MAP;
 }
 
+/**
+ * Каркас/ГКЛ: подтянуть устаревшие длины/сечения в сохранённых расчётах к текущим правилам
+ * (полная высота стены для стоек; криплы над дверью — стойка 50×75 и длина как полоса П2).
+ */
+function patchFrameWallLumberPiecesToMatchCurrentRules(
+  wall: Wall,
+  project: Project,
+  pieces: readonly LumberPiece[],
+  snap: WallCalcSettingsSnapshot,
+): LumberPiece[] {
+  const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  if (!prof || resolveWallCalculationModel(prof) !== "frame") {
+    return [...pieces];
+  }
+  const plateT = snap.plateBoardThicknessMm ?? 45;
+  const vbp = Math.max(0, Math.round(wall.heightMm - 2 * plateT));
+  const fullH = Math.round(wall.heightMm);
+  if (fullH <= 0) {
+    return [...pieces];
+  }
+  const jointT = snap.jointBoardThicknessMm ?? 0;
+  const jointD = snap.jointBoardDepthMm ?? 0;
+  const trackT = snap.plateBoardThicknessMm ?? 0;
+  const steel = snap.frameMaterial === "steel";
+
+  return pieces.map((p) => {
+    const role = normalizeLumberRole(p.role);
+    const meta = p.metadata as {
+      frameVertical?: boolean;
+      studSegment?: string;
+      doorOpeningFramingPreset?: string;
+      openingId?: string;
+    } | undefined;
+
+    const isDoorFullJamb =
+      (role === "opening_left_stud" || role === "opening_right_stud") && meta?.studSegment === "full";
+    const isFrameVerticalMember =
+      p.orientation === "across_wall" &&
+      (role === "framing_member_generic" || role === "edge_board" || role === "tee_joint_board") &&
+      (meta?.frameVertical === true || role === "tee_joint_board");
+
+    if (isFrameVerticalMember || isDoorFullJamb) {
+      if (Math.abs(p.lengthMm - vbp) <= 2 && Math.abs(p.lengthMm - fullH) > 1) {
+        return { ...p, lengthMm: fullH };
+      }
+    }
+
+    if (
+      steel &&
+      role === "opening_cripple" &&
+      p.orientation === "across_wall" &&
+      meta?.doorOpeningFramingPreset === "frame_gkl_door" &&
+      meta.openingId
+    ) {
+      const op = project.openings.find((o) => o.id === meta.openingId);
+      if (op && op.wallId === wall.id && op.kind === "door") {
+        const wantLen = Math.max(0, Math.round(wall.heightMm - op.heightMm));
+        let next: LumberPiece = { ...p };
+        if (jointT > 0 && jointD > 0 && Math.abs(p.sectionThicknessMm - trackT) < 2.5) {
+          next = { ...next, sectionThicknessMm: jointT, sectionDepthMm: jointD };
+        }
+        if (wantLen > 0 && Math.abs(next.lengthMm - wantLen) > 1) {
+          next = { ...next, lengthMm: wantLen };
+        }
+        return next;
+      }
+    }
+
+    return p;
+  });
+}
+
 /** Порядок отрисовки / сортировки: вертикали и узлы → горизонтали проёмов → обвязка. */
 function roleSortPriority(role: LumberRole): number {
   const r = normalizeLumberRole(role);
@@ -81,6 +155,7 @@ function roleSortPriority(role: LumberRole): number {
     case "opening_right_stud":
       return 2;
     case "opening_header":
+    case "opening_cripple":
     case "opening_sill":
       return 3;
     case "upper_plate":
@@ -186,6 +261,10 @@ export function normalizeWallCalculationsInProject(project: Project): Project {
       });
     } else {
       lumberPieces = numberAndSortLumberPieces(wall, incoming);
+    }
+
+    if (wall != null) {
+      lumberPieces = patchFrameWallLumberPiecesToMatchCurrentRules(wall, project, lumberPieces, calc.settingsSnapshot);
     }
 
     const plateT = calc.settingsSnapshot.plateBoardThicknessMm ?? 45;

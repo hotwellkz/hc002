@@ -24,6 +24,7 @@ export type LumberRole =
   | "opening_left_stud"
   | "opening_right_stud"
   | "opening_header"
+  | "opening_cripple"
   | "opening_sill"
   | "tee_joint_board"
   | "corner_joint_board"
@@ -100,6 +101,7 @@ const KNOWN_ROLES = new Set<LumberRole>([
   "opening_left_stud",
   "opening_right_stud",
   "opening_header",
+  "opening_cripple",
   "opening_sill",
   "tee_joint_board",
   "corner_joint_board",
@@ -125,6 +127,7 @@ const ROLE_MARK_CODE: Readonly<Record<LumberRole, string>> = {
   opening_left_stud: "OSL",
   opening_right_stud: "OSR",
   opening_header: "OH",
+  opening_cripple: "OC",
   opening_sill: "OSI",
   tee_joint_board: "TJ",
   corner_joint_board: "CJ",
@@ -177,6 +180,7 @@ export function emptyLumberRoleCounters(): Record<LumberRole, number> {
     opening_left_stud: 0,
     opening_right_stud: 0,
     opening_header: 0,
+    opening_cripple: 0,
     opening_sill: 0,
     tee_joint_board: 0,
     corner_joint_board: 0,

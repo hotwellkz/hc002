@@ -7,8 +7,21 @@ import {
   buildWallDetailSipFacadeSlices,
   openingBottomSheetYMm,
   openingTopSheetYMm,
+  sheetInteriorCutXsAlongWallFromRegionsMm,
+  sheetSeamCentersBetweenSipRegionsMm,
   sipPanelHorizontalDimensionSegmentsWallDetailMm,
 } from "./wallDetailSipElevation";
+
+describe("sheetSeamCentersBetweenSipRegionsMm", () => {
+  it("возвращает X стыков между соседними регионами без зазора (листы 1200+1200+остаток)", () => {
+    const seams = sheetSeamCentersBetweenSipRegionsMm([
+      { startOffsetMm: 0, endOffsetMm: 1200 },
+      { startOffsetMm: 1200, endOffsetMm: 2400 },
+      { startOffsetMm: 2400, endOffsetMm: 2846 },
+    ]);
+    expect(seams).toEqual([1200, 2400]);
+  });
+});
 
 describe("sipPanelHorizontalDimensionSegmentsWallDetailMm", () => {
   it("добавляет разрезы по границам проёма (не один длинный сегмент через дверной зазор)", () => {
@@ -25,6 +38,33 @@ describe("sipPanelHorizontalDimensionSegmentsWallDetailMm", () => {
     const withOpening = sipPanelHorizontalDimensionSegmentsWallDetailMm(0, 5000, seam, [door]);
     expect(withOpening.length).toBeGreaterThan(noOpening.length);
     expect(withOpening.some((s) => Math.abs(s.b - s.a - 1000) < 1)).toBe(true);
+  });
+
+  it("каркас/ГКЛ: границы листов у проёма + без срезов по световому проёму — нет ложного модуля 1250", () => {
+    const door: Opening = {
+      id: "d1",
+      wallId: "w1",
+      kind: "door",
+      offsetFromStartMm: 2000,
+      widthMm: 1000,
+      heightMm: 2100,
+    };
+    const cuts = sheetInteriorCutXsAlongWallFromRegionsMm(
+      [
+        { startOffsetMm: 0, endOffsetMm: 1200 },
+        { startOffsetMm: 1200, endOffsetMm: 1950 },
+        { startOffsetMm: 3050, endOffsetMm: 4250 },
+        { startOffsetMm: 4250, endOffsetMm: 5000 },
+      ],
+      0,
+      5000,
+    );
+    expect(cuts).toEqual([1200, 1950, 3050, 4250]);
+    const segs = sipPanelHorizontalDimensionSegmentsWallDetailMm(0, 5000, cuts, [door], {
+      omitClearOpeningCutsAlongWall: true,
+    });
+    expect(segs.map((s) => Math.round(s.b - s.a))).toEqual([1200, 750, 1100, 1200, 750]);
+    expect(segs.some((s) => Math.abs(s.b - s.a - 1250) < 1)).toBe(false);
   });
 });
 

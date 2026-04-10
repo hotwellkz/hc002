@@ -170,6 +170,7 @@ export function createDemoProject(): Project {
       show3dLayerOsb: true,
       show3dLayerEps: true,
       show3dLayerFrame: true,
+      show3dLayerGypsum: true,
       show3dLayerWindows: true,
       show3dLayerDoors: true,
     },

@@ -1,6 +1,7 @@
 import { getLayerById } from "./layerOps";
 import type { ProfileMaterialType } from "./profile";
 import { getProfileById } from "./profileOps";
+import { resolveWallCalculationModel } from "./wallManufacturing";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import { boardCoreNormalOffsetsMm } from "./wallLumberBoard2dOffsets";
@@ -91,6 +92,32 @@ export function internalWallJointSeamCentersAlongMm(calc: WallCalculationResult)
     if (c != null) {
       centers.push(c);
     }
+  }
+  centers.sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const x of centers) {
+    if (out.length === 0 || Math.abs(x - out[out.length - 1]!) > 0.5) {
+      out.push(x);
+    }
+  }
+  return out;
+}
+
+/**
+ * Центры вертикалей каркаса (перегородка/каркас): стойки и торцы без SIP-сдвига joint_board.
+ */
+export function frameStudCentersAlongWallMm(calc: WallCalculationResult): number[] {
+  const centers: number[] = [];
+  for (const p of calc.lumberPieces) {
+    if (p.orientation !== "across_wall") {
+      continue;
+    }
+    if (p.role !== "framing_member_generic" && p.role !== "edge_board") {
+      continue;
+    }
+    const lo = Math.min(p.startOffsetMm, p.endOffsetMm);
+    const hi = Math.max(p.startOffsetMm, p.endOffsetMm);
+    centers.push((lo + hi) / 2);
   }
   centers.sort((a, b) => a - b);
   const out: number[] = [];
@@ -248,6 +275,17 @@ function openingById(project: Project, id: string) {
   return project.openings.find((o) => o.id === id);
 }
 
+function isFrameCalculationWall(wall: Wall, project: Project): boolean {
+  const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  return prof != null && resolveWallCalculationModel(prof) === "frame";
+}
+
+/** Вертикаль каркаса на всю высоту стены: центр по габариту (профиль в направляющих). */
+function frameVerticalMemberCenterYWorld(piece: LumberPiece, bottomMm: number): number {
+  const h = piece.lengthMm * MM_TO_M;
+  return bottomMm * MM_TO_M + h / 2;
+}
+
 function expandSipRegionAlongForCenteredJointBoard(
   regions: readonly { startOffsetMm: number; endOffsetMm: number }[],
   regionIndex: number,
@@ -390,13 +428,15 @@ function sipSpecsForWall(
     if (o.wallId !== wall.id || o.offsetFromStartMm == null || (o.kind !== "window" && o.kind !== "door")) {
       continue;
     }
-    /** Над/под окном берём диапазон между внутренними гранями боковых стоек, а не суженный "оконный блок". */
-    const o0 = o.offsetFromStartMm + Tj / 2;
-    const o1 = o.offsetFromStartMm + o.widthMm - Tj / 2;
+    /** Окно: между внутренними гранями стоек. Дверь каркаса/ГКЛ: чистый проём (без SIP-сужения Tj/2). */
+    const isDoor = o.kind === "door";
+    const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+    const frameDoorClear = isDoor && prof != null && resolveWallCalculationModel(prof) === "frame";
+    const o0 = frameDoorClear ? o.offsetFromStartMm : o.offsetFromStartMm + Tj / 2;
+    const o1 = frameDoorClear ? o.offsetFromStartMm + o.widthMm : o.offsetFromStartMm + o.widthMm - Tj / 2;
     if (o1 - o0 < 1e-3) {
       continue;
     }
-    const isDoor = o.kind === "door";
     const sill = isDoor ? 0 : Math.max(0, o.sillHeightMm ?? o.position?.sillLevelMm ?? 0);
     const openTop = sill + o.heightMm;
     const belowTop = isDoor ? 0 : Math.max(0, sill - horT - OPENING_NODE_SHIFT_MM);
@@ -423,7 +463,22 @@ function lumberPieceCenterYWorld(
   plateT: number,
   vCoreMm: number,
 ): number {
-  const meta = piece.metadata as { openingId?: string; studSegment?: "top" | "middle" | "bottom" } | undefined;
+  const meta = piece.metadata as {
+    openingId?: string;
+    studSegment?: "top" | "middle" | "bottom" | "full" | "door_jamb_jack";
+  } | undefined;
+  if (piece.role === "opening_cripple" && meta?.openingId) {
+    const op = openingById(project, meta.openingId);
+    if (op && op.wallId === wall.id && op.kind === "door") {
+      const openTop = op.heightMm;
+      const len = piece.lengthMm;
+      if (isFrameCalculationWall(wall, project)) {
+        return bottomMm * MM_TO_M + (openTop + len / 2) * MM_TO_M;
+      }
+      const headerTh = plateT;
+      return bottomMm * MM_TO_M + (openTop + headerTh + len / 2) * MM_TO_M;
+    }
+  }
   if (
     piece.orientation === "across_wall" &&
     (piece.role === "opening_left_stud" || piece.role === "opening_right_stud") &&
@@ -431,6 +486,17 @@ function lumberPieceCenterYWorld(
   ) {
     const op = openingById(project, meta.openingId);
     if (op && op.wallId === wall.id) {
+      if (meta.studSegment === "door_jamb_jack") {
+        const len = piece.lengthMm;
+        return bottomMm * MM_TO_M + (plateT + len / 2) * MM_TO_M;
+      }
+      if (meta.studSegment === "full") {
+        if (isFrameCalculationWall(wall, project)) {
+          return frameVerticalMemberCenterYWorld(piece, bottomMm);
+        }
+        const height = piece.lengthMm * MM_TO_M;
+        return bottomMm * MM_TO_M + plateT * MM_TO_M + height / 2;
+      }
       const isDoor = op.kind === "door";
       const sill = op.kind === "window" ? (op.sillHeightMm ?? 0) : 0;
       const openTop = op.kind === "window" ? sill + op.heightMm : op.heightMm;
@@ -455,6 +521,14 @@ function lumberPieceCenterYWorld(
   }
   if (piece.orientation === "across_wall") {
     const height = piece.lengthMm * MM_TO_M;
+    if (
+      isFrameCalculationWall(wall, project) &&
+      (piece.role === "framing_member_generic" ||
+        piece.role === "edge_board" ||
+        piece.role === "tee_joint_board")
+    ) {
+      return frameVerticalMemberCenterYWorld(piece, bottomMm);
+    }
     return bottomMm * MM_TO_M + plateT * MM_TO_M + height / 2;
   }
   const st = piece.sectionThicknessMm;
@@ -542,7 +616,7 @@ function lumberSpecsForWall(
         width,
         height,
         depth,
-        materialType: wood,
+        materialType: piece.materialType ?? wood,
       });
       continue;
     }
@@ -566,7 +640,7 @@ function lumberSpecsForWall(
       width,
       height,
       depth,
-      materialType: wood,
+      materialType: piece.materialType ?? wood,
     });
   }
 

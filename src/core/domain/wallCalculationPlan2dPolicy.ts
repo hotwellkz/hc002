@@ -9,6 +9,7 @@ const DRAWN_ROLES = new Set<LumberRole>([
   "opening_left_stud",
   "opening_right_stud",
   "opening_header",
+  "opening_cripple",
   "opening_sill",
   "tee_joint_board",
   "corner_joint_board",

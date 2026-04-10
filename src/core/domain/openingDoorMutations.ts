@@ -1,6 +1,6 @@
 import type { Opening } from "./opening";
 import {
-  clampOpeningLeftEdgeMm,
+  clampPlacedOpeningLeftEdgeMm,
   defaultPositionSpecFromLeftEdge,
   offsetFromStartFromPositionSpec,
   validateWindowPlacementOnWall,
@@ -43,8 +43,8 @@ export function placeDraftDoorOnWall(
   if (prev.kind !== "door") {
     return { error: "Можно размещать только двери." };
   }
-  const clamped = clampOpeningLeftEdgeMm(wall, prev.widthMm, leftEdgeAlongMm);
-  const v = validateWindowPlacementOnWall(wall, clamped, prev.widthMm, project, prev.id);
+  const clamped = clampPlacedOpeningLeftEdgeMm(wall, prev.widthMm, leftEdgeAlongMm, project, "door");
+  const v = validateWindowPlacementOnWall(wall, clamped, prev.widthMm, project, prev.id, { openingKind: "door" });
   if (!v.ok) {
     return { error: v.reason };
   }
@@ -94,8 +94,8 @@ export function saveDoorParams(
   if (!wall) {
     return { error: "Стена не найдена." };
   }
-  const left = offsetFromStartFromPositionSpec(wall, payload.widthMm, payload.position);
-  const v = validateWindowPlacementOnWall(wall, left, payload.widthMm, project, openingId);
+  const left = offsetFromStartFromPositionSpec(wall, payload.widthMm, payload.position, project, "door");
+  const v = validateWindowPlacementOnWall(wall, left, payload.widthMm, project, openingId, { openingKind: "door" });
   if (!v.ok) {
     return { error: v.reason };
   }
@@ -134,8 +134,8 @@ export function repositionPlacedDoorLeftEdge(
   if (!wall) {
     return { error: "Стена не найдена." };
   }
-  const clamped = clampOpeningLeftEdgeMm(wall, o.widthMm, leftEdgeMm);
-  const v = validateWindowPlacementOnWall(wall, clamped, o.widthMm, project, openingId);
+  const clamped = clampPlacedOpeningLeftEdgeMm(wall, o.widthMm, leftEdgeMm, project, "door");
+  const v = validateWindowPlacementOnWall(wall, clamped, o.widthMm, project, openingId, { openingKind: "door" });
   if (!v.ok) {
     return { error: v.reason };
   }

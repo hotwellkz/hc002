@@ -95,6 +95,15 @@ export function Editor3dVisibilityPanel() {
               onChange={(e) => set3dLayerVisibility({ show3dLayerFrame: e.target.checked })}
             />
           </div>
+          <div className="ed3-vis-row">
+            <label htmlFor={`${idBase}-gyp`}>Гипсокартон</label>
+            <input
+              id={`${idBase}-gyp`}
+              type="checkbox"
+              checked={vs.show3dLayerGypsum !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dLayerGypsum: e.target.checked })}
+            />
+          </div>
           <div
             className={`ed3-vis-row${!windowsReady ? " ed3-vis-row--disabled" : ""}`}
             title={!windowsReady ? "Скоро" : undefined}

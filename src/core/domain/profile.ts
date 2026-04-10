@@ -49,7 +49,8 @@ export interface Profile {
   /** Для solid — габарит по глубине/толщине сечения, мм */
   readonly defaultThicknessMm?: number;
   /** SIP / производственный расчёт (категория wall). */
-  readonly wallManufacturing?: WallManufacturingSettings;
+  /** Частичные переопределения; полный снимок даёт `resolveEffectiveWallManufacturing`. */
+  readonly wallManufacturing?: Partial<WallManufacturingSettings>;
   readonly notes?: string;
   /**
    * Префикс автоматической маркировки стен (категория wall), например "1S".

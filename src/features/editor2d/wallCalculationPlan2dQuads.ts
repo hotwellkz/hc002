@@ -6,6 +6,7 @@
 import type { Project } from "@/core/domain/project";
 import type { Wall } from "@/core/domain/wall";
 import type { LumberRole, WallCalculationResult } from "@/core/domain/wallCalculation";
+import type { ProfileMaterialType } from "@/core/domain/profile";
 import { pieceAlongIntervalMm } from "@/core/domain/wallCalculation3dSpecs";
 import { boardCoreNormalOffsetsMm } from "@/core/domain/wallLumberBoard2dOffsets";
 import { clampAlongWallRangeMm } from "@/core/domain/wallLumberPlan2dGeometry";
@@ -32,7 +33,12 @@ function wallSegmentEndpoints(
 
 export type WallCalculationPlanQuad =
   | { readonly kind: "sip"; readonly corners: readonly Point2dMm[] }
-  | { readonly kind: "lumber"; readonly role: LumberRole; readonly corners: readonly Point2dMm[] };
+  | {
+      readonly kind: "lumber";
+      readonly role: LumberRole;
+      readonly materialType: ProfileMaterialType;
+      readonly corners: readonly Point2dMm[];
+    };
 
 /**
  * Четырёхугольники SIP core и досок (across_wall) в полосе core — та же логика, что drawWallCalculationOverlay2d.
@@ -78,7 +84,7 @@ export function collectWallCalculationPlanQuads(
     const seg = wallSegmentEndpoints(wall, along.lo, along.hi, L);
     const corners = quadCornersAlongWallMm(seg.sx, seg.sy, seg.ex, seg.ey, coreOff.offStartMm, coreOff.offEndMm);
     if (corners) {
-      out.push({ kind: "lumber", role: piece.role, corners });
+      out.push({ kind: "lumber", role: piece.role, materialType: piece.materialType ?? "wood", corners });
     }
   }
 

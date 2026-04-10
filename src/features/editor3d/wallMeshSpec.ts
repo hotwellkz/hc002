@@ -6,6 +6,7 @@ import type { Wall } from "@/core/domain/wall";
 import { wallLengthMm } from "@/core/domain/wallCalculationGeometry";
 import { openingSillLevelMm, openingTopLevelMmForShell } from "@/core/domain/doorGeometry";
 import { subtractOpeningFacesFromWallRect, type WallOpeningFaceMm } from "@/core/domain/wallFaceOpeningSubdivide";
+import { doorAlongWallOccupiedIntervalMm } from "@/core/domain/frameGklDoorAlongGeometry";
 import {
   coreLayerNormalOffsetsMm,
   isInsulationCoreMaterial,
@@ -66,8 +67,9 @@ function openingsOnWallFaceMm(wall: Wall, project: Project): WallOpeningFaceMm[]
       continue;
     }
     const sill = openingSillLevelMm(o);
-    const lo = Math.max(0, o.offsetFromStartMm);
-    const hi = Math.min(L, o.offsetFromStartMm + o.widthMm);
+    const alongIv = doorAlongWallOccupiedIntervalMm(o, wall, project);
+    const lo = Math.max(0, alongIv.lo);
+    const hi = Math.min(L, alongIv.hi);
     const y0 = Math.max(0, sill);
     const y1 = Math.min(wall.heightMm, openingTopLevelMmForShell(o));
     if (hi - lo < MIN_LEN_MM || y1 - y0 < MIN_LEN_MM) {

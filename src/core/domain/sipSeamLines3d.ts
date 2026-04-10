@@ -1,7 +1,17 @@
+import { doorAlongWallOccupiedIntervalMm } from "./frameGklDoorAlongGeometry";
 import { getLayerById } from "./layerOps";
 import { openingSillLevelMm, openingTopLevelMmForShell } from "./doorGeometry";
+import type { Opening } from "./opening";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
+
+function openingAlongSpanForSeamCutsMm(o: Opening, wall: Wall, project: Project): { readonly o0: number; readonly o1: number } {
+  if (o.kind === "door" && o.offsetFromStartMm != null) {
+    const iv = doorAlongWallOccupiedIntervalMm(o, wall, project);
+    return { o0: iv.lo, o1: iv.hi };
+  }
+  return { o0: o.offsetFromStartMm ?? 0, o1: (o.offsetFromStartMm ?? 0) + o.widthMm };
+}
 
 const MM_TO_M = 0.001;
 
@@ -120,8 +130,7 @@ export function buildSipSeamVerticalLineSegmentsForProject(project: Project): re
         if (o.wallId !== wall.id || o.offsetFromStartMm == null) {
           continue;
         }
-        const o0 = o.offsetFromStartMm;
-        const o1 = o0 + o.widthMm;
+        const { o0, o1 } = openingAlongSpanForSeamCutsMm(o, wall, project);
         if (s <= o0 + 1e-3 || s >= o1 - 1e-3) {
           continue;
         }
@@ -145,7 +154,8 @@ export function buildSipSeamVerticalLineSegmentsForProject(project: Project): re
       if (top < wall.heightMm - 1e-3) {
         ySegs.push([Math.max(0, top), wall.heightMm]);
       }
-      for (const s of [o.offsetFromStartMm, o.offsetFromStartMm + o.widthMm]) {
+      const { o0: a0, o1: a1 } = openingAlongSpanForSeamCutsMm(o, wall, project);
+      for (const s of [a0, a1]) {
         if (seamAlongSeen.some((v) => Math.abs(v - s) < 0.6)) {
           continue;
         }

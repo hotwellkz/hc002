@@ -34,13 +34,14 @@ import { appendDoorOpeningLabels2d } from "./doorOpeningLabels2dPixi";
 import { buildViewportTransform, screenToWorld, worldToScreen } from "./viewportTransforms";
 import {
   clampOpeningLeftEdgeMm,
+  clampPlacedOpeningLeftEdgeMm,
   offsetFromStartForCursorCentered,
   pickClosestWallAlongPoint,
   pickPlacedOpeningOnLayerSlice,
   projectWorldToAlongMm,
+  openingWallEndMarginAlongMm,
   snapOpeningLeftEdgeMm,
   validateWindowPlacementOnWall,
-  WINDOW_OPENING_WALL_END_MARGIN_MM,
 } from "@/core/domain/openingWindowGeometry";
 import { wallLengthMm } from "@/core/domain/wallCalculationGeometry";
 
@@ -139,8 +140,9 @@ function openingMoveMetrics(project: Project, openingId: string): OpeningMoveMet
     return null;
   }
   const L = wallLengthMm(wall);
-  const allowedStartMm = WINDOW_OPENING_WALL_END_MARGIN_MM;
-  const allowedEndMm = Math.max(allowedStartMm, L - WINDOW_OPENING_WALL_END_MARGIN_MM);
+  const mEdge = openingWallEndMarginAlongMm(wall, project);
+  const allowedStartMm = mEdge;
+  const allowedEndMm = Math.max(allowedStartMm, L - mEdge);
   const left = o.offsetFromStartMm;
   const right = o.offsetFromStartMm + o.widthMm;
   return {
@@ -1054,7 +1056,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             if (wall && opn && opSess.kind === "window") {
               const along = projectWorldToAlongMm(wall, p);
               const rawLeft = offsetFromStartForCursorCentered(along, opn.widthMm);
-              const left = clampOpeningLeftEdgeMm(wall, opn.widthMm, rawLeft);
+              const left = clampOpeningLeftEdgeMm(wall, opn.widthMm, rawLeft, proj);
               const v = validateWindowPlacementOnWall(wall, left, opn.widthMm, proj, opSess.openingId);
               if (v.ok) {
                 useAppStore.getState().applyOpeningRepositionLeftEdge(opSess.openingId, left);
@@ -1096,8 +1098,16 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const wall = currentProject.walls.find((w) => w.id === hit.wallId);
               if (wall) {
                 const rawLeft = offsetFromStartForCursorCentered(hit.alongMm, op.widthMm);
-                const left = clampOpeningLeftEdgeMm(wall, op.widthMm, rawLeft);
-                const v = validateWindowPlacementOnWall(wall, left, op.widthMm, currentProject, op.id);
+                const left = clampPlacedOpeningLeftEdgeMm(
+                  wall,
+                  op.widthMm,
+                  rawLeft,
+                  currentProject,
+                  op.kind === "door" ? "door" : "window",
+                );
+                const v = validateWindowPlacementOnWall(wall, left, op.widthMm, currentProject, op.id, {
+                  openingKind: op.kind === "door" ? "door" : "window",
+                });
                 windowPlacementHoverRef.current = {
                   wallId: wall.id,
                   leftAlongMm: left,
@@ -1578,6 +1588,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                 o.offsetFromStartMm,
                 proj.settings.gridStepMm,
                 proj.settings.editor2d.snapToGrid,
+                proj,
               );
               if (Math.abs(snapped - o.offsetFromStartMm) > 0.5) {
                 useAppStore.getState().applyOpeningRepositionLeftEdge(opPtr.openingId, snapped);
@@ -1617,6 +1628,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                 o.offsetFromStartMm,
                 proj.settings.gridStepMm,
                 proj.settings.editor2d.snapToGrid,
+                proj,
               );
               if (Math.abs(snapped - o.offsetFromStartMm) > 0.5) {
                 useAppStore.getState().applyOpeningRepositionLeftEdge(opPtr.openingId, snapped);

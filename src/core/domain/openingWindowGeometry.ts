@@ -2,12 +2,26 @@ import type { Point2D } from "../geometry/types";
 import { closestPointOnSegment } from "./wallJointGeometry";
 import type { Opening } from "./opening";
 import type { OpeningPositionSpec } from "./openingWindowTypes";
+import { getProfileById } from "./profileOps";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import { wallLengthMm } from "./wallCalculationGeometry";
+import { resolveEffectiveWallManufacturing, resolveWallCalculationModel } from "./wallManufacturing";
 
-/** Минимальный отступ края проёма от торца стены (вдоль оси), мм. */
+/** Минимальный отступ края проёма от торца стены (вдоль оси), мм — только для SIP. */
 export const WINDOW_OPENING_WALL_END_MARGIN_MM = 80;
+
+/**
+ * Отступ от торцов стены при размещении проёма: для каркаса/ГКЛ — 0 (только геометрия длины),
+ * для SIP — {@link WINDOW_OPENING_WALL_END_MARGIN_MM}.
+ */
+export function openingWallEndMarginAlongMm(wall: Wall, project: Project): number {
+  const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  if (prof && resolveWallCalculationModel(prof) === "frame") {
+    return 0;
+  }
+  return WINDOW_OPENING_WALL_END_MARGIN_MM;
+}
 
 export type { OpeningAlongAnchor, OpeningAlongAlignment, OpeningPositionSpec } from "./openingWindowTypes";
 
@@ -36,14 +50,48 @@ export function offsetFromStartForCursorCentered(alongMm: number, openingWidthMm
   return alongMm - openingWidthMm / 2;
 }
 
-export function clampOpeningLeftEdgeMm(wall: Wall, openingWidthMm: number, leftEdgeMm: number): number {
+export function clampOpeningLeftEdgeMm(
+  wall: Wall,
+  openingWidthMm: number,
+  leftEdgeMm: number,
+  project: Project,
+): number {
   const L = wallLengthMm(wall);
-  const m = WINDOW_OPENING_WALL_END_MARGIN_MM;
+  const m = openingWallEndMarginAlongMm(wall, project);
   const maxLeft = Math.max(m, L - openingWidthMm - m);
   return Math.max(m, Math.min(maxLeft, leftEdgeMm));
 }
 
+/** Толщина стойки вдоль стены для двери каркаса/ГКЛ (мм), 0 если не каркас. */
+function frameDoorStudThicknessAlongWallForWall(wall: Wall, project: Project): number {
+  const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  if (!prof || resolveWallCalculationModel(prof) !== "frame") {
+    return 0;
+  }
+  return resolveEffectiveWallManufacturing(prof).jointBoardThicknessMm;
+}
+
+/**
+ * Для двери на каркасной стене: по стене занято `widthMm + 2*T` (чистый проём + обкладка стойками).
+ */
+export function doorAlongWallClampSpanMm(wall: Wall, clearDoorWidthMm: number, project: Project): number {
+  const T = frameDoorStudThicknessAlongWallForWall(wall, project);
+  return T > 0 ? clearDoorWidthMm + 2 * T : clearDoorWidthMm;
+}
+
+export function clampPlacedOpeningLeftEdgeMm(
+  wall: Wall,
+  widthMm: number,
+  leftEdgeMm: number,
+  project: Project,
+  kind: "door" | "window" | "other",
+): number {
+  const span = kind === "door" ? doorAlongWallClampSpanMm(wall, widthMm, project) : widthMm;
+  return clampOpeningLeftEdgeMm(wall, span, leftEdgeMm, project);
+}
+
 export function openingIntervalsOnWall(project: Project, wallId: string, excludeOpeningId?: string): readonly { lo: number; hi: number }[] {
+  const wall = project.walls.find((w) => w.id === wallId);
   const out: { lo: number; hi: number }[] = [];
   for (const o of project.openings) {
     if (o.wallId !== wallId || o.offsetFromStartMm == null) {
@@ -51,6 +99,16 @@ export function openingIntervalsOnWall(project: Project, wallId: string, exclude
     }
     if (excludeOpeningId && o.id === excludeOpeningId) {
       continue;
+    }
+    if (o.kind === "door" && wall) {
+      const T = frameDoorStudThicknessAlongWallForWall(wall, project);
+      if (T > 0) {
+        out.push({
+          lo: o.offsetFromStartMm - T,
+          hi: o.offsetFromStartMm + o.widthMm + T,
+        });
+        continue;
+      }
     }
     out.push({ lo: o.offsetFromStartMm, hi: o.offsetFromStartMm + o.widthMm });
   }
@@ -67,19 +125,36 @@ export function validateWindowPlacementOnWall(
   openingWidthMm: number,
   project: Project,
   excludeOpeningId?: string,
+  options?: { readonly openingKind?: "door" | "window" | "other" },
 ): { ok: true } | { ok: false; reason: string } {
   const L = wallLengthMm(wall);
-  const m = WINDOW_OPENING_WALL_END_MARGIN_MM;
-  if (openingWidthMm <= 0 || openingWidthMm > L - 2 * m) {
-    return { ok: false, reason: "Проём не помещается по длине стены (с учётом отступов от торцов)." };
+  const m = openingWallEndMarginAlongMm(wall, project);
+  const T = options?.openingKind === "door" ? frameDoorStudThicknessAlongWallForWall(wall, project) : 0;
+  const minAlongOccupied = openingWidthMm + 2 * T;
+  if (openingWidthMm <= 0 || minAlongOccupied > L - 2 * m + 1e-3) {
+    return {
+      ok: false,
+      reason:
+        m > 1e-6
+          ? "Проём не помещается по длине стены (с учётом отступов от торцов)."
+          : "Проём не помещается по длине стены.",
+    };
   }
-  const right = leftEdgeMm + openingWidthMm;
-  if (leftEdgeMm < m - 1e-3 || right > L - m + 1e-3) {
+  const physLo = leftEdgeMm - T;
+  const physHi = leftEdgeMm + openingWidthMm + T;
+  if (m <= 1e-6) {
+    /** Каркас/ГКЛ: только чистый проём в пределах [0, L], без SIP-инсета от торцов. */
+    const clearLo = leftEdgeMm;
+    const clearHi = leftEdgeMm + openingWidthMm;
+    if (clearLo < -1e-3 || clearHi > L + 1e-3) {
+      return { ok: false, reason: "Проём выходит за пределы длины стены." };
+    }
+  } else if (physLo < m - 1e-3 || physHi > L - m + 1e-3) {
     return { ok: false, reason: "Проём выходит за пределы стены или близко к торцу." };
   }
   const others = openingIntervalsOnWall(project, wall.id, excludeOpeningId);
   for (const iv of others) {
-    if (intervalsOverlap(leftEdgeMm, right, iv.lo, iv.hi)) {
+    if (intervalsOverlap(physLo, physHi, iv.lo, iv.hi)) {
       return { ok: false, reason: "Пересечение с другим проёмом на этой стене." };
     }
   }
@@ -93,6 +168,8 @@ export function offsetFromStartFromPositionSpec(
   wall: Wall,
   openingWidthMm: number,
   spec: OpeningPositionSpec,
+  project: Project,
+  openingKind: "door" | "window" | "other" = "window",
 ): number {
   const L = wallLengthMm(wall);
   let anchorDist = 0;
@@ -115,7 +192,8 @@ export function offsetFromStartFromPositionSpec(
   } else if (spec.alignment === "trailing") {
     left = anchorDist - openingWidthMm;
   }
-  return clampOpeningLeftEdgeMm(wall, openingWidthMm, left);
+  const clampSpan = openingKind === "door" ? doorAlongWallClampSpanMm(wall, openingWidthMm, project) : openingWidthMm;
+  return clampOpeningLeftEdgeMm(wall, clampSpan, left, project);
 }
 
 /** Заполняет position из текущего offset (для первичной установки по клику). */
@@ -263,8 +341,9 @@ export function snapOpeningLeftEdgeMm(
   rawLeftMm: number,
   gridStepMm: number,
   snapGrid: boolean,
+  project: Project,
 ): number {
   const center = rawLeftMm + openingWidthMm / 2;
   const cSnapped = snapAlongWallMm(center, gridStepMm, snapGrid);
-  return clampOpeningLeftEdgeMm(wall, openingWidthMm, cSnapped - openingWidthMm / 2);
+  return clampOpeningLeftEdgeMm(wall, openingWidthMm, cSnapped - openingWidthMm / 2, project);
 }
