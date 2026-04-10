@@ -2,7 +2,7 @@ import type { Project } from "./project";
 import { getProfileById } from "./profileOps";
 import type { Wall } from "./wall";
 import type { WallCalculationResult } from "./wallCalculation";
-import { coreLayerNormalOffsetsMm } from "./wallProfileLayers";
+import { resolveWallProfileCoreBandMm } from "./wallProfileLayers";
 
 /**
  * Полоса ядра (утеплитель) по нормали к оси стены для 2D: все внутренние доски
@@ -16,9 +16,9 @@ export function boardCoreNormalOffsetsMm(
   const T = wall.thicknessMm;
   const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
   if (profile) {
-    const core = coreLayerNormalOffsetsMm(T, profile);
+    const core = resolveWallProfileCoreBandMm(T, profile);
     if (core) {
-      return core;
+      return { offStartMm: core.offStartMm, offEndMm: core.offEndMm };
     }
   }
   const snap = calc.settingsSnapshot;

@@ -1,4 +1,5 @@
 import type { ProfileMaterialType } from "./profile";
+import { computeProfileTotalThicknessMm, getProfileById } from "./profileOps";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import {
@@ -188,6 +189,20 @@ export function normalizeWallCalculationsInProject(project: Project): Project {
     }
 
     const plateT = calc.settingsSnapshot.plateBoardThicknessMm ?? 45;
+    const wallSipThicknessMm = (() => {
+      if (wall == null) {
+        return 0;
+      }
+      if (wall.thicknessMm > 0) {
+        return Math.round(wall.thicknessMm);
+      }
+      const prof = wall.profileId != null ? getProfileById(project, wall.profileId) : undefined;
+      if (prof == null) {
+        return 0;
+      }
+      const t = computeProfileTotalThicknessMm(prof);
+      return t > 0 ? Math.round(t) : 0;
+    })();
     const sipRegions: SipPanelRegion[] = calc.sipRegions.map((r) => {
       const wm = wall?.markLabel?.trim() || wall?.id.slice(0, 8) || "WALL";
       const pm = (r as { pieceMark?: string }).pieceMark?.trim();
@@ -195,14 +210,21 @@ export function normalizeWallCalculationsInProject(project: Project): Project {
       const tm = (r as { thicknessMm?: number }).thicknessMm;
       const heightFallback =
         wall != null ? Math.max(0, Math.round(wall.heightMm - plateT * 2)) : 0;
-      const thickFallback = Math.round(
+      const thickLegacyFallback = Math.round(
         calc.settingsSnapshot.coreDepthMm ?? calc.settingsSnapshot.jointBoardDepthMm ?? 0,
       );
+      /** В UI/спецификации толщина панели = полная толщина стены, не слой EPS. */
+      const thicknessMm =
+        wallSipThicknessMm > 0
+          ? wallSipThicknessMm
+          : tm != null && Number.isFinite(tm) && tm > 0
+            ? Math.round(tm)
+            : thickLegacyFallback;
       return {
         ...r,
         pieceMark: pm && pm.length > 0 ? pm : buildSipPanelPieceMark(wm, r.index),
         heightMm: hm != null && Number.isFinite(hm) ? hm : heightFallback,
-        thicknessMm: tm != null && Number.isFinite(tm) && tm > 0 ? tm : thickFallback,
+        thicknessMm,
       };
     });
 

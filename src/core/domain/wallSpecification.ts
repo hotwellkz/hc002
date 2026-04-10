@@ -161,11 +161,13 @@ export function buildWallSpecificationSipPanels(wall: Wall, project: Project): r
   if (!calc) {
     return [];
   }
+  const panelThicknessMm =
+    wall.thicknessMm > 0 ? Math.round(wall.thicknessMm) : Math.round(calc.sipRegions[0]?.thicknessMm ?? 0);
   return sipRegionsSortedForDisplay(calc.sipRegions).map((r) => ({
     pieceMark: r.pieceMark,
     widthMm: Math.round(r.widthMm),
     heightMm: Math.round(r.heightMm),
-    thicknessMm: Math.round(r.thicknessMm),
+    thicknessMm: panelThicknessMm > 0 ? panelThicknessMm : Math.round(r.thicknessMm),
     sequenceIndex: r.index,
   }));
 }

@@ -15,6 +15,8 @@ import { cssHexToPixiNumber } from "@/shared/cssColor";
 import { useAppStore } from "@/store/useAppStore";
 import { useUiThemeStore } from "@/store/useUiThemeStore";
 
+import { computeAnchorRelativeHud } from "@/core/geometry/anchorPlacementHud";
+import { resolveSnap2d } from "@/core/geometry/snap2d";
 import { computePlacementHudScreenPosition } from "./placementHudPosition";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
@@ -198,6 +200,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const lastOpeningClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const lastWallClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  /** Координаты курсора в CSS px относительно контейнера 2D (совпадают с областью canvas). */
+  const lastPointerAnchorCrosshairRef = useRef({ inside: false, cssX: 0, cssY: 0, worldX: 0, worldY: 0 });
+  const anchorCrosshairInnerRef = useRef<HTMLDivElement>(null);
   const cursorCbRef = useRef(onWorldCursorMm);
   cursorCbRef.current = onWorldCursorMm;
 
@@ -213,6 +218,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     readonly dx: number;
     readonly dy: number;
     readonly d: number;
+    readonly angleDeg?: number;
+    /** Защёлкнутый угол шага 45° — показываем как точное ∠ без дробной части. */
+    readonly angleSnapLockedDeg?: number | null;
+    readonly axisHint?: string | null;
   } | null>(null);
   const setCoordHudRef = useRef(setCoordHud);
   setCoordHudRef.current = setCoordHud;
@@ -230,7 +239,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const moveEditInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!wallPlacementSession || wallPlacementSession.phase !== "waitingSecondPoint") {
+    if (!wallPlacementSession) {
       setCoordHud(null);
     }
   }, [wallPlacementSession]);
@@ -241,6 +250,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (useAppStore.getState().wallCoordinateModalOpen) {
           e.preventDefault();
           useAppStore.getState().closeWallCoordinateModal();
+          return;
+        }
+        if (useAppStore.getState().wallAnchorCoordinateModalOpen) {
+          e.preventDefault();
+          useAppStore.getState().closeWallAnchorCoordinateModal();
           return;
         }
         if (useAppStore.getState().wallJointSession) {
@@ -260,7 +274,20 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           setWallHintRef.current(null);
           return;
         }
-        if (useAppStore.getState().wallPlacementSession) {
+        const stEsc = useAppStore.getState();
+        if (stEsc.wallPlacementSession) {
+          const ph = stEsc.wallPlacementSession.phase;
+          if (
+            stEsc.wallAnchorPlacementModeActive &&
+            stEsc.wallPlacementAnchorMm &&
+            (ph === "waitingFirstWallPoint" || ph === "waitingOriginAndFirst")
+          ) {
+            e.preventDefault();
+            stEsc.clearWallPlacementAnchor();
+            setWallHintRef.current(null);
+            setCoordHudRef.current(null);
+            return;
+          }
           e.preventDefault();
           useAppStore.getState().wallPlacementBackOrExit();
           setWallHintRef.current(null);
@@ -274,10 +301,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           return;
         }
         const st = useAppStore.getState();
-        if (!st.wallPlacementSession || st.wallPlacementSession.phase !== "waitingSecondPoint") {
+        if (st.wallCoordinateModalOpen || st.wallAnchorCoordinateModalOpen) {
           return;
         }
-        if (st.wallCoordinateModalOpen) {
+        if (
+          st.wallPlacementSession &&
+          st.wallAnchorPlacementModeActive &&
+          st.wallPlacementAnchorMm &&
+          (st.wallPlacementSession.phase === "waitingFirstWallPoint" ||
+            st.wallPlacementSession.phase === "waitingOriginAndFirst")
+        ) {
+          e.preventDefault();
+          st.openWallAnchorCoordinateModal();
+          return;
+        }
+        if (!st.wallPlacementSession || st.wallPlacementSession.phase !== "waitingSecondPoint") {
           return;
         }
         e.preventDefault();
@@ -297,7 +335,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     if (!el) {
       return;
     }
-    el.style.cursor = pendingWindowPlacement || pendingDoorPlacement ? "crosshair" : "";
+    if (pendingWindowPlacement || pendingDoorPlacement) {
+      el.style.cursor = "crosshair";
+    } else {
+      el.style.cursor = "";
+    }
   }, [pendingWindowPlacement, pendingDoorPlacement]);
 
   useEffect(() => {
@@ -356,6 +398,100 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
     const panning = { active: false, sx: 0, sy: 0, panXMm: 0, panYMm: 0, zoom: 1 };
     let marquee: MarqueeDrag | null = null;
+
+    let anchorCrosshairShown = false;
+
+    const applyAnchorCrosshairCursorTargets = (canvasEl: HTMLCanvasElement, value: string) => {
+      canvasEl.style.cursor = value;
+      const par = canvasEl.parentElement;
+      if (par) {
+        par.style.cursor = value;
+      }
+    };
+
+    const syncAnchorCrosshairOverlay = (canvas: HTMLCanvasElement) => {
+      const inner = anchorCrosshairInnerRef.current;
+      if (!inner) {
+        return;
+      }
+      const app = appRef.current;
+      if (!app) {
+        return;
+      }
+      const st = useAppStore.getState();
+      const ws = st.wallPlacementSession;
+      const firstPh =
+        ws && (ws.phase === "waitingFirstWallPoint" || ws.phase === "waitingOriginAndFirst");
+      const show =
+        st.wallAnchorPlacementModeActive &&
+        Boolean(firstPh) &&
+        !st.wallCoordinateModalOpen &&
+        !st.wallAnchorCoordinateModalOpen &&
+        !st.openingMoveModeActive &&
+        !panning.active &&
+        !marquee &&
+        lastPointerAnchorCrosshairRef.current.inside;
+
+      if (!show) {
+        inner.style.visibility = "hidden";
+        if (anchorCrosshairShown) {
+          anchorCrosshairShown = false;
+          if (!panning.active && !st.openingMoveModeActive) {
+            applyAnchorCrosshairCursorTargets(canvas, "");
+          }
+        }
+        return;
+      }
+
+      const w = app.renderer.width;
+      const h = app.renderer.height;
+      const v2 = st.viewport2d;
+      const t = buildViewportTransform(w, h, v2.panXMm, v2.panYMm, v2.zoomPixelsPerMm);
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width / w;
+      const scaleY = rect.height / h;
+      const last = lastPointerAnchorCrosshairRef.current;
+      const proj = st.currentProject;
+      const e2 = proj.settings.editor2d;
+
+      const am = st.wallPlacementAnchorMm;
+      const ap = st.wallPlacementAnchorPreviewEndMm;
+
+      let centerRx: number;
+      let centerRy: number;
+      if (am && ap) {
+        const sc = worldToScreen(ap.x, ap.y, t);
+        centerRx = sc.x;
+        centerRy = sc.y;
+      } else if (!am) {
+        const snap = resolveSnap2d({
+          rawWorldMm: { x: last.worldX, y: last.worldY },
+          viewport: t,
+          project: proj,
+          snapSettings: {
+            snapToVertex: e2.snapToVertex,
+            snapToEdge: e2.snapToEdge,
+            snapToGrid: e2.snapToGrid,
+          },
+          gridStepMm: proj.settings.gridStepMm,
+        });
+        const sc = worldToScreen(snap.point.x, snap.point.y, t);
+        centerRx = sc.x;
+        centerRy = sc.y;
+      } else {
+        const sc = worldToScreen(last.worldX, last.worldY, t);
+        centerRx = sc.x;
+        centerRy = sc.y;
+      }
+
+      const cssX = centerRx * scaleX;
+      const cssY = centerRy * scaleY;
+
+      inner.style.visibility = "visible";
+      inner.style.transform = `translate3d(${cssX}px, ${cssY}px, 0) translate(-50%, -50%)`;
+      applyAnchorCrosshairCursorTargets(canvas, "none");
+      anchorCrosshairShown = true;
+    };
 
     const paint = () => {
       const app = appRef.current;
@@ -633,6 +769,43 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             layeredPreviewOpts,
           );
         }
+        if (wallPlacementSession.angleSnapLockedDeg != null) {
+          const f = wallPlacementSession.firstPointMm;
+          const e = wallPlacementSession.previewEndMm;
+          const a = worldToScreen(f.x, f.y, t);
+          const b = worldToScreen(e.x, e.y, t);
+          previewG.moveTo(a.x, a.y);
+          previewG.lineTo(b.x, b.y);
+          previewG.stroke({ width: 1.75, color: 0x34d399, alpha: 0.55 });
+        }
+      }
+
+      const stPaint = useAppStore.getState();
+      const anchorOnP = stPaint.wallAnchorPlacementModeActive;
+      const anchorP = stPaint.wallPlacementAnchorMm;
+      const endP = stPaint.wallPlacementAnchorPreviewEndMm;
+      const wsP = wallPlacementSession;
+      const firstPhP =
+        wsP && (wsP.phase === "waitingFirstWallPoint" || wsP.phase === "waitingOriginAndFirst");
+      if (anchorOnP && anchorP && endP && firstPhP) {
+        const a = worldToScreen(anchorP.x, anchorP.y, t);
+        const b = worldToScreen(endP.x, endP.y, t);
+        const cross = 8;
+        previewG.moveTo(a.x - cross, a.y);
+        previewG.lineTo(a.x + cross, a.y);
+        previewG.moveTo(a.x, a.y - cross);
+        previewG.lineTo(a.x, a.y + cross);
+        previewG.stroke({ width: 1.25, color: 0xf59e0b, alpha: 0.92 });
+        previewG.moveTo(a.x, a.y);
+        previewG.lineTo(b.x, b.y);
+        previewG.stroke({ width: 1, color: 0x94a3b8, alpha: 0.78 });
+        if (stPaint.wallPlacementAnchorAngleSnapLockedDeg != null) {
+          previewG.moveTo(a.x, a.y);
+          previewG.lineTo(b.x, b.y);
+          previewG.stroke({ width: 1.75, color: 0x34d399, alpha: 0.55 });
+        }
+        previewG.circle(b.x, b.y, 4);
+        previewG.stroke({ width: 1, color: 0xe2e8f0, alpha: 0.85 });
       }
 
       snapMarkerG.clear();
@@ -652,6 +825,25 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         snapMarkerG.fill({ color: col, alpha: 0.95 });
       }
 
+      if (
+        stPaint.wallAnchorPlacementModeActive &&
+        stPaint.wallPlacementAnchorMm &&
+        stPaint.wallPlacementAnchorPreviewEndMm &&
+        wsP &&
+        (wsP.phase === "waitingFirstWallPoint" || wsP.phase === "waitingOriginAndFirst") &&
+        stPaint.wallPlacementAnchorLastSnapKind &&
+        stPaint.wallPlacementAnchorLastSnapKind !== "none"
+      ) {
+        const skA = stPaint.wallPlacementAnchorLastSnapKind;
+        const pA = stPaint.wallPlacementAnchorPreviewEndMm;
+        const scA = worldToScreen(pA.x, pA.y, t);
+        const colA = skA === "vertex" ? 0x5cff8a : skA === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(scA.x, scA.y, 7);
+        snapMarkerG.stroke({ width: 2, color: colA, alpha: 0.95 });
+        snapMarkerG.circle(scA.x, scA.y, 2);
+        snapMarkerG.fill({ color: colA, alpha: 0.95 });
+      }
+
       marqueeG.clear();
       if (marquee) {
         const x = Math.min(marquee.sx, marquee.cx);
@@ -662,6 +854,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         marqueeG.fill({ color: 0x5aa7ff, alpha: 0.14 });
         marqueeG.stroke({ width: 1, color: 0x5aa7ff, alpha: 0.9 });
       }
+
+      syncAnchorCrosshairOverlay(app.canvas as HTMLCanvasElement);
     };
 
     let detachListeners: (() => void) | null = null;
@@ -750,7 +944,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           panPointerId = 0;
         }
         panning.active = false;
-        canvas.style.cursor = "";
+        applyAnchorCrosshairCursorTargets(canvas, "");
+        syncAnchorCrosshairOverlay(canvas);
       };
 
       let marqueePointerId = 0;
@@ -832,6 +1027,18 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         const t = buildViewportTransform(w, h, viewport2d.panXMm, viewport2d.panYMm, viewport2d.zoomPixelsPerMm);
         const p = screenToWorld(ev.global.x, ev.global.y, t);
         cursorCbRef.current({ x: p.x, y: p.y });
+        {
+          const rectPtr = canvas.getBoundingClientRect();
+          const scaleXp = rectPtr.width / w;
+          const scaleYp = rectPtr.height / h;
+          lastPointerAnchorCrosshairRef.current = {
+            inside: true,
+            cssX: ev.global.x * scaleXp,
+            cssY: ev.global.y * scaleYp,
+            worldX: p.x,
+            worldY: p.y,
+          };
+        }
 
         const opSess = openingPointerRef.current;
         if (opSess && ev.pointerId === opSess.pointerId) {
@@ -915,9 +1122,19 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           setCoordHudRef.current(null);
           paint();
         } else if (wallPlacementSession) {
+          const stWall = useAppStore.getState();
+          const wallAnchorCoordOpen = stWall.wallAnchorCoordinateModalOpen;
+          const coordModalAny = wallCoordinateModalOpen || wallAnchorCoordOpen;
           const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
+          const anchorOn = stWall.wallAnchorPlacementModeActive;
+          const anchorMm = stWall.wallPlacementAnchorMm;
+          const firstPh =
+            wallPlacementSession.phase === "waitingFirstWallPoint" ||
+            wallPlacementSession.phase === "waitingOriginAndFirst";
+
           if (wallPlacementSession.phase === "waitingSecondPoint") {
-            useAppStore.getState().wallPlacementPreviewMove(p, t);
+            const altKey = Boolean((ev as { altKey?: boolean }).altKey);
+            useAppStore.getState().wallPlacementPreviewMove(p, t, { altKey });
             const ws = useAppStore.getState().wallPlacementSession;
             let snapLine = "";
             if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
@@ -933,18 +1150,85 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
               wallCoordinateModalOpen,
-              showCoordHud: !wallCoordinateModalOpen,
+              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+              showCoordHud: !coordModalAny,
             });
             setWallHintRef.current({
               left: hud.hintLeft,
               top: hud.hintTop,
-              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}`,
+              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки`,
             });
             if (ws?.firstPointMm && ws.previewEndMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
               const dx = ws.previewEndMm.x - ws.firstPointMm.x;
               const dy = ws.previewEndMm.y - ws.firstPointMm.y;
               const d = Math.hypot(dx, dy);
-              setCoordHudRef.current({ left: hud.coordHudLeft, top: hud.coordHudTop, dx, dy, d });
+              const rel2 = computeAnchorRelativeHud(
+                ws.firstPointMm.x,
+                ws.firstPointMm.y,
+                ws.previewEndMm.x,
+                ws.previewEndMm.y,
+              );
+              const locked = ws.angleSnapLockedDeg ?? null;
+              setCoordHudRef.current({
+                left: hud.coordHudLeft,
+                top: hud.coordHudTop,
+                dx,
+                dy,
+                d,
+                angleDeg: locked != null ? locked : rel2.angleDeg,
+                angleSnapLockedDeg: locked,
+                axisHint: rel2.axisHint,
+              });
+            } else {
+              setCoordHudRef.current(null);
+            }
+          } else if (anchorOn && firstPh) {
+            if (anchorMm && !wallAnchorCoordOpen) {
+              useAppStore.getState().wallPlacementAnchorPreviewMove(p, t, {
+                altKey: Boolean((ev as { altKey?: boolean }).altKey),
+              });
+            }
+            const stA = useAppStore.getState();
+            const am = stA.wallPlacementAnchorMm;
+            const ap = stA.wallPlacementAnchorPreviewEndMm;
+            const hudA = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen,
+              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+              showCoordHud: !coordModalAny && Boolean(am && ap),
+            });
+            const snapA =
+              stA.wallPlacementAnchorLastSnapKind && stA.wallPlacementAnchorLastSnapKind !== "none"
+                ? stA.wallPlacementAnchorLastSnapKind === "vertex"
+                  ? "Привязка: угол"
+                  : stA.wallPlacementAnchorLastSnapKind === "edge"
+                    ? "Привязка: линия"
+                    : "Привязка: сетка"
+                : "";
+            const hintTitle = am
+              ? "Укажите начало стены (ЛКМ) или Пробел — координаты"
+              : "Выберите первую точку";
+            const altHint = am ? "\nAlt — без угловой привязки" : "";
+            setWallHintRef.current({
+              left: hudA.hintLeft,
+              top: hudA.hintTop,
+              text: `Точка привязки\n${hintTitle}\n${modeLabel}${snapA ? `\n${snapA}` : ""}${altHint}`,
+            });
+            if (am && ap && hudA.coordHudLeft != null && hudA.coordHudTop != null) {
+              const rel = computeAnchorRelativeHud(am.x, am.y, ap.x, ap.y);
+              const lockedA = stA.wallPlacementAnchorAngleSnapLockedDeg ?? null;
+              setCoordHudRef.current({
+                left: hudA.coordHudLeft,
+                top: hudA.coordHudTop,
+                dx: rel.dx,
+                dy: rel.dy,
+                d: rel.d,
+                angleDeg: lockedA != null ? lockedA : rel.angleDeg,
+                angleSnapLockedDeg: lockedA,
+                axisHint: rel.axisHint,
+              });
             } else {
               setCoordHudRef.current(null);
             }
@@ -953,7 +1237,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen: false,
+              wallCoordinateModalOpen,
+              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
               showCoordHud: false,
             });
             setWallHintRef.current({
@@ -1020,6 +1305,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             panYMm: panning.panYMm + dyPx / panning.zoom,
           });
         }
+
+        syncAnchorCrosshairOverlay(canvas);
       };
 
       const onPointerDown = (ev: FederatedPointerEvent) => {
@@ -1073,7 +1360,24 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
 
         if (wallPlacementSession && ev.button === 2) {
+          if (useAppStore.getState().wallAnchorCoordinateModalOpen) {
+            ev.preventDefault();
+            return;
+          }
           ev.preventDefault();
+          const stR = useAppStore.getState();
+          const ph = wallPlacementSession.phase;
+          if (
+            stR.wallAnchorPlacementModeActive &&
+            stR.wallPlacementAnchorMm &&
+            (ph === "waitingFirstWallPoint" || ph === "waitingOriginAndFirst")
+          ) {
+            stR.clearWallPlacementAnchor();
+            setWallHintRef.current(null);
+            setCoordHudRef.current(null);
+            paint();
+            return;
+          }
           useAppStore.getState().wallPlacementBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
@@ -1082,7 +1386,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
 
         if (wallPlacementSession && ev.button === 0) {
-          useAppStore.getState().wallPlacementPrimaryClick(worldMm, t);
+          if (useAppStore.getState().wallAnchorCoordinateModalOpen) {
+            return;
+          }
+          useAppStore.getState().wallPlacementPrimaryClick(worldMm, t, { altKey: Boolean(ev.altKey) });
           paint();
           if (!useAppStore.getState().wallPlacementSession) {
             setWallHintRef.current(null);
@@ -1287,6 +1594,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       };
 
       const onPointerLeave = () => {
+        const prev = lastPointerAnchorCrosshairRef.current;
+        lastPointerAnchorCrosshairRef.current = { ...prev, inside: false };
+        syncAnchorCrosshairOverlay(canvas);
         const opPtr = openingPointerRef.current;
         if (opPtr) {
           openingPointerRef.current = null;
@@ -1382,14 +1692,41 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       }}
     >
       <div ref={hostRef} style={{ width: "100%", height: "100%", minWidth: 0, minHeight: 0 }} />
+      <div
+        className="ed2d-anchor-crosshair-layer"
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 3,
+          overflow: "hidden",
+        }}
+      >
+        <div ref={anchorCrosshairInnerRef} className="ed2d-anchor-crosshair" style={{ visibility: "hidden" }}>
+          <svg className="ed2d-anchor-crosshair__svg" viewBox="0 0 17 17" width="17" height="17" aria-hidden>
+            <line className="ed2d-anchor-crosshair__v" x1="8" y1="1" x2="8" y2="16" />
+            <line className="ed2d-anchor-crosshair__h" x1="1" y1="8" x2="16" y2="8" />
+          </svg>
+        </div>
+      </div>
       {wallHint ? (
         <div className="ed2d-wall-hint" style={{ left: wallHint.left, top: wallHint.top }}>
           {wallHint.text}
         </div>
       ) : null}
       {coordHud ? (
-        <div className="ed2d-wall-coord-hud" style={{ left: coordHud.left, top: coordHud.top }}>
+        <div
+          className={
+            coordHud.angleSnapLockedDeg != null
+              ? "ed2d-wall-coord-hud ed2d-wall-coord-hud--angle-snap"
+              : "ed2d-wall-coord-hud"
+          }
+          style={{ left: coordHud.left, top: coordHud.top }}
+        >
           X={Math.round(coordHud.dx)} · Y={Math.round(coordHud.dy)} · D={Math.round(coordHud.d)}
+          {coordHud.angleDeg != null ? ` · ∠${Math.round(coordHud.angleDeg)}°` : null}
+          {coordHud.axisHint ? ` · ${coordHud.axisHint}` : null}
         </div>
       ) : null}
       {moveEdit ? (

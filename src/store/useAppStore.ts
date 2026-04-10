@@ -56,7 +56,9 @@ import {
 } from "@/core/domain/openingWindowGeometry";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
-import { resolveSnap2d } from "@/core/geometry/snap2d";
+import type { Point2D } from "@/core/geometry/types";
+import { applyWallDirectionAngleSnapToPoint } from "@/core/geometry/wallDirectionAngleSnap";
+import { resolveSnap2d, type SnapKind } from "@/core/geometry/snap2d";
 import { computeProfileThickness, setProjectOrigin } from "@/core/domain/wallOps";
 import { commitWallPlacementSecondPoint } from "@/core/domain/wallPlacementCommit";
 import type { WallPlacementSession } from "@/core/domain/wallPlacement";
@@ -133,6 +135,15 @@ interface AppState {
   /** Режим постановки стены на 2D (после модалки «Добавить стену»). */
   readonly wallPlacementSession: WallPlacementSession | null;
   readonly wallCoordinateModalOpen: boolean;
+  /** Модалка смещения начала стены от опорной точки (Пробел после выбора опоры). */
+  readonly wallAnchorCoordinateModalOpen: boolean;
+  /** Режим «Точка привязки»: опорная точка и смещение для начала стены (вместе с «Добавить стену»). */
+  readonly wallAnchorPlacementModeActive: boolean;
+  readonly wallPlacementAnchorMm: Point2D | null;
+  readonly wallPlacementAnchorPreviewEndMm: Point2D | null;
+  readonly wallPlacementAnchorLastSnapKind: SnapKind | null;
+  /** Гистерезис угловой привязки вектора «опора → начало стены». */
+  readonly wallPlacementAnchorAngleSnapLockedDeg: number | null;
   readonly wallCalculationModalOpen: boolean;
   readonly dirty: boolean;
   readonly lastError: string | null;
@@ -251,8 +262,16 @@ interface AppActions {
    */
   wallPlacementBackOrExit: () => void;
   setViewportCanvas2dPx: (width: number, height: number) => void;
-  wallPlacementPreviewMove: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
-  wallPlacementPrimaryClick: (worldMm: { readonly x: number; readonly y: number }, viewport: ViewportTransform) => void;
+  wallPlacementPreviewMove: (
+    worldMm: { readonly x: number; readonly y: number },
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
+  wallPlacementPrimaryClick: (
+    worldMm: { readonly x: number; readonly y: number },
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
   wallPlacementCompleteSecondPoint: (secondSnappedMm: { readonly x: number; readonly y: number }) => void;
   setLinearPlacementMode: (mode: LinearProfilePlacementMode) => void;
   setWallShapeMode: (mode: WallShapeMode) => void;
@@ -262,6 +281,16 @@ interface AppActions {
   openWallCoordinateModal: () => void;
   closeWallCoordinateModal: () => void;
   applyWallCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
+  toggleWallAnchorPlacementMode: () => void;
+  clearWallPlacementAnchor: () => void;
+  wallPlacementAnchorPreviewMove: (
+    worldMm: { readonly x: number; readonly y: number },
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
+  openWallAnchorCoordinateModal: () => void;
+  closeWallAnchorCoordinateModal: () => void;
+  applyWallAnchorCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
   openWallCalculationModal: () => void;
   closeWallCalculationModal: () => void;
   applyWallCalculationModal: (input: {
@@ -337,6 +366,12 @@ export const useAppStore = create<AppStore>((set, get) => {
     wallJointSession: null,
     wallPlacementSession: null,
     wallCoordinateModalOpen: false,
+    wallAnchorCoordinateModalOpen: false,
+    wallAnchorPlacementModeActive: false,
+    wallPlacementAnchorMm: null,
+    wallPlacementAnchorPreviewEndMm: null,
+    wallPlacementAnchorLastSnapKind: null,
+    wallPlacementAnchorAngleSnapLockedDeg: null,
     wallCalculationModalOpen: false,
     dirty: false,
     lastError: null,
@@ -381,6 +416,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           ? {
               wallPlacementSession: null,
               wallCoordinateModalOpen: false,
+              wallAnchorCoordinateModalOpen: false,
+              wallAnchorPlacementModeActive: false,
+              wallPlacementAnchorMm: null,
+              wallPlacementAnchorPreviewEndMm: null,
+              wallPlacementAnchorLastSnapKind: null,
+              wallPlacementAnchorAngleSnapLockedDeg: null,
               addWallModalOpen: false,
               addWindowModalOpen: false,
               wallJointSession: null,
@@ -420,6 +461,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           pendingWindowPlacement: tab === "2d" ? s.pendingWindowPlacement : null,
           windowEditModal: tab === "2d" ? s.windowEditModal : null,
           wallCoordinateModalOpen: tab === "2d" ? s.wallCoordinateModalOpen : false,
+          wallAnchorCoordinateModalOpen: tab === "2d" ? s.wallAnchorCoordinateModalOpen : false,
+          wallAnchorPlacementModeActive: tab === "2d" ? s.wallAnchorPlacementModeActive : false,
+          wallPlacementAnchorMm: tab === "2d" ? s.wallPlacementAnchorMm : null,
+          wallPlacementAnchorPreviewEndMm: tab === "2d" ? s.wallPlacementAnchorPreviewEndMm : null,
+          wallPlacementAnchorLastSnapKind: tab === "2d" ? s.wallPlacementAnchorLastSnapKind : null,
+          wallPlacementAnchorAngleSnapLockedDeg: tab === "2d" ? s.wallPlacementAnchorAngleSnapLockedDeg : null,
           openingMoveModeActive: tab === "2d" ? s.openingMoveModeActive : false,
           wallDetailWallId:
             tab === "wall"
@@ -621,6 +668,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: null,
         wallJointParamsModalOpen: false,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         windowEditModal: null,
         lastError: null,
       }),
@@ -632,6 +685,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: null,
         wallJointParamsModalOpen: false,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         doorEditModal: null,
         lastError: null,
       }),
@@ -865,6 +924,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallPlacementSession: null,
         wallJointSession: null,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         addWallModalOpen: false,
         addWindowModalOpen: false,
         lastError: null,
@@ -878,6 +943,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: { kind, phase: "pickFirst" },
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         addWallModalOpen: false,
         addWindowModalOpen: false,
         selectedEntityIds: [],
@@ -1020,11 +1091,18 @@ export const useAppStore = create<AppStore>((set, get) => {
           firstPointMm: null,
           previewEndMm: null,
           lastSnapKind: null,
+          angleSnapLockedDeg: null,
         },
         addWallModalOpen: false,
         addWindowModalOpen: false,
         wallJointSession: null,
         wallJointParamsModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
+        wallAnchorCoordinateModalOpen: false,
         selectedEntityIds: [],
         lastError: null,
       });
@@ -1034,6 +1112,12 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         addWallModalOpen: false,
         addWindowModalOpen: false,
       }),
@@ -1051,42 +1135,103 @@ export const useAppStore = create<AppStore>((set, get) => {
             firstPointMm: null,
             previewEndMm: null,
             lastSnapKind: null,
+            angleSnapLockedDeg: null,
           },
           wallCoordinateModalOpen: false,
+          wallAnchorCoordinateModalOpen: false,
+          wallPlacementAnchorMm: null,
+          wallPlacementAnchorPreviewEndMm: null,
+          wallPlacementAnchorLastSnapKind: null,
+          wallPlacementAnchorAngleSnapLockedDeg: null,
         });
         return;
       }
       set({
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         addWallModalOpen: false,
         addWindowModalOpen: false,
       });
     },
 
-    wallPlacementPreviewMove: (worldMm, viewport) => {
+    wallPlacementPreviewMove: (worldMm, viewport, opts) => {
       const s = get().wallPlacementSession;
-      if (!s || s.phase !== "waitingSecondPoint") {
+      if (!s || s.phase !== "waitingSecondPoint" || !s.firstPointMm) {
         return;
       }
       const snap = resolvePlacementSnap(get, worldMm, viewport);
+      let previewEnd = snap.point;
+      const skipAngleSnap = get().wallCoordinateModalOpen || Boolean(opts?.altKey);
+      let angleSnapLocked: number | null = s.angleSnapLockedDeg ?? null;
+
+      if (!skipAngleSnap) {
+        const r = applyWallDirectionAngleSnapToPoint(s.firstPointMm, previewEnd, angleSnapLocked, opts);
+        previewEnd = r.point;
+        angleSnapLocked = r.nextLockedDeg;
+      } else {
+        angleSnapLocked = null;
+      }
+
       set({
         wallPlacementSession: {
           ...s,
-          previewEndMm: snap.point,
+          previewEndMm: previewEnd,
           lastSnapKind: snap.kind,
+          angleSnapLockedDeg: angleSnapLocked,
         },
       });
     },
 
-    wallPlacementPrimaryClick: (worldMm, viewport) => {
+    wallPlacementPrimaryClick: (worldMm, viewport, opts) => {
+      if (get().wallAnchorCoordinateModalOpen) {
+        return;
+      }
       const p0 = get().currentProject;
       const session = get().wallPlacementSession;
       if (!session) {
         return;
       }
       const snap = resolvePlacementSnap(get, worldMm, viewport);
-      const pt = snap.point;
+      let pt = snap.point;
+
+      const anchorOn = get().wallAnchorPlacementModeActive;
+      const anchorMm = get().wallPlacementAnchorMm;
+      const firstPickPhase =
+        session.phase === "waitingOriginAndFirst" || session.phase === "waitingFirstWallPoint";
+
+      if (anchorOn && firstPickPhase && anchorMm == null) {
+        set({
+          wallPlacementAnchorMm: pt,
+          wallPlacementAnchorPreviewEndMm: pt,
+          wallPlacementAnchorLastSnapKind: snap.kind,
+          wallPlacementAnchorAngleSnapLockedDeg: null,
+          lastError: null,
+        });
+        return;
+      }
+
+      const clearAfterWallStart = {
+        wallPlacementAnchorMm: null as Point2D | null,
+        wallPlacementAnchorPreviewEndMm: null as Point2D | null,
+        wallPlacementAnchorLastSnapKind: null as SnapKind | null,
+        wallPlacementAnchorAngleSnapLockedDeg: null as number | null,
+        wallAnchorCoordinateModalOpen: false,
+      };
+
+      if (anchorOn && anchorMm != null && firstPickPhase && !opts?.altKey) {
+        pt = applyWallDirectionAngleSnapToPoint(
+          anchorMm,
+          pt,
+          get().wallPlacementAnchorAngleSnapLockedDeg ?? null,
+          {},
+        ).point;
+      }
 
       if (session.phase === "waitingOriginAndFirst") {
         const nextProject = setProjectOrigin(p0, pt);
@@ -1098,7 +1243,9 @@ export const useAppStore = create<AppStore>((set, get) => {
             firstPointMm: pt,
             previewEndMm: pt,
             lastSnapKind: snap.kind,
+            angleSnapLockedDeg: null,
           },
+          ...clearAfterWallStart,
           dirty: true,
           lastError: null,
         });
@@ -1113,13 +1260,25 @@ export const useAppStore = create<AppStore>((set, get) => {
             firstPointMm: pt,
             previewEndMm: pt,
             lastSnapKind: snap.kind,
+            angleSnapLockedDeg: null,
           },
+          ...clearAfterWallStart,
+          lastError: null,
         });
         return;
       }
 
       if (session.phase === "waitingSecondPoint") {
-        get().wallPlacementCompleteSecondPoint(pt);
+        let finalPt = pt;
+        if (!opts?.altKey && session.firstPointMm) {
+          finalPt = applyWallDirectionAngleSnapToPoint(
+            session.firstPointMm,
+            pt,
+            session.angleSnapLockedDeg ?? null,
+            {},
+          ).point;
+        }
+        get().wallPlacementCompleteSecondPoint(finalPt);
       }
     },
 
@@ -1150,10 +1309,148 @@ export const useAppStore = create<AppStore>((set, get) => {
           firstPointMm: null,
           previewEndMm: null,
           lastSnapKind: null,
+          angleSnapLockedDeg: null,
         },
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
         selectedEntityIds: [...result.createdWallIds],
         dirty: true,
+        lastError: null,
+      });
+    },
+
+    toggleWallAnchorPlacementMode: () => {
+      if (!get().wallPlacementSession) {
+        return;
+      }
+      const next = !get().wallAnchorPlacementModeActive;
+      set({
+        wallAnchorPlacementModeActive: next,
+        ...(next
+          ? {}
+          : {
+              wallPlacementAnchorMm: null,
+              wallPlacementAnchorPreviewEndMm: null,
+              wallPlacementAnchorLastSnapKind: null,
+              wallPlacementAnchorAngleSnapLockedDeg: null,
+              wallAnchorCoordinateModalOpen: false,
+            }),
+        lastError: null,
+      });
+    },
+
+    clearWallPlacementAnchor: () =>
+      set({
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
+        wallAnchorCoordinateModalOpen: false,
+        lastError: null,
+      }),
+
+    wallPlacementAnchorPreviewMove: (worldMm, viewport, opts) => {
+      if (get().wallAnchorCoordinateModalOpen) {
+        return;
+      }
+      const s = get().wallPlacementSession;
+      const anchor = get().wallPlacementAnchorMm;
+      if (!get().wallAnchorPlacementModeActive || !anchor || !s) {
+        return;
+      }
+      if (s.phase !== "waitingFirstWallPoint" && s.phase !== "waitingOriginAndFirst") {
+        return;
+      }
+      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      let previewEnd = snap.point;
+      let angleLocked = get().wallPlacementAnchorAngleSnapLockedDeg ?? null;
+      if (!opts?.altKey) {
+        const r = applyWallDirectionAngleSnapToPoint(anchor, previewEnd, angleLocked, opts);
+        previewEnd = r.point;
+        angleLocked = r.nextLockedDeg;
+      } else {
+        angleLocked = null;
+      }
+      set({
+        wallPlacementAnchorPreviewEndMm: previewEnd,
+        wallPlacementAnchorLastSnapKind: snap.kind,
+        wallPlacementAnchorAngleSnapLockedDeg: angleLocked,
+      });
+    },
+
+    openWallAnchorCoordinateModal: () => {
+      const s = get().wallPlacementSession;
+      const anchor = get().wallPlacementAnchorMm;
+      if (!get().wallAnchorPlacementModeActive || !anchor || !s) {
+        return;
+      }
+      if (s.phase !== "waitingFirstWallPoint" && s.phase !== "waitingOriginAndFirst") {
+        return;
+      }
+      set({ wallAnchorCoordinateModalOpen: true, lastError: null });
+    },
+
+    closeWallAnchorCoordinateModal: () => set({ wallAnchorCoordinateModalOpen: false }),
+
+    applyWallAnchorCoordinateModal: (input) => {
+      const session = get().wallPlacementSession;
+      const anchor = get().wallPlacementAnchorMm;
+      if (!session || !anchor || !get().wallAnchorPlacementModeActive) {
+        set({ wallAnchorCoordinateModalOpen: false });
+        return;
+      }
+      if (session.phase !== "waitingFirstWallPoint" && session.phase !== "waitingOriginAndFirst") {
+        set({ wallAnchorCoordinateModalOpen: false });
+        return;
+      }
+      if (!Number.isFinite(input.dxMm) || !Number.isFinite(input.dyMm)) {
+        set({ lastError: "Введите числовые X и Y (мм)." });
+        return;
+      }
+      const raw = { x: anchor.x + input.dxMm, y: anchor.y + input.dyMm };
+      const vp = getViewportForSnapFromStore(get);
+      const snap = resolvePlacementSnap(get, raw, vp);
+      const pt = snap.point;
+      const p0 = get().currentProject;
+      const clearAfterStart = {
+        wallPlacementAnchorMm: null as Point2D | null,
+        wallPlacementAnchorPreviewEndMm: null as Point2D | null,
+        wallPlacementAnchorLastSnapKind: null as SnapKind | null,
+        wallPlacementAnchorAngleSnapLockedDeg: null as number | null,
+        wallAnchorCoordinateModalOpen: false,
+      };
+      if (session.phase === "waitingOriginAndFirst") {
+        const nextProject = setProjectOrigin(p0, pt);
+        set({
+          currentProject: nextProject,
+          wallPlacementSession: {
+            ...session,
+            phase: "waitingSecondPoint",
+            firstPointMm: pt,
+            previewEndMm: pt,
+            lastSnapKind: snap.kind,
+            angleSnapLockedDeg: null,
+          },
+          ...clearAfterStart,
+          dirty: true,
+          lastError: null,
+        });
+        return;
+      }
+      set({
+        wallPlacementSession: {
+          ...session,
+          phase: "waitingSecondPoint",
+          firstPointMm: pt,
+          previewEndMm: pt,
+          lastSnapKind: snap.kind,
+          angleSnapLockedDeg: null,
+        },
+        ...clearAfterStart,
         lastError: null,
       });
     },
@@ -1358,6 +1655,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          wallAnchorCoordinateModalOpen: false,
+          wallAnchorPlacementModeActive: false,
+          wallPlacementAnchorMm: null,
+          wallPlacementAnchorPreviewEndMm: null,
+          wallPlacementAnchorLastSnapKind: null,
+          wallPlacementAnchorAngleSnapLockedDeg: null,
         });
       })();
     },
@@ -1399,6 +1702,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          wallAnchorCoordinateModalOpen: false,
+          wallAnchorPlacementModeActive: false,
+          wallPlacementAnchorMm: null,
+          wallPlacementAnchorPreviewEndMm: null,
+          wallPlacementAnchorLastSnapKind: null,
+          wallPlacementAnchorAngleSnapLockedDeg: null,
         });
       })();
     },
@@ -1435,6 +1744,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: null,
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallAnchorPlacementModeActive: false,
+        wallPlacementAnchorMm: null,
+        wallPlacementAnchorPreviewEndMm: null,
+        wallPlacementAnchorLastSnapKind: null,
+        wallPlacementAnchorAngleSnapLockedDeg: null,
       });
       try {
         await syncProjectToFirestore(loaded);
@@ -1504,6 +1819,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          wallAnchorCoordinateModalOpen: false,
+          wallAnchorPlacementModeActive: false,
+          wallPlacementAnchorMm: null,
+          wallPlacementAnchorPreviewEndMm: null,
+          wallPlacementAnchorLastSnapKind: null,
+          wallPlacementAnchorAngleSnapLockedDeg: null,
         });
         void (async () => {
           try {

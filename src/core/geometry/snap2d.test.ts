@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptyProject } from "../domain/projectFactory";
 import type { Wall } from "../domain/wall";
-import { closestPointOnSegment, resolveSnap2d } from "./snap2d";
+import {
+  closestPointOnSegment,
+  collectWallPlanVertexSnapCandidatesMm,
+  layerIdsForSnapGeometry,
+  resolveSnap2d,
+} from "./snap2d";
 import { buildViewportTransform } from "./viewportTransform";
 
 describe("closestPointOnSegment", () => {
@@ -70,5 +75,51 @@ describe("resolveSnap2d", () => {
       gridStepMm: 100,
     });
     expect(r.kind).toBe("none");
+  });
+
+  it("вершина контура полосы (наружный/внутренний угол), а не только ось стены", () => {
+    const p = createEmptyProject();
+    const tHi = buildViewportTransform(800, 600, 0, 0, 1);
+    const w: Wall = {
+      id: "w1",
+      layerId: p.activeLayerId,
+      start: { x: 0, y: 0 },
+      end: { x: 2000, y: 0 },
+      thicknessMm: 100,
+      heightMm: 2500,
+      baseElevationMm: 0,
+    };
+    const outerCornerStart = { x: 0, y: -50 };
+    const raw = { x: 4, y: -51 };
+    const r = resolveSnap2d({
+      rawWorldMm: raw,
+      viewport: tHi,
+      project: { ...p, walls: [w] },
+      snapSettings: { snapToVertex: true, snapToEdge: true, snapToGrid: true },
+      gridStepMm: 100,
+    });
+    expect(r.kind).toBe("vertex");
+    expect(r.point.x).toBeCloseTo(outerCornerStart.x);
+    expect(r.point.y).toBeCloseTo(outerCornerStart.y);
+  });
+
+  it("collectWallPlanVertexSnapCandidatesMm включает углы полосы и концы оси", () => {
+    const p = createEmptyProject();
+    const w: Wall = {
+      id: "w1",
+      layerId: p.activeLayerId,
+      start: { x: 0, y: 0 },
+      end: { x: 1000, y: 0 },
+      thicknessMm: 100,
+      heightMm: 2500,
+      baseElevationMm: 0,
+    };
+    const proj = { ...p, walls: [w] };
+    const ids = layerIdsForSnapGeometry(proj);
+    const c = collectWallPlanVertexSnapCandidatesMm(proj, ids);
+    expect(c.length).toBeGreaterThanOrEqual(4);
+    expect(c.some((v) => v.x === 0 && v.y === 0)).toBe(true);
+    expect(c.some((v) => v.x === 0 && v.y === -50)).toBe(true);
+    expect(c.some((v) => v.x === 0 && v.y === 50)).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { WindowViewPresetKey } from "@/core/domain/windowFormCatalog";
 import { viewPresetByKey } from "@/core/domain/windowFormCatalog";
+import { OpeningDimPreview, type OpeningPreviewGeometry } from "./OpeningDimPreview";
 
 export interface WindowFormPreviewProps {
   readonly widthMm: number;
@@ -13,73 +14,32 @@ export interface WindowFormPreviewProps {
 export function WindowFormPreview({ widthMm, heightMm, viewPreset }: WindowFormPreviewProps) {
   const preset = viewPresetByKey(viewPreset);
   const v = preset?.previewVariant ?? 1;
-  const wLabel = Number.isFinite(widthMm) ? `${Math.round(widthMm)}` : "—";
-  const hLabel = Number.isFinite(heightMm) ? `${Math.round(heightMm)}` : "—";
 
   return (
-    <div className="wp-preview" aria-hidden>
-      <svg className="wp-preview__svg" viewBox="0 0 220 280" preserveAspectRatio="xMidYMid meet">
-        {/* Размерная линия по ширине (снизу) */}
-        <line
-          x1="40"
-          y1="248"
-          x2="180"
-          y2="248"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        <text x="110" y="268" textAnchor="middle" className="wp-preview__dim-text" fontSize="11">
-          {wLabel}
-        </text>
-
-        {/* Размерная линия по высоте (слева) */}
-        <line
-          x1="28"
-          y1="40"
-          x2="28"
-          y2="200"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        <text
-          x="14"
-          y="122"
-          textAnchor="middle"
-          className="wp-preview__dim-text"
-          fontSize="11"
-          transform="rotate(-90 14 122)"
-        >
-          {hLabel}
-        </text>
-
-        {/* Контур окна */}
-        <rect
-          x="40"
-          y="40"
-          width="140"
-          height="160"
-          fill="var(--wp-preview-fill, color-mix(in srgb, var(--color-surface-hover) 65%, transparent))"
-          stroke="var(--color-text-primary)"
-          strokeWidth="1.5"
-          rx="2"
-        />
-
-        <g stroke="var(--color-text-secondary)" strokeWidth="1" fill="none">
-          {mullionPaths(v)}
-        </g>
-      </svg>
-      <p className="wp-preview__hint">мм · схема «{preset?.label ?? viewPreset}»</p>
-    </div>
+    <OpeningDimPreview widthMm={widthMm} heightMm={heightMm} hint={`мм · схема «${preset?.label ?? viewPreset}»`}>
+      {(g) => (
+        <>
+          <rect
+            x={g.frameX}
+            y={g.frameY}
+            width={g.frameW}
+            height={g.frameH}
+            fill="var(--wp-preview-fill, color-mix(in srgb, var(--color-surface-hover) 65%, transparent))"
+            stroke="var(--color-text-primary)"
+            strokeWidth="1.5"
+            rx="2"
+          />
+          <g stroke="var(--color-text-secondary)" strokeWidth="1" fill="none">
+            {mullionPaths(v, g)}
+          </g>
+        </>
+      )}
+    </OpeningDimPreview>
   );
 }
 
-function mullionPaths(variant: number): ReactNode {
-  const x0 = 40;
-  const y0 = 40;
-  const w = 140;
-  const h = 160;
+function mullionPaths(variant: number, geometry: OpeningPreviewGeometry): ReactNode {
+  const { frameX: x0, frameY: y0, frameW: w, frameH: h } = geometry;
   const cx = x0 + w / 2;
   const cy = y0 + h / 2;
 

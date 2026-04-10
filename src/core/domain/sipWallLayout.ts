@@ -15,11 +15,8 @@ import {
 import { distanceAlongWallFromStartMm, wallLengthMm } from "./wallCalculationGeometry";
 import { subtractIntervalsFromRange } from "./wallCalculationIntervals";
 import { numberAndSortLumberPieces, type LumberPieceDraftInput } from "./wallCalculationNormalize";
-import {
-  inferCoreDepthMmFromProfile,
-  resolveEffectiveWallManufacturing,
-  type EffectiveWallManufacturingSettings,
-} from "./wallManufacturing";
+import { computeProfileTotalThicknessMm } from "./profileOps";
+import { resolveEffectiveWallManufacturing, type EffectiveWallManufacturingSettings } from "./wallManufacturing";
 import type { WallEndSide, WallJoint } from "./wallJoint";
 
 export class SipWallLayoutError extends Error {
@@ -259,8 +256,10 @@ export function buildWallCalculationForWall(
   }
   const m = resolveEffectiveWallManufacturing(profile);
   const wallMark = wall.markLabel?.trim() || wall.id.slice(0, 8);
+  /** Полная толщина SIP-сэндвича по стене/профилю (OSB+ядро+OSB), не толщина только EPS. */
+  const profileTotalT = computeProfileTotalThicknessMm(profile);
   const sipThicknessMm = Math.round(
-    m.coreDepthMm ?? inferCoreDepthMmFromProfile(profile) ?? profile.defaultThicknessMm ?? m.jointBoardDepthMm,
+    wall.thicknessMm > 0 ? wall.thicknessMm : profileTotalT > 0 ? profileTotalT : profile.defaultThicknessMm ?? 0,
   );
   const L = wallLengthMm(wall);
   if (L < 1) {

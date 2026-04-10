@@ -13,6 +13,15 @@ function IconWallAdd() {
   );
 }
 
+function IconAnchorPoint() {
+  return (
+    <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M11 2h2v7h7v2h-7v7h-2v-7H4v-2h7V2z" opacity="0.45" />
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
 function IconWindowAdd() {
   return (
     <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -76,6 +85,8 @@ export function Editor2DPlanToolbar() {
   const openDoor = useAppStore((s) => s.openAddDoorModal);
   const openCalc = useAppStore((s) => s.openWallCalculationModal);
   const wallToolActive = useAppStore((s) => s.wallPlacementSession != null);
+  const anchorMode = useAppStore((s) => s.wallAnchorPlacementModeActive);
+  const toggleAnchorMode = useAppStore((s) => s.toggleWallAnchorPlacementMode);
   const jointModalOpen = useAppStore((s) => s.wallJointParamsModalOpen);
   const jointSession = useAppStore((s) => s.wallJointSession);
   const selectedWallCount = useAppStore((s) => {
@@ -101,6 +112,24 @@ export function Editor2DPlanToolbar() {
         onClick={() => open()}
       >
         <IconWallAdd />
+      </button>
+      <button
+        type="button"
+        className="e2dpt-btn"
+        title={
+          !wallToolActive
+            ? "Сначала включите «Добавить стену»"
+            : anchorMode
+              ? "Выключить точку привязки"
+              : "Точка привязки — опорная точка и смещение начала стены"
+        }
+        aria-label="Точка привязки"
+        aria-pressed={anchorMode}
+        data-active={anchorMode}
+        disabled={!wallToolActive}
+        onClick={() => toggleAnchorMode()}
+      >
+        <IconAnchorPoint />
       </button>
       <button
         type="button"

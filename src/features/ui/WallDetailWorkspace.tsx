@@ -1,6 +1,8 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Opening } from "@/core/domain/opening";
+import { getProfileById } from "@/core/domain/profileOps";
+import { resolveWallProfileCoreBandMm } from "@/core/domain/wallProfileLayers";
 
 import { useAppStore } from "@/store/useAppStore";
 
@@ -29,6 +31,11 @@ import {
   WD_DIM_V_LABEL_GAP_EXTRA_PX,
   WD_DIM_V_LABEL_GAP_PX,
 } from "@/features/ui/wallDetailDimensionsSvg";
+import {
+  computeWallDetailOpeningLabelLayout,
+  openingLabelLineHeightPx,
+} from "@/features/ui/wallDetailOpeningLabelLayout";
+import { computeLumberPieceNumberLabelPx } from "@/features/ui/wallDetailLumberPieceLabelLayout";
 import { WallDetailTopViewPlan } from "@/features/ui/wallDetailTopView2d";
 
 /** Верх фасада стены (мм по листу). */
@@ -185,6 +192,10 @@ export function WallDetailWorkspace() {
   }, [project.openings, wall]);
 
   const wallLabel = wall ? wallMarkLabelForDisplay(wall.markLabel, wall.id.slice(0, 8)) : "";
+  const wallProfile = wall?.profileId ? getProfileById(project, wall.profileId) : undefined;
+  const wallCoreBand = wall && wallProfile ? resolveWallProfileCoreBandMm(wall.thicknessMm, wallProfile) : null;
+  const isSipLikeWall = wallCoreBand != null && ["eps", "xps", "insulation"].includes(wallCoreBand.materialType);
+  const wallSystemLabel = isSipLikeWall ? "SIP" : "Листовая";
 
   const L = wall ? Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y) : 0;
   const H = wall?.heightMm ?? 0;
@@ -247,12 +258,14 @@ export function WallDetailWorkspace() {
     if (!wall || sipFacadeSlices.length === 0) {
       return null;
     }
+    const wallBottomSheetMm = SHEET_WALL_TOP_MM + wall.heightMm;
     return buildWallDetailSipPanelDisplayGrouping(
       sipFacadeSlices,
       L,
       wall.thicknessMm,
       openingsOnWall,
       wall.id,
+      wallBottomSheetMm,
     );
   }, [wall, sipFacadeSlices, L, openingsOnWall, wall?.thicknessMm]);
 
@@ -545,7 +558,7 @@ export function WallDetailWorkspace() {
             openCalc();
           }}
         >
-          Пересчитать стену
+          Пересчитать конструкцию
         </button>
       </div>
       <div className="wd-body">
@@ -577,7 +590,13 @@ export function WallDetailWorkspace() {
             <text x={sx(L / 2)} y={sy(titleBaseline)} className="wd-wall-title">
               {wall.markLabel?.trim() || wall.id.slice(0, 8)}
             </text>
-            <rect x={sx(0)} y={sy(wallTop)} width={Math.max(1, L * zoom)} height={Math.max(1, H * zoom)} className="wd-wall" />
+            <rect
+              x={sx(0)}
+              y={sy(wallTop)}
+              width={Math.max(1, L * zoom)}
+              height={Math.max(1, H * zoom)}
+              className={`wd-wall ${isSipLikeWall ? "wd-wall--sip" : "wd-wall--sheet"}`}
+            />
             <rect x={sx(0)} y={sy(panelTop)} width={Math.max(1, L * zoom)} height={Math.max(1, panelHeightMm * zoom)} className="wd-panel-outline" />
             <VerticalDimensionMm
               xLineMm={-40}
@@ -625,7 +644,13 @@ export function WallDetailWorkspace() {
                     const hPx = Math.max(1, (sl.drawY1 - sl.drawY0) * zoom);
                     return (
                       <g key={r.id} className="wd-sip-panel-layer">
-                        <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} className="wd-sip" />
+                        <rect
+                          x={sx(sl.drawX0)}
+                          y={sy(sl.drawY0)}
+                          width={wPx}
+                          height={hPx}
+                          className={`wd-sip ${isSipLikeWall ? "wd-sip--sip" : "wd-sip--sheet"}`}
+                        />
                         <mask id={maskId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
                           <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} fill="white" />
                           {holes.map((h, hi) => {
@@ -652,7 +677,13 @@ export function WallDetailWorkspace() {
                     sl.kind === "above_opening" ? `sip-above-${sl.openingId}` : `sip-below-${sl.openingId}`;
                   return (
                     <g key={stripKey} className="wd-sip-panel-layer">
-                      <rect x={sx(sl.drawX0)} y={sy(sl.drawY0)} width={wPx} height={hPx} className="wd-sip" />
+                      <rect
+                        x={sx(sl.drawX0)}
+                        y={sy(sl.drawY0)}
+                        width={wPx}
+                        height={hPx}
+                        className={`wd-sip ${isSipLikeWall ? "wd-sip--sip" : "wd-sip--sheet"}`}
+                      />
                       <rect
                         x={sx(sl.drawX0)}
                         y={sy(sl.drawY0)}
@@ -673,10 +704,24 @@ export function WallDetailWorkspace() {
                   const rh = Math.max(1, rr.b1 - rr.b0);
                   const rectTop = wallTop + H - rr.b1;
                   const n = lumberPositionByPieceId.get(p.id) ?? 0;
+                  const leftPx = sx(rr.x0);
+                  const topPx = sy(rectTop);
+                  const wPx = rw * zoom;
+                  const hPx = rh * zoom;
+                  const lay = computeLumberPieceNumberLabelPx({ leftPx, topPx, wPx, hPx, n });
                   return (
-                    <g key={`piece-${p.id}`}>
-                      <rect x={sx(rr.x0)} y={sy(rectTop)} width={rw * zoom} height={rh * zoom} className="wd-piece" />
-                      <text x={sx(rr.x0 + rw / 2)} y={sy(rectTop + rh / 2)} className="wd-piece-n">
+                    <g key={`piece-${p.id}`} pointerEvents="none">
+                      <rect x={leftPx} y={topPx} width={wPx} height={hPx} className="wd-piece" />
+                      <rect
+                        x={lay.pillX}
+                        y={lay.pillY}
+                        width={lay.pillW}
+                        height={lay.pillH}
+                        rx={2}
+                        ry={2}
+                        className="wd-piece-n-pill"
+                      />
+                      <text x={lay.cx} y={lay.cy} className="wd-piece-n" style={{ fontSize: lay.fontSizePx }}>
                         {n}
                       </text>
                     </g>
@@ -690,10 +735,30 @@ export function WallDetailWorkspace() {
               const mark = o.markLabel?.trim() || (o.kind === "door" ? `Д_${o.doorSequenceNumber ?? "?"}` : `OK_${o.windowSequenceNumber ?? "?"}`);
               /** Ниже верхней кромки проёма — в верхней трети светового проёма, без «прилипания» к перемычке. */
               const labelCenterYMm = y + o.heightMm * 0.28;
+              const openingWPx = Math.max(1, o.widthMm * zoom);
+              const openingHPx = Math.max(1, o.heightMm * zoom);
+              const layout = computeWallDetailOpeningLabelLayout(mark, o.widthMm, o.heightMm, openingWPx, openingHPx);
+              const lhPx = openingLabelLineHeightPx(layout.fontSizePx);
+              const cxPx = sx(x + o.widthMm / 2);
+              const cyPx = sy(labelCenterYMm);
+              const fsStyle = { fontSize: layout.fontSizePx } as const;
               return (
                 <g key={o.id}>
-                  <rect x={sx(x)} y={sy(y)} width={Math.max(1, o.widthMm * zoom)} height={Math.max(1, o.heightMm * zoom)} className="wd-opening" />
-                  <text x={sx(x + o.widthMm / 2)} y={sy(labelCenterYMm)} className="wd-open-label">{`${mark} ${Math.round(o.widthMm)}/${Math.round(o.heightMm)}`}</text>
+                  <rect x={sx(x)} y={sy(y)} width={openingWPx} height={openingHPx} className="wd-opening" />
+                  {layout.mode === "one" ? (
+                    <text x={cxPx} y={cyPx} className="wd-open-label" style={fsStyle}>
+                      {layout.text}
+                    </text>
+                  ) : (
+                    <>
+                      <text x={cxPx} y={cyPx - lhPx / 2} className="wd-open-label" style={fsStyle}>
+                        {layout.line1}
+                      </text>
+                      <text x={cxPx} y={cyPx + lhPx / 2} className="wd-open-label" style={fsStyle}>
+                        {layout.line2}
+                      </text>
+                    </>
+                  )}
                 </g>
               );
             })}
@@ -824,9 +889,11 @@ export function WallDetailWorkspace() {
             )}
           </section>
           <section className="wd-card">
-            <h3>SIP-панели по стене</h3>
+            <h3>{wallSystemLabel === "SIP" ? "SIP-панели по стене" : "Листы по стене"}</h3>
             {!calc ? (
-              <div className="wd-empty-note">Нет данных SIP до расчёта.</div>
+              <div className="wd-empty-note">
+                {wallSystemLabel === "SIP" ? "Нет данных SIP до расчёта." : "Нет данных листовой раскладки до расчёта."}
+              </div>
             ) : (
               <table className="wd-table">
                 <thead>

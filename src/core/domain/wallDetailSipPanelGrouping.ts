@@ -1,9 +1,10 @@
 /**
- * Группировка SIP на фасаде «Вид стены»: размер + конструктивная роль (не только габариты).
+ * Группировка SIP на фасаде «Вид стены»: размер + роль + для панелей у проёмов — геометрия проёма.
  */
 
 import type { Opening } from "./opening";
 import type { WallDetailSipFacadeSlice } from "./wallDetailSipElevation";
+import { openingBottomSheetYMm, openingTopSheetYMm } from "./wallDetailSipElevation";
 
 /** Роль панели для спецификации/маркировки на чертеже. */
 export type WallDetailSipPanelRole =
@@ -36,6 +37,27 @@ function flexOpeningsForWall(openings: readonly Opening[], wallId: string): Flex
     .sort((a, b) => a.offsetFromStartMm - b.offsetFromStartMm);
 }
 
+/** Касания колонки с проёмами по оси стены (не используется для угловых колонок до классификации). */
+function columnOpeningTouches(
+  startOffsetMm: number,
+  endOffsetMm: number,
+  openings: readonly FlexOpening[],
+): { leftOfOpening: FlexOpening[]; rightOfOpening: FlexOpening[] } {
+  const leftOfOpening: FlexOpening[] = [];
+  const rightOfOpening: FlexOpening[] = [];
+  for (const o of openings) {
+    const o0 = o.offsetFromStartMm;
+    const o1 = o.offsetFromStartMm + o.widthMm;
+    if (Math.abs(endOffsetMm - o0) < ALIGN_EPS_MM) {
+      leftOfOpening.push(o);
+    }
+    if (Math.abs(startOffsetMm - o1) < ALIGN_EPS_MM) {
+      rightOfOpening.push(o);
+    }
+  }
+  return { leftOfOpening, rightOfOpening };
+}
+
 function classifyColumnRole(
   startOffsetMm: number,
   endOffsetMm: number,
@@ -49,19 +71,7 @@ function classifyColumnRole(
     return "corner-right";
   }
 
-  const leftOfOpening: FlexOpening[] = [];
-  const rightOfOpening: FlexOpening[] = [];
-
-  for (const o of openings) {
-    const o0 = o.offsetFromStartMm;
-    const o1 = o.offsetFromStartMm + o.widthMm;
-    if (Math.abs(endOffsetMm - o0) < ALIGN_EPS_MM) {
-      leftOfOpening.push(o);
-    }
-    if (Math.abs(startOffsetMm - o1) < ALIGN_EPS_MM) {
-      rightOfOpening.push(o);
-    }
-  }
+  const { leftOfOpening, rightOfOpening } = columnOpeningTouches(startOffsetMm, endOffsetMm, openings);
 
   if (leftOfOpening.length === 0 && rightOfOpening.length === 0) {
     return "regular";
@@ -110,15 +120,117 @@ export function wallDetailSipFacadeSliceRole(
   return classifyColumnRole(r.startOffsetMm, r.endOffsetMm, wallLengthMm, flex);
 }
 
+/** Толщина для отображения/группировки: всегда полная толщина стены (профиль), не слой ядра в регионе. */
 export function wallDetailSipSliceThicknessMm(sl: WallDetailSipFacadeSlice, wallThicknessFallbackMm: number): number {
-  if (sl.kind === "column") {
-    return sl.region.thicknessMm;
+  if (wallThicknessFallbackMm > 0) {
+    return wallThicknessFallbackMm;
   }
-  return wallThicknessFallbackMm;
+  return sl.kind === "column" ? sl.region.thicknessMm : 0;
 }
 
-/** Ключ группы: ширина×высота×толщина@роль (мм, целые). */
-export function wallDetailSipPanelGroupKey(
+/** Отметки низа и верха светового проёма от низа стены вверх, мм (целые). */
+export function wallDetailSipOpeningVerticalFromWallBaseMm(
+  o: FlexOpening,
+  wallBottomSheetMm: number,
+): { bottomFromBaseMm: number; topFromBaseMm: number; widthMm: number; heightMm: number } {
+  const yTop = openingTopSheetYMm(o, wallBottomSheetMm);
+  const yBot = openingBottomSheetYMm(o, wallBottomSheetMm);
+  return {
+    bottomFromBaseMm: Math.round(wallBottomSheetMm - yBot),
+    topFromBaseMm: Math.round(wallBottomSheetMm - yTop),
+    widthMm: Math.round(o.widthMm),
+    heightMm: Math.round(o.heightMm),
+  };
+}
+
+function openingCoreProductionKey(o: FlexOpening, wallBottomSheetMm: number): string {
+  const g = wallDetailSipOpeningVerticalFromWallBaseMm(o, wallBottomSheetMm);
+  const typ = o.kind === "door" ? "door" : "window";
+  return `${typ},${g.widthMm},${g.heightMm},${g.bottomFromBaseMm},${g.topFromBaseMm}`;
+}
+
+/**
+ * Сигнатура примыкания к одному проёму: тип | сторона | ширина/высота проёма | низ/верх от низа стены.
+ * Сторона — относительно проёма: left = панель слева от проёма, top = над проёмом и т.д.
+ */
+function openingAdjacencyProductionKey(
+  o: FlexOpening,
+  wallBottomSheetMm: number,
+  side: "left" | "right" | "top" | "bottom",
+): string {
+  const g = wallDetailSipOpeningVerticalFromWallBaseMm(o, wallBottomSheetMm);
+  const typ = o.kind === "door" ? "door" : "window";
+  return `${typ}|${side}|${g.widthMm}|${g.heightMm}|${g.bottomFromBaseMm}|${g.topFromBaseMm}`;
+}
+
+function openingBetweenProductionKey(a: FlexOpening, b: FlexOpening, wallBottomSheetMm: number): string {
+  const [o1, o2] = a.offsetFromStartMm <= b.offsetFromStartMm ? [a, b] : [b, a];
+  return `between|${openingCoreProductionKey(o1, wallBottomSheetMm)}~${openingCoreProductionKey(o2, wallBottomSheetMm)}`;
+}
+
+/**
+ * Дополнение к ключу группы для панелей у проёма. Для угловых и regular — null.
+ */
+function sliceOpeningAttachmentKey(
+  sl: WallDetailSipFacadeSlice,
+  role: WallDetailSipPanelRole,
+  wallBottomSheetMm: number,
+  openings: readonly FlexOpening[],
+): string | null {
+  if (role === "regular" || role === "corner-left" || role === "corner-right") {
+    return null;
+  }
+
+  if (sl.kind === "above_opening") {
+    const o = openings.find((x) => x.id === sl.openingId);
+    if (!o) {
+      return "missing-opening";
+    }
+    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "top");
+  }
+  if (sl.kind === "below_opening") {
+    const o = openings.find((x) => x.id === sl.openingId);
+    if (!o) {
+      return "missing-opening";
+    }
+    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "bottom");
+  }
+
+  const { startOffsetMm: start, endOffsetMm: end } = sl.region;
+  const { leftOfOpening, rightOfOpening } = columnOpeningTouches(start, end, openings);
+
+  if (
+    role === "adjacent-window-between" ||
+    role === "adjacent-door-between" ||
+    role === "adjacent-mixed-between"
+  ) {
+    const oL = leftOfOpening[0];
+    const oR = rightOfOpening[0];
+    if (!oL || !oR) {
+      return "missing-between";
+    }
+    return openingBetweenProductionKey(oL, oR, wallBottomSheetMm);
+  }
+  if (role === "adjacent-window-left" || role === "adjacent-door-left") {
+    const o = leftOfOpening[0];
+    if (!o) {
+      return "missing-left";
+    }
+    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "left");
+  }
+  if (role === "adjacent-window-right" || role === "adjacent-door-right") {
+    const o = rightOfOpening[0];
+    if (!o) {
+      return "missing-right";
+    }
+    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "right");
+  }
+
+  return null;
+}
+
+/** Базовая часть ключа: ширина×высота×толщина@роль. */
+export function wallDetailSipPanelGroupKeyBase(
   widthMm: number,
   heightMm: number,
   thicknessMm: number,
@@ -128,6 +240,22 @@ export function wallDetailSipPanelGroupKey(
   const h = Math.round(heightMm);
   const t = Math.round(thicknessMm);
   return `${w}x${h}x${t}@${role}`;
+}
+
+function buildWallDetailSipSliceGroupKey(
+  sl: WallDetailSipFacadeSlice,
+  role: WallDetailSipPanelRole,
+  widthMm: number,
+  heightMm: number,
+  thicknessMm: number,
+  wallBottomSheetMm: number,
+  openingsOnWall: readonly Opening[],
+  wallId: string,
+): string {
+  const base = wallDetailSipPanelGroupKeyBase(widthMm, heightMm, thicknessMm, role);
+  const flex = flexOpeningsForWall(openingsOnWall, wallId);
+  const attach = sliceOpeningAttachmentKey(sl, role, wallBottomSheetMm, flex);
+  return attach == null ? base : `${base}#${attach}`;
 }
 
 export interface WallDetailSipGroupedRow {
@@ -147,8 +275,8 @@ export interface WallDetailSipPanelDisplayGrouping {
 }
 
 /**
- * Нумерация позиций и строки таблицы: объединение только при совпадении размера и роли;
- * порядок позиций — по первому вхождению слайса на фасаде слева направо / как в `buildWallDetailSipFacadeSlices`.
+ * Нумерация позиций и строки таблицы. У проёмов ключ включает геометрию проёма (от низа стены).
+ * `wallBottomSheetMm` — Y низа стены на листе (как в `WallDetailSipSheetFrameMm.wallBottomMm`).
  */
 export function buildWallDetailSipPanelDisplayGrouping(
   slices: readonly WallDetailSipFacadeSlice[],
@@ -156,13 +284,14 @@ export function buildWallDetailSipPanelDisplayGrouping(
   wallThicknessMm: number,
   openingsOnWall: readonly Opening[],
   wallId: string,
+  wallBottomSheetMm: number,
 ): WallDetailSipPanelDisplayGrouping {
   const sliceMetas = slices.map((sl) => {
     const role = wallDetailSipFacadeSliceRole(sl, wallLengthMm, openingsOnWall, wallId);
     const t = wallDetailSipSliceThicknessMm(sl, wallThicknessMm);
     const w = sl.specWidthMm;
     const h = sl.specHeightMm;
-    const groupKey = wallDetailSipPanelGroupKey(w, h, t, role);
+    const groupKey = buildWallDetailSipSliceGroupKey(sl, role, w, h, t, wallBottomSheetMm, openingsOnWall, wallId);
     return { groupKey, role, w: Math.round(w), h: Math.round(h), t: Math.round(t) };
   });
 

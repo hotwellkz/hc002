@@ -1,18 +1,15 @@
 import { Graphics } from "pixi.js";
 
 import type { Project } from "@/core/domain/project";
+import { getProfileById } from "@/core/domain/profileOps";
 
 import {
   lumberPlan2dFillForRole,
-  SIP_PLAN2D_FILL_ALPHA,
-  SIP_PLAN2D_FILL_HEX,
+  wallCalcCorePlan2dFill,
 } from "./wallCalculationPlan2dColors";
 import { collectWallCalculationPlanQuads } from "./wallCalculationPlan2dQuads";
 import type { ViewportTransform } from "./viewportTransforms";
 import { worldToScreen } from "./viewportTransforms";
-
-const SIP_FILL = SIP_PLAN2D_FILL_HEX;
-const SIP_ALPHA = SIP_PLAN2D_FILL_ALPHA;
 
 function fillQuadMm(
   g: Graphics,
@@ -51,9 +48,11 @@ export function drawWallCalculationOverlay2d(
       continue;
     }
     const quads = collectWallCalculationPlanQuads(wall, project, calc);
+    const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+    const coreFill = wallCalcCorePlan2dFill(wall.thicknessMm, profile);
     for (const q of quads) {
       if (q.kind === "sip") {
-        fillQuadMm(g, q.corners, t, SIP_FILL, SIP_ALPHA);
+        fillQuadMm(g, q.corners, t, coreFill.color, coreFill.alpha);
       } else {
         const { color, alpha } = lumberPlan2dFillForRole(q.role);
         fillQuadMm(g, q.corners, t, color, alpha);

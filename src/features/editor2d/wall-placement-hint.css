@@ -15,6 +15,33 @@
   box-shadow: var(--shadow-panel);
 }
 
+/** Тонкий CAD-прицел для режима «Точка привязки» (cursor: none на canvas). */
+.ed2d-anchor-crosshair-layer {
+  contain: strict;
+}
+
+.ed2d-anchor-crosshair {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.ed2d-anchor-crosshair__svg {
+  display: block;
+  overflow: visible;
+}
+
+.ed2d-anchor-crosshair__v,
+.ed2d-anchor-crosshair__h {
+  stroke: rgba(28, 30, 34, 0.88);
+  stroke-width: 1px;
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: crispEdges;
+}
+
 .ed2d-wall-coord-hud {
   position: fixed;
   z-index: 41;
@@ -30,4 +57,10 @@
   line-height: 1.35;
   letter-spacing: 0.01em;
   box-shadow: var(--shadow-panel);
+}
+
+/** Активна угловая привязка направления (шаг 45°). */
+.ed2d-wall-coord-hud--angle-snap {
+  border-color: rgba(52, 211, 153, 0.45);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.18);
 }

@@ -4,6 +4,7 @@ import type { OpeningAlongAnchor, OpeningAlongAlignment } from "@/core/domain/op
 import type { SaveDoorParamsPayload } from "@/core/domain/openingDoorMutations";
 import { defaultOpeningSipConstruction } from "@/core/domain/openingFramingGenerate";
 import { useAppStore } from "@/store/useAppStore";
+import { DoorFormPreview } from "./DoorFormPreview";
 
 import "../layer-modals.css";
 import "./window-params-modal.css";
@@ -146,84 +147,102 @@ export function DoorParamsModal() {
           </button>
         </div>
 
-        <div className="wp-body">
-          <div className="wp-form">
-            {error ? <p className="wp-error">{error}</p> : null}
-            {activeTab === "form" ? (
-              <>
-                <div className="wp-field-row">
-                  <div className="lm-field wp-field">
-                    <label className="lm-label">Высота (мм)</label>
-                    <input className="lm-input" value={heightStr} onChange={(e) => setHeightStr(e.target.value)} />
-                  </div>
-                  <div className="lm-field wp-field">
-                    <label className="lm-label">Ширина (мм)</label>
-                    <input className="lm-input" value={widthStr} onChange={(e) => setWidthStr(e.target.value)} />
-                  </div>
+        {activeTab === "form" ? (
+          <div className="wp-body">
+            <div className="wp-form">
+              {error ? <p className="wp-error">{error}</p> : null}
+              <div className="wp-field-row">
+                <div className="lm-field wp-field">
+                  <label className="lm-label">Высота (мм)</label>
+                  <input className="lm-input" value={heightStr} onChange={(e) => setHeightStr(e.target.value)} />
                 </div>
                 <div className="lm-field wp-field">
-                  <label className="lm-label">Тип двери</label>
-                  <select className="lm-input" value={doorType} disabled={isEmpty} onChange={(e) => setDoorType(e.target.value as "single")}>
-                    <option value="single">Одиночная дверь</option>
-                  </select>
+                  <label className="lm-label">Ширина (мм)</label>
+                  <input className="lm-input" value={widthStr} onChange={(e) => setWidthStr(e.target.value)} />
                 </div>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">Открывание</label>
-                  <select
-                    className="lm-input"
-                    value={doorSwing}
-                    disabled={isEmpty}
-                    onChange={(e) => setDoorSwing(e.target.value as "in_right" | "in_left" | "out_right" | "out_left")}
-                  >
-                    <option value="in_right">На себя, направо</option>
-                    <option value="in_left">На себя, налево</option>
-                    <option value="out_right">От себя, направо</option>
-                    <option value="out_left">От себя, налево</option>
-                  </select>
-                </div>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">Наличник (мм)</label>
-                  <input className="lm-input" value={doorTrimStr} disabled={isEmpty} onChange={(e) => setDoorTrimStr(e.target.value)} />
-                </div>
-                <label className="wp-check">
-                  <input type="checkbox" checked={isEmpty} onChange={(e) => setIsEmpty(e.target.checked)} />
-                  Пустой проём
-                </label>
-              </>
-            ) : null}
-            {activeTab === "position" ? (
-              <>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">От</label>
-                  <select className="lm-input" value={anchorAlongWall} onChange={(e) => setAnchorAlongWall(e.target.value as OpeningAlongAnchor)}>
-                    <option value="wall_start">Начало стены (0)</option>
-                    <option value="wall_end">Конец стены</option>
-                    <option value="wall_center">Центр стены</option>
-                  </select>
-                </div>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">Значение (мм)</label>
-                  <input className="lm-input" value={offsetAlongStr} onChange={(e) => setOffsetAlongStr(e.target.value)} />
-                </div>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">Выравнивание</label>
-                  <select className="lm-input" value={alignment} onChange={(e) => setAlignment(e.target.value as OpeningAlongAlignment)}>
-                    <option value="center">По центру</option>
-                    <option value="leading">По левому краю</option>
-                    <option value="trailing">По правому краю</option>
-                  </select>
-                </div>
-                <div className="lm-field wp-field">
-                  <label className="lm-label">Уровень (мм)</label>
-                  <input className="lm-input" value={levelStr} onChange={(e) => setLevelStr(e.target.value)} />
-                </div>
-              </>
-            ) : null}
-            {activeTab === "sip" ? (
-              <p className="wp-muted">Черновая вкладка SIP для двери. Параметры сохраняются вместе с проёмом.</p>
-            ) : null}
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Тип двери</label>
+                <select className="lm-input" value={doorType} disabled={isEmpty} onChange={(e) => setDoorType(e.target.value as "single")}>
+                  <option value="single">Одиночная дверь</option>
+                </select>
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Открывание</label>
+                <select
+                  className="lm-input"
+                  value={doorSwing}
+                  disabled={isEmpty}
+                  onChange={(e) => setDoorSwing(e.target.value as "in_right" | "in_left" | "out_right" | "out_left")}
+                >
+                  <option value="in_right">На себя, направо</option>
+                  <option value="in_left">На себя, налево</option>
+                  <option value="out_right">От себя, направо</option>
+                  <option value="out_left">От себя, налево</option>
+                </select>
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Наличник (мм)</label>
+                <input className="lm-input" value={doorTrimStr} disabled={isEmpty} onChange={(e) => setDoorTrimStr(e.target.value)} />
+              </div>
+              <label className="wp-check">
+                <input type="checkbox" checked={isEmpty} onChange={(e) => setIsEmpty(e.target.checked)} />
+                Пустой проём
+              </label>
+            </div>
+            <div className="wp-preview-wrap">
+              <DoorFormPreview
+                widthMm={widthMm ?? DEFAULT_DOOR_WIDTH}
+                heightMm={heightMm ?? DEFAULT_DOOR_HEIGHT}
+                doorType={doorType}
+                doorSwing={doorSwing}
+                isEmptyOpening={isEmpty}
+                trimMm={trimMm ?? 0}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {activeTab === "position" ? (
+          <div className="wp-body wp-body--single">
+            <div className="wp-form">
+              {error ? <p className="wp-error">{error}</p> : null}
+              <div className="lm-field wp-field">
+                <label className="lm-label">От</label>
+                <select className="lm-input" value={anchorAlongWall} onChange={(e) => setAnchorAlongWall(e.target.value as OpeningAlongAnchor)}>
+                  <option value="wall_start">Начало стены (0)</option>
+                  <option value="wall_end">Конец стены</option>
+                  <option value="wall_center">Центр стены</option>
+                </select>
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Значение (мм)</label>
+                <input className="lm-input" value={offsetAlongStr} onChange={(e) => setOffsetAlongStr(e.target.value)} />
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Выравнивание</label>
+                <select className="lm-input" value={alignment} onChange={(e) => setAlignment(e.target.value as OpeningAlongAlignment)}>
+                  <option value="center">По центру</option>
+                  <option value="leading">По левому краю</option>
+                  <option value="trailing">По правому краю</option>
+                </select>
+              </div>
+              <div className="lm-field wp-field">
+                <label className="lm-label">Уровень (мм)</label>
+                <input className="lm-input" value={levelStr} onChange={(e) => setLevelStr(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "sip" ? (
+          <div className="wp-body wp-body--single">
+            <div className="wp-form">
+              {error ? <p className="wp-error">{error}</p> : null}
+              <p className="wp-muted">Черновая вкладка SIP для двери. Параметры сохраняются вместе с проёмом.</p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="wp-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={() => (editMode ? closeEdit() : closeAdd())}>

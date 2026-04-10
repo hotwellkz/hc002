@@ -35,6 +35,16 @@ export interface DrawWalls2dOptions {
   readonly show2dProfileLayers?: boolean;
 }
 
+function wallStrokeAndFillColor(wall: Wall, project: Project): { stroke: number; fill: number } {
+  const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  const mt = profile?.layers[0]?.materialType;
+  if (!mt) {
+    return { stroke: WALL_NORMAL, fill: WALL_NORMAL };
+  }
+  const fill = fillColor2dForMaterialType(mt);
+  return { stroke: fill, fill };
+}
+
 function drawDoorSwing2d(
   g: Graphics,
   wall: Wall,
@@ -146,6 +156,7 @@ function drawWallStrokeSimple(
   wallsG: Graphics,
   openingsG: Graphics,
   w: Wall,
+  project: Project,
   t: ViewportTransform,
   showSel: boolean,
   ctx: boolean,
@@ -153,7 +164,8 @@ function drawWallStrokeSimple(
   const a = worldToScreen(w.start.x, w.start.y, t);
   const b = worldToScreen(w.end.x, w.end.y, t);
   const strokePx = Math.max(2, w.thicknessMm * t.zoomPixelsPerMm);
-  const color = showSel ? WALL_SELECTED : ctx ? WALL_CONTEXT : WALL_NORMAL;
+  const profileColor = wallStrokeAndFillColor(w, project);
+  const color = showSel ? WALL_SELECTED : ctx ? WALL_CONTEXT : profileColor.stroke;
   const alpha = ctx ? 0.35 : showSel ? 1 : 0.95;
 
   if (showSel) {
@@ -283,7 +295,7 @@ export function drawWallsAndOpenings2d(
     if (strips && strips.length >= 2) {
       drawWallLayeredPlan(wallsG, openingsG, w, strips, t, showSel, ctx);
     } else {
-      drawWallStrokeSimple(wallsG, openingsG, w, t, showSel, ctx);
+      drawWallStrokeSimple(wallsG, openingsG, w, project, t, showSel, ctx);
     }
   }
 

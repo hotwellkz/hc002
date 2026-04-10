@@ -50,10 +50,26 @@ export function inferCoreDepthMmFromProfile(profile: Profile): number | null {
 export type EffectiveWallManufacturingSettings = WallManufacturingSettings;
 
 export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWallManufacturingSettings {
-  const base = profile.wallManufacturing ?? DEFAULT_WALL_MANUFACTURING;
+  const base = profile.wallManufacturing;
+  const inferredCoreFromLayers = inferCoreDepthMmFromProfile(profile);
+  const layeredInteriorCore =
+    profile.compositionMode === "layered" && profile.layers.length >= 3
+      ? Math.max(
+          0,
+          profile.layers
+            .slice()
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .slice(1, profile.layers.length - 1)
+            .reduce((s, l) => s + Math.max(0, l.thicknessMm), 0),
+        )
+      : 0;
   const core =
-    base.coreDepthMm ??
-    inferCoreDepthMmFromProfile(profile) ??
+    base?.coreDepthMm ??
+    (inferredCoreFromLayers != null && inferredCoreFromLayers > 0
+      ? inferredCoreFromLayers
+      : layeredInteriorCore > 0
+        ? layeredInteriorCore
+        : undefined) ??
     (profile.defaultThicknessMm != null && profile.defaultThicknessMm > 0
       ? profile.defaultThicknessMm
       : DEFAULT_WALL_MANUFACTURING.jointBoardDepthMm);
@@ -61,7 +77,17 @@ export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWa
   return {
     ...DEFAULT_WALL_MANUFACTURING,
     ...base,
-    jointBoardDepthMm: base.jointBoardDepthMm ?? core,
-    plateBoardDepthMm: base.plateBoardDepthMm ?? core,
+    panelNominalWidthMm:
+      base?.panelNominalWidthMm ??
+      (profile.defaultWidthMm != null && profile.defaultWidthMm > 0
+        ? profile.defaultWidthMm
+        : DEFAULT_WALL_MANUFACTURING.panelNominalWidthMm),
+    panelNominalHeightMm:
+      base?.panelNominalHeightMm ??
+      (profile.defaultHeightMm != null && profile.defaultHeightMm > 0
+        ? profile.defaultHeightMm
+        : DEFAULT_WALL_MANUFACTURING.panelNominalHeightMm),
+    jointBoardDepthMm: base?.jointBoardDepthMm ?? core,
+    plateBoardDepthMm: base?.plateBoardDepthMm ?? core,
   };
 }

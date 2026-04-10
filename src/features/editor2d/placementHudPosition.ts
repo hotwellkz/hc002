@@ -25,14 +25,17 @@ export function computePlacementHudScreenPosition(opts: {
   readonly cursorCanvasX: number;
   readonly cursorCanvasY: number;
   readonly wallCoordinateModalOpen: boolean;
+  /** Модалка смещения от опорной точки — та же «парковка» подсказки, что и у координат стены. */
+  readonly wallAnchorCoordinateModalOpen?: boolean;
   readonly showCoordHud: boolean;
 }): PlacementHudScreenPosition {
   const { canvasRect, cursorCanvasX, cursorCanvasY, wallCoordinateModalOpen, showCoordHud } = opts;
+  const anyCoordModalOpen = wallCoordinateModalOpen || Boolean(opts.wallAnchorCoordinateModalOpen);
 
   const screenX = canvasRect.left + cursorCanvasX;
   const screenY = canvasRect.top + cursorCanvasY;
 
-  if (wallCoordinateModalOpen) {
+  if (anyCoordModalOpen) {
     const hintLeft = canvasRect.left + PAD;
     const hintTop = Math.max(canvasRect.top + PAD, canvasRect.bottom - HINT_MAX_H - PAD);
     return {

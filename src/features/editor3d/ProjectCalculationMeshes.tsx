@@ -37,7 +37,10 @@ export function ProjectCalculationMeshes({ project, visible, selectedReactKey, o
   return (
     <group name="project-calculation-derived">
       {specs.map((s) => {
-        const mat = s.source === "lumber" ? materials.lumber : materials.eps;
+        const mat =
+          s.source === "lumber"
+            ? materials.lumber
+            : (materials.byMaterialType.get(s.materialType) ?? materials.eps);
         const isLumber = s.source === "lumber";
         return (
           <group key={s.reactKey}>

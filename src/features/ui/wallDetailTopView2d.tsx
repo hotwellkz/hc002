@@ -17,8 +17,7 @@ import {
 } from "@/core/domain/wallProfileLayers";
 import {
   lumberPlan2dFillForRole,
-  SIP_PLAN2D_FILL_ALPHA,
-  SIP_PLAN2D_FILL_HEX,
+  wallCalcCorePlan2dFill,
 } from "@/features/editor2d/wallCalculationPlan2dColors";
 import { collectWallCalculationPlanQuads } from "@/features/editor2d/wallCalculationPlan2dQuads";
 import { fillColor2dForMaterialType } from "@/features/editor2d/materials2d";
@@ -47,6 +46,7 @@ function crossToSheetYMm(topViewY: number, crossMm: number, thicknessMm: number)
 
 function wallCalculationPlanOverlaySvg(
   wPlan: Wall,
+  sourceWall: Wall,
   project: Project,
   calc: WallCalculationResult,
   topViewY: number,
@@ -55,11 +55,13 @@ function wallCalculationPlanOverlaySvg(
   sy: (mm: number) => number,
 ): ReactNode {
   const quads = collectWallCalculationPlanQuads(wPlan, project, calc);
+  const profile = sourceWall.profileId ? getProfileById(project, sourceWall.profileId) : undefined;
+  const coreFill = wallCalcCorePlan2dFill(sourceWall.thicknessMm, profile);
   return quads.map((q, i) => {
     const pts = q.corners.map((c) => `${sx(c.x)},${sy(crossToSheetYMm(topViewY, c.y, T))}`).join(" ");
     const fill =
       q.kind === "sip"
-        ? pixiHexToCss(SIP_PLAN2D_FILL_HEX, SIP_PLAN2D_FILL_ALPHA)
+        ? pixiHexToCss(coreFill.color, coreFill.alpha)
         : (() => {
             const { color, alpha } = lumberPlan2dFillForRole(q.role);
             return pixiHexToCss(color, alpha);
@@ -98,6 +100,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
   const T = wall.thicknessMm;
   const wPlan = wallAlongPositiveX(wall, L);
   const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  const solidWallFill = profile?.layers[0] ? fillColor2dForMaterialType(profile.layers[0].materialType) : 0x5aa7ff;
   const stripsResolved: WallProfileLayerStripMm[] | null = profile
     ? resolveWallProfileLayerStripsMm(T, profile)
     : null;
@@ -114,7 +117,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
   const openingOnWall = openings.filter((o) => o.wallId === wall.id && o.offsetFromStartMm != null);
 
   const calcOverlay =
-    wallCalculation != null ? wallCalculationPlanOverlaySvg(wPlan, project, wallCalculation, topViewY, T, sx, sy) : null;
+    wallCalculation != null ? wallCalculationPlanOverlaySvg(wPlan, wall, project, wallCalculation, topViewY, T, sx, sy) : null;
 
   if (layered && stripsResolved) {
     const strips = stripsResolved;
@@ -238,7 +241,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
       {pts ? (
         <polygon
           points={pts}
-          fill={pixiHexToCss(0x5aa7ff, 0.95)}
+          fill={pixiHexToCss(solidWallFill, 0.95)}
           stroke={pixiHexToCss(0x0f1218, 0.18)}
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"

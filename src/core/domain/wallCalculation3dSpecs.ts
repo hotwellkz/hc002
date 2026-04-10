@@ -1,8 +1,10 @@
 import { getLayerById } from "./layerOps";
 import type { ProfileMaterialType } from "./profile";
+import { getProfileById } from "./profileOps";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import { boardCoreNormalOffsetsMm } from "./wallLumberBoard2dOffsets";
+import { resolveWallProfileCoreBandMm } from "./wallProfileLayers";
 import type { LumberPiece, WallCalculationResult } from "./wallCalculation";
 
 const MM_TO_M = 0.001;
@@ -293,6 +295,9 @@ function sipSpecsForWall(
   const out: CalculationSolidSpec[] = [];
   const coreBaseY = bottomMm + plateT;
   const pieces = calc.lumberPieces;
+  const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  const coreBand = profile ? resolveWallProfileCoreBandMm(wall.thicknessMm, profile) : null;
+  const coreMaterial: ProfileMaterialType = coreBand?.materialType ?? "eps";
 
   const pushResidualChunk = (reactKey: string, s0: number, s1: number, y0Core: number, y1Core: number) => {
     const y0 = Math.max(0, Math.min(vCoreMm, y0Core));
@@ -365,7 +370,7 @@ function sipSpecsForWall(
           width: (r.n1 - r.n0) * MM_TO_M,
           height: (r.y1 - r.y0) * MM_TO_M,
           depth,
-          materialType: "eps",
+          materialType: coreMaterial,
         });
       }
     }

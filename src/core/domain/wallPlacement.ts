@@ -23,6 +23,11 @@ export interface WallPlacementSession {
   readonly previewEndMm: Point2D | null;
   /** Последняя сработавшая привязка при preview (для маркера и подсказки). */
   readonly lastSnapKind: SnapKind | null;
+  /**
+   * Гистерезис угловой привязки направления второй точки (шаг 45°).
+   * null — нет активной защёлки.
+   */
+  readonly angleSnapLockedDeg: number | null;
 }
 
 export function initialWallPlacementPhase(project: Project): WallPlacementPhase {
