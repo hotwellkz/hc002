@@ -3,6 +3,9 @@
  * в этом случае Delete/Backspace не должны трогать сцену.
  */
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (typeof Element === "undefined") {
+    return false;
+  }
   if (!(target instanceof Element)) {
     return false;
   }

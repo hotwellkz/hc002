@@ -93,6 +93,7 @@ import { deserializeProject } from "@/core/io/serialization";
 import { pickAndLoadProject, saveProjectWithFallback } from "@/core/io/projectFile";
 import { validateProjectSchema } from "@/core/validation/validateProjectSchema";
 import type { LinearProfilePlacementMode } from "@/core/geometry/linearPlacementGeometry";
+import { isSceneCoordinateModalBlocking } from "@/shared/sceneCoordinateModalLock";
 
 export type ActiveTool = "select" | "pan" | "ruler" | "changeLength";
 
@@ -1318,6 +1319,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!s || s.phase !== "waitingSecondPoint" || !s.firstPointMm) {
         return;
       }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
       const snap = resolvePlacementSnap(get, worldMm, viewport);
       let previewEnd = snap.point;
       const skipAngleSnap = get().wallCoordinateModalOpen || Boolean(opts?.altKey);
@@ -1343,6 +1347,9 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     wallPlacementPrimaryClick: (worldMm, viewport, opts) => {
       if (get().wallAnchorCoordinateModalOpen) {
+        return;
+      }
+      if (get().wallCoordinateModalOpen) {
         return;
       }
       const p0 = get().currentProject;
@@ -1722,6 +1729,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!s || s.phase !== "pickTarget" || !s.anchorWorldMm) {
         return;
       }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
       const snap = resolvePlacementSnap(get, worldMm, viewport);
       let previewEnd = snap.point;
       const skipAngleSnap = get().wallMoveCopyCoordinateModalOpen || Boolean(opts?.altKey);
@@ -1744,6 +1754,9 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     wallMoveCopyPrimaryClick: (worldMm, viewport, opts) => {
+      if (get().wallMoveCopyCoordinateModalOpen) {
+        return;
+      }
       const s = get().wallMoveCopySession;
       if (!s) {
         return;
@@ -1980,6 +1993,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!sess) {
         return;
       }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
       const snap = resolvePlacementSnap(get, worldMm, viewport);
       const L = lengthFromSnappedPointForWallLengthEdit(
         sess.fixedEndMm,
@@ -2000,6 +2016,9 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     lengthChange2dCommit: () => {
+      if (get().lengthChangeCoordinateModalOpen) {
+        return;
+      }
       if (get().activeTool !== "changeLength") {
         return;
       }

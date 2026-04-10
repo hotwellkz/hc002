@@ -61,14 +61,16 @@
 
 .shell-top[data-topbar-mode="medium"] .e2dpt-icon,
 .shell-top[data-topbar-mode="medium"] .ltb-icon,
-.shell-top[data-topbar-mode="medium"] .tb-prof-icon {
+.shell-top[data-topbar-mode="medium"] .tb-prof-icon,
+.shell-top[data-topbar-mode="medium"] .tb-keys-icon {
   width: 16px;
   height: 16px;
 }
 
 .shell-top[data-topbar-mode="narrow"] .e2dpt-icon,
 .shell-top[data-topbar-mode="narrow"] .ltb-icon,
-.shell-top[data-topbar-mode="narrow"] .tb-prof-icon {
+.shell-top[data-topbar-mode="narrow"] .tb-prof-icon,
+.shell-top[data-topbar-mode="narrow"] .tb-keys-icon {
   width: 15px;
   height: 15px;
 }
@@ -103,7 +105,8 @@
   box-shadow: var(--shadow-focus-glow);
 }
 
-.tb-prof-icon {
+.tb-prof-icon,
+.tb-keys-icon {
   width: 18px;
   height: 18px;
 }

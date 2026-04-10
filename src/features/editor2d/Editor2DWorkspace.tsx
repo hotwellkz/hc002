@@ -12,11 +12,16 @@ import { wallJointHintRu } from "@/core/domain/wallJointSession";
 import { pickNearestWallEnd, pickWallSegmentInterior } from "@/core/domain/wallJointPick";
 import { getProfileById } from "@/core/domain/profileOps";
 import { cssHexToPixiNumber } from "@/shared/cssColor";
+import { isEditableKeyboardTarget } from "@/shared/editableKeyboardTarget";
 import { useAppStore } from "@/store/useAppStore";
 import { useUiThemeStore } from "@/store/useUiThemeStore";
 
 import { computeAnchorRelativeHud } from "@/core/geometry/anchorPlacementHud";
 import { resolveSnap2d } from "@/core/geometry/snap2d";
+import { getResolvedShortcutCodes } from "@/shared/editorToolShortcuts/resolveEditorShortcutCodes";
+import { shouldIgnoreWorkspaceEscape } from "@/shared/editorToolShortcuts/shouldIgnoreEditorToolHotkeys";
+import { isSceneCoordinateModalBlocking } from "@/shared/sceneCoordinateModalLock";
+import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 import { computePlacementHudScreenPosition } from "./placementHudPosition";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
@@ -275,10 +280,39 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      const resetCodesRaw = getResolvedShortcutCodes("editorReset", useEditorShortcutsStore.getState().customCodes);
+      const resetCodes = resetCodesRaw.length > 0 ? resetCodesRaw : (["Escape"] as const);
+      if (resetCodes.includes(e.code)) {
+        const st0 = useAppStore.getState();
+        if (
+          shouldIgnoreWorkspaceEscape(e.target, {
+            activeTab: st0.activeTab,
+            layerManagerOpen: st0.layerManagerOpen,
+            layerParamsModalOpen: st0.layerParamsModalOpen,
+            profilesModalOpen: st0.profilesModalOpen,
+            addWallModalOpen: st0.addWallModalOpen,
+            addWindowModalOpen: st0.addWindowModalOpen,
+            addDoorModalOpen: st0.addDoorModalOpen,
+            windowEditModal: st0.windowEditModal,
+            doorEditModal: st0.doorEditModal,
+            wallJointParamsModalOpen: st0.wallJointParamsModalOpen,
+            wallCalculationModalOpen: st0.wallCalculationModalOpen,
+            wallCoordinateModalOpen: st0.wallCoordinateModalOpen,
+            wallAnchorCoordinateModalOpen: st0.wallAnchorCoordinateModalOpen,
+            wallMoveCopyCoordinateModalOpen: st0.wallMoveCopyCoordinateModalOpen,
+            lengthChangeCoordinateModalOpen: st0.lengthChangeCoordinateModalOpen,
+          })
+        ) {
+          return;
+        }
         if (useAppStore.getState().wallMoveCopyCoordinateModalOpen) {
           e.preventDefault();
           useAppStore.getState().closeWallMoveCopyCoordinateModal();
+          return;
+        }
+        if (useAppStore.getState().lengthChangeCoordinateModalOpen) {
+          e.preventDefault();
+          useAppStore.getState().closeLengthChangeCoordinateModal();
           return;
         }
         if (useAppStore.getState().activeTool === "ruler") {
@@ -348,16 +382,26 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           useAppStore.getState().wallPlacementBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
+          return;
+        }
+        if (stEsc.openingMoveModeActive) {
+          e.preventDefault();
+          stEsc.setOpeningMoveModeActive(false);
+          return;
+        }
+        if (stEsc.activeTool === "pan") {
+          e.preventDefault();
+          stEsc.setActiveTool("select");
+          return;
         }
         return;
       }
       if (e.key === " " || e.code === "Space") {
-        const t = e.target as HTMLElement | null;
-        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        if (isEditableKeyboardTarget(e.target)) {
           return;
         }
         const st = useAppStore.getState();
-        if (st.wallCoordinateModalOpen || st.wallAnchorCoordinateModalOpen) {
+        if (isSceneCoordinateModalBlocking(st)) {
           return;
         }
         if (st.wallMoveCopySession?.phase === "pickTarget") {
@@ -1313,8 +1357,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         } = useAppStore.getState();
         const t = buildViewportTransform(w, h, viewport2d.panXMm, viewport2d.panYMm, viewport2d.zoomPixelsPerMm);
         const p = screenToWorld(ev.global.x, ev.global.y, t);
-        cursorCbRef.current({ x: p.x, y: p.y });
-        {
+        const coordBlock = isSceneCoordinateModalBlocking(useAppStore.getState());
+        if (!coordBlock) {
+          cursorCbRef.current({ x: p.x, y: p.y });
           const rectPtr = canvas.getBoundingClientRect();
           const scaleXp = rectPtr.width / w;
           const scaleYp = rectPtr.height / h;
@@ -1328,7 +1373,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
 
         const opSess = openingPointerRef.current;
-        if (opSess && ev.pointerId === opSess.pointerId) {
+        if (!coordBlock && opSess && ev.pointerId === opSess.pointerId) {
           const distPx = Math.hypot(ev.global.x - opSess.sx, ev.global.y - opSess.sy);
           if (!opSess.dragActive && distPx >= OPENING_DRAG_THRESHOLD_PX) {
             opSess.dragActive = true;
@@ -1352,414 +1397,421 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           }
         }
 
-        const rect = canvas.getBoundingClientRect();
-        if (useAppStore.getState().openingMoveModeActive) {
-          const hit = moveDimHitsRef.current.find(
-            (h0) =>
-              ev.global.x >= h0.x &&
-              ev.global.x <= h0.x + h0.w &&
-              ev.global.y >= h0.y &&
-              ev.global.y <= h0.y + h0.h,
-          );
-          canvas.style.cursor = hit ? "pointer" : "";
-        } else if (!panning.active && activeTool !== "ruler" && activeTool !== "changeLength") {
-          canvas.style.cursor = "";
-        }
-        const pend = useAppStore.getState().pendingWindowPlacement ?? useAppStore.getState().pendingDoorPlacement;
-        if (pend) {
-          windowPlacementHoverRef.current = null;
-          const layerView = narrowProjectToActiveLayer(currentProject);
-          const walls = layerView.walls;
-          const tol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
-          const op = currentProject.openings.find((o) => o.id === pend.openingId);
-          const hudWin = computePlacementHudScreenPosition({
-            canvasRect: rect,
-            cursorCanvasX: ev.global.x,
-            cursorCanvasY: ev.global.y,
-            wallCoordinateModalOpen: false,
-            showCoordHud: false,
-          });
-          if (op) {
-            const hit = pickClosestWallAlongPoint(p, walls, tol);
-            if (hit) {
-              const wall = currentProject.walls.find((w) => w.id === hit.wallId);
-              if (wall) {
-                const rawLeft = offsetFromStartForCursorCentered(hit.alongMm, op.widthMm);
-                const left = clampPlacedOpeningLeftEdgeMm(
-                  wall,
-                  op.widthMm,
-                  rawLeft,
-                  currentProject,
-                  op.kind === "door" ? "door" : "window",
-                );
-                const v = validateWindowPlacementOnWall(wall, left, op.widthMm, currentProject, op.id, {
-                  openingKind: op.kind === "door" ? "door" : "window",
-                });
-                windowPlacementHoverRef.current = {
-                  wallId: wall.id,
-                  leftAlongMm: left,
-                  openingWidthMm: op.widthMm,
-                  valid: v.ok,
-                };
-                const hintExtra = v.ok ? "ЛКМ — установить · Esc / ПКМ — отмена" : v.reason;
+        if (coordBlock) {
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+        } else {
+          const rect = canvas.getBoundingClientRect();
+          if (useAppStore.getState().openingMoveModeActive) {
+            const hit = moveDimHitsRef.current.find(
+              (h0) =>
+                ev.global.x >= h0.x &&
+                ev.global.x <= h0.x + h0.w &&
+                ev.global.y >= h0.y &&
+                ev.global.y <= h0.y + h0.h,
+            );
+            canvas.style.cursor = hit ? "pointer" : "";
+          } else if (!panning.active && activeTool !== "ruler" && activeTool !== "changeLength") {
+            canvas.style.cursor = "";
+          }
+          const pend = useAppStore.getState().pendingWindowPlacement ?? useAppStore.getState().pendingDoorPlacement;
+          if (pend) {
+            windowPlacementHoverRef.current = null;
+            const layerView = narrowProjectToActiveLayer(currentProject);
+            const walls = layerView.walls;
+            const tol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
+            const op = currentProject.openings.find((o) => o.id === pend.openingId);
+            const hudWin = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
+            if (op) {
+              const hit = pickClosestWallAlongPoint(p, walls, tol);
+              if (hit) {
+                const wall = currentProject.walls.find((w) => w.id === hit.wallId);
+                if (wall) {
+                  const rawLeft = offsetFromStartForCursorCentered(hit.alongMm, op.widthMm);
+                  const left = clampPlacedOpeningLeftEdgeMm(
+                    wall,
+                    op.widthMm,
+                    rawLeft,
+                    currentProject,
+                    op.kind === "door" ? "door" : "window",
+                  );
+                  const v = validateWindowPlacementOnWall(wall, left, op.widthMm, currentProject, op.id, {
+                    openingKind: op.kind === "door" ? "door" : "window",
+                  });
+                  windowPlacementHoverRef.current = {
+                    wallId: wall.id,
+                    leftAlongMm: left,
+                    openingWidthMm: op.widthMm,
+                    valid: v.ok,
+                  };
+                  const hintExtra = v.ok ? "ЛКМ — установить · Esc / ПКМ — отмена" : v.reason;
+                  setWallHintRef.current({
+                    left: hudWin.hintLeft,
+                    top: hudWin.hintTop,
+                    text: `${op.kind === "door" ? "Установка двери" : "Установка окна"}\n${hintExtra}`,
+                  });
+                }
+              } else {
                 setWallHintRef.current({
                   left: hudWin.hintLeft,
                   top: hudWin.hintTop,
-                  text: `${op.kind === "door" ? "Установка двери" : "Установка окна"}\n${hintExtra}`,
+                  text: "Установка проёма\nНаведите курсор на стену активного слоя",
                 });
               }
-            } else {
+            }
+            setCoordHudRef.current(null);
+            paint();
+          } else if (activeTool === "changeLength") {
+            const storeLc = useAppStore.getState();
+            const lenSess = storeLc.lengthChange2dSession;
+            const lenModal = storeLc.lengthChangeCoordinateModalOpen;
+            const hudLc = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen: false,
+              lengthChangeCoordinateModalOpen: lenModal,
+              showCoordHud: false,
+            });
+            const layerLc = narrowProjectToActiveLayer(currentProject);
+            const endTol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
+            if (lenSess && !lenModal) {
+              useAppStore.getState().lengthChange2dPreviewMove(p, t);
+              const s2 = useAppStore.getState().lengthChange2dSession!;
+              const dx = s2.previewMovingMm.x - s2.fixedEndMm.x;
+              const dy = s2.previewMovingMm.y - s2.fixedEndMm.y;
+              const Lnow = dx * s2.axisUx + dy * s2.axisUy;
+              const dMm = Math.round(Lnow - s2.initialLengthMm);
+              const Lround = Math.round(Lnow);
+              let snapLine = "";
+              if (s2.lastSnapKind && s2.lastSnapKind !== "none") {
+                snapLine =
+                  s2.lastSnapKind === "vertex"
+                    ? "Привязка: угол"
+                    : s2.lastSnapKind === "edge"
+                      ? "Привязка: линия"
+                      : "Привязка: сетка";
+              }
+              const errLine = useAppStore.getState().lastError ? `\n${useAppStore.getState().lastError}` : "";
               setWallHintRef.current({
-                left: hudWin.hintLeft,
-                top: hudWin.hintTop,
-                text: "Установка проёма\nНаведите курсор на стену активного слоя",
+                left: hudLc.hintLeft,
+                top: hudLc.hintTop,
+                text: `Изменение длины\nΔ = ${dMm >= 0 ? "+" : ""}${dMm} мм\nНовая длина = ${Lround} мм\nЛКМ — применить · Esc — отмена · Пробел — Δ (мм)${snapLine ? `\n${snapLine}` : ""}${errLine}`,
+              });
+              lengthChangeHoverRef.current = null;
+            } else if (!lenModal) {
+              const hitEnd = pickNearestWallEnd(p, layerLc.walls, endTol);
+              lengthChangeHoverRef.current = hitEnd ? { wallId: hitEnd.wallId, end: hitEnd.end } : null;
+              setWallHintRef.current({
+                left: hudLc.hintLeft,
+                top: hudLc.hintTop,
+                text: "Выберите сторону",
               });
             }
-          }
-          setCoordHudRef.current(null);
-          paint();
-        } else if (activeTool === "changeLength") {
-          const storeLc = useAppStore.getState();
-          const lenSess = storeLc.lengthChange2dSession;
-          const lenModal = storeLc.lengthChangeCoordinateModalOpen;
-          const hudLc = computePlacementHudScreenPosition({
-            canvasRect: rect,
-            cursorCanvasX: ev.global.x,
-            cursorCanvasY: ev.global.y,
-            wallCoordinateModalOpen: false,
-            lengthChangeCoordinateModalOpen: lenModal,
-            showCoordHud: false,
-          });
-          const layerLc = narrowProjectToActiveLayer(currentProject);
-          const endTol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
-          if (lenSess && !lenModal) {
-            useAppStore.getState().lengthChange2dPreviewMove(p, t);
-            const s2 = useAppStore.getState().lengthChange2dSession!;
-            const dx = s2.previewMovingMm.x - s2.fixedEndMm.x;
-            const dy = s2.previewMovingMm.y - s2.fixedEndMm.y;
-            const Lnow = dx * s2.axisUx + dy * s2.axisUy;
-            const dMm = Math.round(Lnow - s2.initialLengthMm);
-            const Lround = Math.round(Lnow);
-            let snapLine = "";
-            if (s2.lastSnapKind && s2.lastSnapKind !== "none") {
-              snapLine =
-                s2.lastSnapKind === "vertex"
-                  ? "Привязка: угол"
-                  : s2.lastSnapKind === "edge"
-                    ? "Привязка: линия"
-                    : "Привязка: сетка";
-            }
-            const errLine = useAppStore.getState().lastError ? `\n${useAppStore.getState().lastError}` : "";
-            setWallHintRef.current({
-              left: hudLc.hintLeft,
-              top: hudLc.hintTop,
-              text: `Изменение длины\nΔ = ${dMm >= 0 ? "+" : ""}${dMm} мм\nНовая длина = ${Lround} мм\nЛКМ — применить · Esc — отмена · Пробел — Δ (мм)${snapLine ? `\n${snapLine}` : ""}${errLine}`,
+            setCoordHudRef.current(null);
+            paint();
+          } else if (activeTool === "ruler" && ruler2dSession) {
+            const rs = ruler2dSession;
+            const hudRm = computePlacementHudScreenPosition({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
             });
-            lengthChangeHoverRef.current = null;
-          } else if (!lenModal) {
-            const hitEnd = pickNearestWallEnd(p, layerLc.walls, endTol);
-            lengthChangeHoverRef.current = hitEnd ? { wallId: hitEnd.wallId, end: hitEnd.end } : null;
-            setWallHintRef.current({
-              left: hudLc.hintLeft,
-              top: hudLc.hintTop,
-              text: "Выберите сторону",
-            });
-          }
-          setCoordHudRef.current(null);
-          paint();
-        } else if (activeTool === "ruler" && ruler2dSession) {
-          const rs = ruler2dSession;
-          const hudRm = computePlacementHudScreenPosition({
-            canvasRect: rect,
-            cursorCanvasX: ev.global.x,
-            cursorCanvasY: ev.global.y,
-            wallCoordinateModalOpen: false,
-            showCoordHud: false,
-          });
-          if (rs.phase === "stretching" && rs.firstMm) {
-            const altKey = Boolean((ev as { altKey?: boolean }).altKey);
-            useAppStore.getState().ruler2dPreviewMove(p, t, { altKey });
-            const rs2 = useAppStore.getState().ruler2dSession;
-            const end = rs2?.previewEndMm;
-            const first = rs2?.firstMm;
-            if (end && first) {
-              const dx = Math.round(end.x - first.x);
-              const dy = Math.round(end.y - first.y);
+            if (rs.phase === "stretching" && rs.firstMm) {
+              const altKey = Boolean((ev as { altKey?: boolean }).altKey);
+              useAppStore.getState().ruler2dPreviewMove(p, t, { altKey });
+              const rs2 = useAppStore.getState().ruler2dSession;
+              const end = rs2?.previewEndMm;
+              const first = rs2?.firstMm;
+              if (end && first) {
+                const dx = Math.round(end.x - first.x);
+                const dy = Math.round(end.y - first.y);
+                const d = Math.round(Math.hypot(dx, dy));
+                setWallHintRef.current({
+                  left: hudRm.hintLeft,
+                  top: hudRm.hintTop,
+                  text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nAlt — без угловой привязки`,
+                });
+              }
+            } else if (rs.phase === "pickFirst") {
+              setWallHintRef.current({
+                left: hudRm.hintLeft,
+                top: hudRm.hintTop,
+                text: "Линейка\nВыберите первую точку",
+              });
+            } else if (rs.phase === "done" && rs.firstMm && rs.secondMm) {
+              const dx = Math.round(rs.secondMm.x - rs.firstMm.x);
+              const dy = Math.round(rs.secondMm.y - rs.firstMm.y);
               const d = Math.round(Math.hypot(dx, dy));
               setWallHintRef.current({
                 left: hudRm.hintLeft,
                 top: hudRm.hintTop,
-                text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nAlt — без угловой привязки`,
+                text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nЛКМ — новый замер · Esc — сброс`,
               });
             }
-          } else if (rs.phase === "pickFirst") {
-            setWallHintRef.current({
-              left: hudRm.hintLeft,
-              top: hudRm.hintTop,
-              text: "Линейка\nВыберите первую точку",
-            });
-          } else if (rs.phase === "done" && rs.firstMm && rs.secondMm) {
-            const dx = Math.round(rs.secondMm.x - rs.firstMm.x);
-            const dy = Math.round(rs.secondMm.y - rs.firstMm.y);
-            const d = Math.round(Math.hypot(dx, dy));
-            setWallHintRef.current({
-              left: hudRm.hintLeft,
-              top: hudRm.hintTop,
-              text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nЛКМ — новый замер · Esc — сброс`,
-            });
-          }
-          setCoordHudRef.current(null);
-          paint();
-        } else if (wallPlacementSession) {
-          const stWall = useAppStore.getState();
-          const wallAnchorCoordOpen = stWall.wallAnchorCoordinateModalOpen;
-          const coordModalAny = wallCoordinateModalOpen || wallAnchorCoordOpen;
-          const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
-          const anchorOn = stWall.wallAnchorPlacementModeActive;
-          const anchorMm = stWall.wallPlacementAnchorMm;
-          const firstPh =
-            wallPlacementSession.phase === "waitingFirstWallPoint" ||
-            wallPlacementSession.phase === "waitingOriginAndFirst";
-
-          if (wallPlacementSession.phase === "waitingSecondPoint") {
-            const altKey = Boolean((ev as { altKey?: boolean }).altKey);
-            useAppStore.getState().wallPlacementPreviewMove(p, t, { altKey });
-            const ws = useAppStore.getState().wallPlacementSession;
-            let snapLine = "";
-            if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
-              snapLine =
-                ws.lastSnapKind === "vertex"
-                  ? "Привязка: угол"
-                  : ws.lastSnapKind === "edge"
-                    ? "Привязка: линия"
-                    : "Привязка: сетка";
+            setCoordHudRef.current(null);
+            paint();
+          } else if (wallPlacementSession) {
+            const stWall = useAppStore.getState();
+            const wallAnchorCoordOpen = stWall.wallAnchorCoordinateModalOpen;
+            const coordModalAny = wallCoordinateModalOpen || wallAnchorCoordOpen;
+            const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
+            const anchorOn = stWall.wallAnchorPlacementModeActive;
+            const anchorMm = stWall.wallPlacementAnchorMm;
+            const firstPh =
+              wallPlacementSession.phase === "waitingFirstWallPoint" ||
+              wallPlacementSession.phase === "waitingOriginAndFirst";
+  
+            if (wallPlacementSession.phase === "waitingSecondPoint") {
+              const altKey = Boolean((ev as { altKey?: boolean }).altKey);
+              useAppStore.getState().wallPlacementPreviewMove(p, t, { altKey });
+              const ws = useAppStore.getState().wallPlacementSession;
+              let snapLine = "";
+              if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
+                snapLine =
+                  ws.lastSnapKind === "vertex"
+                    ? "Привязка: угол"
+                    : ws.lastSnapKind === "edge"
+                      ? "Привязка: линия"
+                      : "Привязка: сетка";
+              }
+              const hud = computePlacementHudScreenPosition({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                wallCoordinateModalOpen,
+                wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+                showCoordHud: !coordModalAny,
+              });
+              setWallHintRef.current({
+                left: hud.hintLeft,
+                top: hud.hintTop,
+                text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки`,
+              });
+              if (ws?.firstPointMm && ws.previewEndMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
+                const dx = ws.previewEndMm.x - ws.firstPointMm.x;
+                const dy = ws.previewEndMm.y - ws.firstPointMm.y;
+                const d = Math.hypot(dx, dy);
+                const rel2 = computeAnchorRelativeHud(
+                  ws.firstPointMm.x,
+                  ws.firstPointMm.y,
+                  ws.previewEndMm.x,
+                  ws.previewEndMm.y,
+                );
+                const locked = ws.angleSnapLockedDeg ?? null;
+                setCoordHudRef.current({
+                  left: hud.coordHudLeft,
+                  top: hud.coordHudTop,
+                  dx,
+                  dy,
+                  d,
+                  angleDeg: locked != null ? locked : rel2.angleDeg,
+                  angleSnapLockedDeg: locked,
+                  axisHint: rel2.axisHint,
+                });
+              } else {
+                setCoordHudRef.current(null);
+              }
+            } else if (anchorOn && firstPh) {
+              if (anchorMm && !wallAnchorCoordOpen) {
+                useAppStore.getState().wallPlacementAnchorPreviewMove(p, t, {
+                  altKey: Boolean((ev as { altKey?: boolean }).altKey),
+                });
+              }
+              const stA = useAppStore.getState();
+              const am = stA.wallPlacementAnchorMm;
+              const ap = stA.wallPlacementAnchorPreviewEndMm;
+              const hudA = computePlacementHudScreenPosition({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                wallCoordinateModalOpen,
+                wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+                showCoordHud: !coordModalAny && Boolean(am && ap),
+              });
+              const snapA =
+                stA.wallPlacementAnchorLastSnapKind && stA.wallPlacementAnchorLastSnapKind !== "none"
+                  ? stA.wallPlacementAnchorLastSnapKind === "vertex"
+                    ? "Привязка: угол"
+                    : stA.wallPlacementAnchorLastSnapKind === "edge"
+                      ? "Привязка: линия"
+                      : "Привязка: сетка"
+                  : "";
+              const hintTitle = am
+                ? "Укажите начало стены (ЛКМ) или Пробел — координаты"
+                : "Выберите первую точку";
+              const altHint = am ? "\nAlt — без угловой привязки" : "";
+              setWallHintRef.current({
+                left: hudA.hintLeft,
+                top: hudA.hintTop,
+                text: `Точка привязки\n${hintTitle}\n${modeLabel}${snapA ? `\n${snapA}` : ""}${altHint}`,
+              });
+              if (am && ap && hudA.coordHudLeft != null && hudA.coordHudTop != null) {
+                const rel = computeAnchorRelativeHud(am.x, am.y, ap.x, ap.y);
+                const lockedA = stA.wallPlacementAnchorAngleSnapLockedDeg ?? null;
+                setCoordHudRef.current({
+                  left: hudA.coordHudLeft,
+                  top: hudA.coordHudTop,
+                  dx: rel.dx,
+                  dy: rel.dy,
+                  d: rel.d,
+                  angleDeg: lockedA != null ? lockedA : rel.angleDeg,
+                  angleSnapLockedDeg: lockedA,
+                  axisHint: rel.axisHint,
+                });
+              } else {
+                setCoordHudRef.current(null);
+              }
+            } else {
+              const hud = computePlacementHudScreenPosition({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                wallCoordinateModalOpen,
+                wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+                showCoordHud: false,
+              });
+              setWallHintRef.current({
+                left: hud.hintLeft,
+                top: hud.hintTop,
+                text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}`,
+              });
+              setCoordHudRef.current(null);
             }
-            const hud = computePlacementHudScreenPosition({
-              canvasRect: rect,
-              cursorCanvasX: ev.global.x,
-              cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen,
-              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
-              showCoordHud: !coordModalAny,
-            });
-            setWallHintRef.current({
-              left: hud.hintLeft,
-              top: hud.hintTop,
-              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки`,
-            });
-            if (ws?.firstPointMm && ws.previewEndMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
-              const dx = ws.previewEndMm.x - ws.firstPointMm.x;
-              const dy = ws.previewEndMm.y - ws.firstPointMm.y;
-              const d = Math.hypot(dx, dy);
-              const rel2 = computeAnchorRelativeHud(
-                ws.firstPointMm.x,
-                ws.firstPointMm.y,
-                ws.previewEndMm.x,
-                ws.previewEndMm.y,
+          } else if (wallMoveCopySession) {
+            const stMc = useAppStore.getState();
+            const wm = stMc.wallMoveCopySession;
+            const moveCopyCoordOpen = stMc.wallMoveCopyCoordinateModalOpen;
+            const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
+            const title = wm?.mode === "copy" ? "Копирование стены" : "Перенос стены";
+            if (wm?.phase === "pickTarget" && wm.anchorWorldMm) {
+              const altKey = Boolean((ev as { altKey?: boolean }).altKey);
+              useAppStore.getState().wallMoveCopyPreviewMove(p, t, { altKey });
+              const ws = useAppStore.getState().wallMoveCopySession;
+              let snapLine = "";
+              if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
+                snapLine =
+                  ws.lastSnapKind === "vertex"
+                    ? "Привязка: угол"
+                    : ws.lastSnapKind === "edge"
+                      ? "Привязка: линия"
+                      : "Привязка: сетка";
+              }
+              const coordModalAny = wallCoordinateModalOpen || moveCopyCoordOpen;
+              const hud = computePlacementHudScreenPosition({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                wallCoordinateModalOpen,
+                wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
+                showCoordHud: !coordModalAny,
+              });
+              setWallHintRef.current({
+                left: hud.hintLeft,
+                top: hud.hintTop,
+                text: `${title}\nУкажите новое положение (ЛКМ) или Пробел — координаты\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки`,
+              });
+              if (ws?.anchorWorldMm && ws.previewTargetMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
+                const dx = ws.previewTargetMm.x - ws.anchorWorldMm.x;
+                const dy = ws.previewTargetMm.y - ws.anchorWorldMm.y;
+                const d = Math.hypot(dx, dy);
+                const rel2 = computeAnchorRelativeHud(
+                  ws.anchorWorldMm.x,
+                  ws.anchorWorldMm.y,
+                  ws.previewTargetMm.x,
+                  ws.previewTargetMm.y,
+                );
+                const locked = ws.angleSnapLockedDeg ?? null;
+                setCoordHudRef.current({
+                  left: hud.coordHudLeft,
+                  top: hud.coordHudTop,
+                  dx,
+                  dy,
+                  d,
+                  angleDeg: locked != null ? locked : rel2.angleDeg,
+                  angleSnapLockedDeg: locked,
+                  axisHint: rel2.axisHint,
+                });
+              } else {
+                setCoordHudRef.current(null);
+              }
+            } else {
+              const hud = computePlacementHudScreenPosition({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                wallCoordinateModalOpen,
+                wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
+                showCoordHud: false,
+              });
+              setWallHintRef.current({
+                left: hud.hintLeft,
+                top: hud.hintTop,
+                text: `${title}\nВыберите точку привязки на стене (ЛКМ)\n${modeLabel}`,
+              });
+              setCoordHudRef.current(null);
+            }
+            paint();
+          } else if (wallJointSession) {
+            const layerView = narrowProjectToActiveLayer(currentProject);
+            const walls = layerView.walls;
+            const tol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
+            const first = wallJointSession.first;
+            let nextHover: JointHoverState = null;
+            if (wallJointSession.phase === "pickFirst") {
+              const hit = pickNearestWallEnd(p, walls, tol);
+              nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
+            } else if (wallJointSession.kind === "T_ABUTMENT" && first) {
+              const seg = pickWallSegmentInterior(
+                p,
+                walls.filter((w) => w.id !== first.wallId),
+                tol,
+                350,
               );
-              const locked = ws.angleSnapLockedDeg ?? null;
-              setCoordHudRef.current({
-                left: hud.coordHudLeft,
-                top: hud.coordHudTop,
-                dx,
-                dy,
-                d,
-                angleDeg: locked != null ? locked : rel2.angleDeg,
-                angleSnapLockedDeg: locked,
-                axisHint: rel2.axisHint,
-              });
+              nextHover = seg ? { kind: "segment", wallId: seg.wallId, pointMm: seg.pointMm } : null;
             } else {
-              setCoordHudRef.current(null);
+              const hit = pickNearestWallEnd(p, walls, tol);
+              nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
             }
-          } else if (anchorOn && firstPh) {
-            if (anchorMm && !wallAnchorCoordOpen) {
-              useAppStore.getState().wallPlacementAnchorPreviewMove(p, t, {
-                altKey: Boolean((ev as { altKey?: boolean }).altKey),
-              });
-            }
-            const stA = useAppStore.getState();
-            const am = stA.wallPlacementAnchorMm;
-            const ap = stA.wallPlacementAnchorPreviewEndMm;
-            const hudA = computePlacementHudScreenPosition({
+            jointHoverRef.current = nextHover;
+            const hudJoint = computePlacementHudScreenPosition({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen,
-              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
-              showCoordHud: !coordModalAny && Boolean(am && ap),
-            });
-            const snapA =
-              stA.wallPlacementAnchorLastSnapKind && stA.wallPlacementAnchorLastSnapKind !== "none"
-                ? stA.wallPlacementAnchorLastSnapKind === "vertex"
-                  ? "Привязка: угол"
-                  : stA.wallPlacementAnchorLastSnapKind === "edge"
-                    ? "Привязка: линия"
-                    : "Привязка: сетка"
-                : "";
-            const hintTitle = am
-              ? "Укажите начало стены (ЛКМ) или Пробел — координаты"
-              : "Выберите первую точку";
-            const altHint = am ? "\nAlt — без угловой привязки" : "";
-            setWallHintRef.current({
-              left: hudA.hintLeft,
-              top: hudA.hintTop,
-              text: `Точка привязки\n${hintTitle}\n${modeLabel}${snapA ? `\n${snapA}` : ""}${altHint}`,
-            });
-            if (am && ap && hudA.coordHudLeft != null && hudA.coordHudTop != null) {
-              const rel = computeAnchorRelativeHud(am.x, am.y, ap.x, ap.y);
-              const lockedA = stA.wallPlacementAnchorAngleSnapLockedDeg ?? null;
-              setCoordHudRef.current({
-                left: hudA.coordHudLeft,
-                top: hudA.coordHudTop,
-                dx: rel.dx,
-                dy: rel.dy,
-                d: rel.d,
-                angleDeg: lockedA != null ? lockedA : rel.angleDeg,
-                angleSnapLockedDeg: lockedA,
-                axisHint: rel.axisHint,
-              });
-            } else {
-              setCoordHudRef.current(null);
-            }
-          } else {
-            const hud = computePlacementHudScreenPosition({
-              canvasRect: rect,
-              cursorCanvasX: ev.global.x,
-              cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen,
-              wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
+              wallCoordinateModalOpen: false,
               showCoordHud: false,
             });
             setWallHintRef.current({
-              left: hud.hintLeft,
-              top: hud.hintTop,
-              text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}`,
+              left: hudJoint.hintLeft,
+              top: hudJoint.hintTop,
+              text: wallJointHintRu(wallJointSession.kind, wallJointSession.phase),
             });
             setCoordHudRef.current(null);
-          }
-        } else if (wallMoveCopySession) {
-          const stMc = useAppStore.getState();
-          const wm = stMc.wallMoveCopySession;
-          const moveCopyCoordOpen = stMc.wallMoveCopyCoordinateModalOpen;
-          const modeLabel = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
-          const title = wm?.mode === "copy" ? "Копирование стены" : "Перенос стены";
-          if (wm?.phase === "pickTarget" && wm.anchorWorldMm) {
-            const altKey = Boolean((ev as { altKey?: boolean }).altKey);
-            useAppStore.getState().wallMoveCopyPreviewMove(p, t, { altKey });
-            const ws = useAppStore.getState().wallMoveCopySession;
-            let snapLine = "";
-            if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
-              snapLine =
-                ws.lastSnapKind === "vertex"
-                  ? "Привязка: угол"
-                  : ws.lastSnapKind === "edge"
-                    ? "Привязка: линия"
-                    : "Привязка: сетка";
-            }
-            const coordModalAny = wallCoordinateModalOpen || moveCopyCoordOpen;
-            const hud = computePlacementHudScreenPosition({
-              canvasRect: rect,
-              cursorCanvasX: ev.global.x,
-              cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen,
-              wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
-              showCoordHud: !coordModalAny,
-            });
-            setWallHintRef.current({
-              left: hud.hintLeft,
-              top: hud.hintTop,
-              text: `${title}\nУкажите новое положение (ЛКМ) или Пробел — координаты\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки`,
-            });
-            if (ws?.anchorWorldMm && ws.previewTargetMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
-              const dx = ws.previewTargetMm.x - ws.anchorWorldMm.x;
-              const dy = ws.previewTargetMm.y - ws.anchorWorldMm.y;
-              const d = Math.hypot(dx, dy);
-              const rel2 = computeAnchorRelativeHud(
-                ws.anchorWorldMm.x,
-                ws.anchorWorldMm.y,
-                ws.previewTargetMm.x,
-                ws.previewTargetMm.y,
-              );
-              const locked = ws.angleSnapLockedDeg ?? null;
-              setCoordHudRef.current({
-                left: hud.coordHudLeft,
-                top: hud.coordHudTop,
-                dx,
-                dy,
-                d,
-                angleDeg: locked != null ? locked : rel2.angleDeg,
-                angleSnapLockedDeg: locked,
-                axisHint: rel2.axisHint,
-              });
-            } else {
-              setCoordHudRef.current(null);
-            }
+            paint();
           } else {
-            const hud = computePlacementHudScreenPosition({
-              canvasRect: rect,
-              cursorCanvasX: ev.global.x,
-              cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen,
-              wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
-              showCoordHud: false,
-            });
-            setWallHintRef.current({
-              left: hud.hintLeft,
-              top: hud.hintTop,
-              text: `${title}\nВыберите точку привязки на стене (ЛКМ)\n${modeLabel}`,
-            });
+            setWallHintRef.current(null);
             setCoordHudRef.current(null);
           }
-          paint();
-        } else if (wallJointSession) {
-          const layerView = narrowProjectToActiveLayer(currentProject);
-          const walls = layerView.walls;
-          const tol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
-          const first = wallJointSession.first;
-          let nextHover: JointHoverState = null;
-          if (wallJointSession.phase === "pickFirst") {
-            const hit = pickNearestWallEnd(p, walls, tol);
-            nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
-          } else if (wallJointSession.kind === "T_ABUTMENT" && first) {
-            const seg = pickWallSegmentInterior(
-              p,
-              walls.filter((w) => w.id !== first.wallId),
-              tol,
-              350,
-            );
-            nextHover = seg ? { kind: "segment", wallId: seg.wallId, pointMm: seg.pointMm } : null;
-          } else {
-            const hit = pickNearestWallEnd(p, walls, tol);
-            nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
-          }
-          jointHoverRef.current = nextHover;
-          const hudJoint = computePlacementHudScreenPosition({
-            canvasRect: rect,
-            cursorCanvasX: ev.global.x,
-            cursorCanvasY: ev.global.y,
-            wallCoordinateModalOpen: false,
-            showCoordHud: false,
-          });
-          setWallHintRef.current({
-            left: hudJoint.hintLeft,
-            top: hudJoint.hintTop,
-            text: wallJointHintRu(wallJointSession.kind, wallJointSession.phase),
-          });
-          setCoordHudRef.current(null);
-          paint();
-        } else {
-          setWallHintRef.current(null);
-          setCoordHudRef.current(null);
         }
 
         if (marquee) {
-          marquee.cx = ev.global.x;
-          marquee.cy = ev.global.y;
-          paint();
+          if (!coordBlock) {
+            marquee.cx = ev.global.x;
+            marquee.cy = ev.global.y;
+            paint();
+          }
           return;
         }
 
-        if (panning.active) {
+        if (panning.active && !coordBlock) {
           const dxPx = ev.global.x - panning.sx;
           const dyPx = ev.global.y - panning.sy;
           useAppStore.getState().setViewport2d({
@@ -1803,6 +1855,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           windowPlacementHoverRef.current = null;
           setWallHintRef.current(null);
           paint();
+          return;
+        }
+
+        if (isSceneCoordinateModalBlocking(useAppStore.getState())) {
           return;
         }
 

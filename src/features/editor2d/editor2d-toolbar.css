@@ -9,6 +9,7 @@
 }
 
 .ed2d-toolbtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -64,4 +65,26 @@
 
 .ed2d-icon--stroke {
   overflow: visible;
+}
+
+.ed2d-toolbtn__kbd {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  opacity: 0.9;
+  pointer-events: none;
+  max-width: calc(100% - 4px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed2d-toolbtn[data-active="true"] .ed2d-toolbtn__kbd {
+  color: var(--color-accent);
+  opacity: 1;
 }

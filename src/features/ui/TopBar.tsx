@@ -6,6 +6,7 @@ import { ThemeMenu } from "@/features/ui/ThemeMenu";
 import { projectCommands } from "@/features/project/commands";
 import { APP_NAME } from "@/shared/constants";
 import { useAppStore } from "@/store/useAppStore";
+import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
 import "./top-bar.css";
 
@@ -50,11 +51,23 @@ function IconMore() {
   );
 }
 
+function IconKeyboard() {
+  return (
+    <svg className="tb-keys-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 6h16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2zm0 2v8h16V8H4zm2 2h2v2H6v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2zM6 14h12v2H6v-2z"
+      />
+    </svg>
+  );
+}
+
 export function TopBar() {
   const name = useAppStore((s) => s.currentProject.meta.name);
   const dirty = useAppStore((s) => s.dirty);
   const activeTab = useAppStore((s) => s.activeTab);
   const openProfiles = useAppStore((s) => s.openProfilesModal);
+  const openHotkeys = useEditorShortcutsStore((s) => s.openShortcutsSettings);
   const [mode, setMode] = useState<TopBarMode>(() =>
     typeof window === "undefined" ? "wide" : getTopBarMode(window.innerWidth),
   );
@@ -149,6 +162,15 @@ export function TopBar() {
         ) : null}
       </div>
       <div className="shell-top-right row tb-group tb-group--right">
+        <button
+          type="button"
+          className="tb-prof-btn"
+          title="Горячие клавиши"
+          aria-label="Горячие клавиши"
+          onClick={() => openHotkeys()}
+        >
+          <IconKeyboard />
+        </button>
         <ThemeMenu />
         <button
           type="button"

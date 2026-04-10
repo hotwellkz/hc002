@@ -15,6 +15,7 @@ export function WallAnchorCoordinateModal() {
   const [yStr, setYStr] = useState("0");
   const [localError, setLocalError] = useState<string | null>(null);
 
+  /** Снимок при открытии; без привязки к движению мыши после открытия. */
   useEffect(() => {
     if (!open) {
       return;

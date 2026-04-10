@@ -1,5 +1,10 @@
+import type { ReactNode } from "react";
+
 import { projectCommands } from "@/features/project/commands";
+import { formatShortcutCodesList } from "@/shared/editorToolShortcuts/formatShortcutLabel";
+import { getResolvedShortcutCodes } from "@/shared/editorToolShortcuts/resolveEditorShortcutCodes";
 import { useAppStore } from "@/store/useAppStore";
+import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
 import "./editor2d-toolbar.css";
 
@@ -94,85 +99,110 @@ function IconTrash() {
   );
 }
 
+function shortcutHint(id: Parameters<typeof getResolvedShortcutCodes>[0], custom: Parameters<typeof getResolvedShortcutCodes>[1]): string {
+  const codes = getResolvedShortcutCodes(id, custom);
+  if (codes.length === 0) {
+    return "";
+  }
+  return ` (${formatShortcutCodesList(codes)})`;
+}
+
+function Kbd({ codes }: { readonly codes: readonly string[] }): ReactNode {
+  if (codes.length === 0) {
+    return null;
+  }
+  return <span className="ed2d-toolbtn__kbd">{formatShortcutCodesList(codes)}</span>;
+}
+
 export function Editor2DToolbar() {
   const activeTool = useAppStore((s) => s.activeTool);
   const selectedCount = useAppStore((s) => s.selectedEntityIds.length);
   const setActiveTool = useAppStore((s) => s.setActiveTool);
+  const customCodes = useEditorShortcutsStore((s) => s.customCodes);
+
+  const sk = (id: Parameters<typeof getResolvedShortcutCodes>[0]) => shortcutHint(id, customCodes);
+  const escSk = formatShortcutCodesList(getResolvedShortcutCodes("editorReset", customCodes));
 
   const deleteDisabled = selectedCount === 0;
   const editDisabled = selectedCount !== 1;
   const editTitle =
     selectedCount === 0
-      ? "Редактировать — сначала выберите объект"
+      ? `Редактировать — сначала выберите объект${sk("editSelectedObject")}`
       : selectedCount > 1
-        ? "Редактировать — только один объект"
-        : "Редактировать";
+        ? `Редактировать — только один объект${sk("editSelectedObject")}`
+        : `Редактировать${sk("editSelectedObject")}`;
 
   return (
     <div className="ed2d-toolbar" role="toolbar" aria-label="Инструменты 2D плана">
       <button
         type="button"
         className="ed2d-toolbtn"
-        title="Выделение"
-        aria-label="Выделение"
+        title={`Выделение${sk("toolSelect")}`}
+        aria-label={`Выделение${sk("toolSelect")}`}
         aria-pressed={activeTool === "select"}
         data-active={activeTool === "select"}
         onClick={() => setActiveTool("select")}
       >
         <IconSelect />
+        <Kbd codes={getResolvedShortcutCodes("toolSelect", customCodes)} />
       </button>
       <button
         type="button"
         className="ed2d-toolbtn"
-        title="Панорама"
-        aria-label="Панорама"
+        title={`Панорама (перемещение вида)${sk("toolPan")}`}
+        aria-label={`Панорама${sk("toolPan")}`}
         aria-pressed={activeTool === "pan"}
         data-active={activeTool === "pan"}
         onClick={() => setActiveTool("pan")}
       >
         <IconPan />
+        <Kbd codes={getResolvedShortcutCodes("toolPan", customCodes)} />
       </button>
       <button
         type="button"
         className="ed2d-toolbtn"
-        title="Изменение длины"
-        aria-label="Изменение длины"
+        title={`Изменение длины${sk("toolChangeLengthToggle")}`}
+        aria-label={`Изменение длины${sk("toolChangeLengthToggle")}`}
         aria-pressed={activeTool === "changeLength"}
         data-active={activeTool === "changeLength"}
         onClick={() => setActiveTool(activeTool === "changeLength" ? "select" : "changeLength")}
       >
         <IconChangeLength />
+        <Kbd codes={getResolvedShortcutCodes("toolChangeLengthToggle", customCodes)} />
       </button>
       <button
         type="button"
         className="ed2d-toolbtn"
-        title="Линейка — замер расстояний (мм). Esc — сброс"
-        aria-label="Линейка"
+        title={`Линейка — замер расстояний (мм). ${escSk} — сброс`}
+        aria-label={`Линейка${sk("toolRuler")}`}
         aria-pressed={activeTool === "ruler"}
         data-active={activeTool === "ruler"}
         onClick={() => setActiveTool("ruler")}
       >
         <IconRuler />
+        <Kbd codes={getResolvedShortcutCodes("toolRuler", customCodes)} />
       </button>
       <button
         type="button"
         className="ed2d-toolbtn"
         title={editTitle}
-        aria-label="Редактировать"
+        aria-label={editTitle}
         disabled={editDisabled}
         onClick={() => projectCommands.openSelectedObjectEditor()}
       >
         <IconEdit />
+        <Kbd codes={getResolvedShortcutCodes("editSelectedObject", customCodes)} />
       </button>
       <button
         type="button"
         className="ed2d-toolbtn ed2d-toolbtn--danger"
-        title="Удалить"
-        aria-label="Удалить"
+        title={`Удалить${sk("deleteSelected")}`}
+        aria-label={`Удалить${sk("deleteSelected")}`}
         disabled={deleteDisabled}
         onClick={() => projectCommands.deleteSelected()}
       >
         <IconTrash />
+        <Kbd codes={getResolvedShortcutCodes("deleteSelected", customCodes)} />
       </button>
     </div>
   );

@@ -8,8 +8,6 @@ export function WallCoordinateModal() {
   const wallCoordOpen = useAppStore((s) => s.wallCoordinateModalOpen);
   const moveCopyCoordOpen = useAppStore((s) => s.wallMoveCopyCoordinateModalOpen);
   const lengthChangeCoordOpen = useAppStore((s) => s.lengthChangeCoordinateModalOpen);
-  const wallMoveCopy = useAppStore((s) => s.wallMoveCopySession);
-  const lengthChangeSession = useAppStore((s) => s.lengthChange2dSession);
   const open = wallCoordOpen || moveCopyCoordOpen || lengthChangeCoordOpen;
   const closeWallCoord = useAppStore((s) => s.closeWallCoordinateModal);
   const closeMoveCopyCoord = useAppStore((s) => s.closeWallMoveCopyCoordinateModal);
@@ -17,7 +15,6 @@ export function WallCoordinateModal() {
   const applyWallCoord = useAppStore((s) => s.applyWallCoordinateModal);
   const applyMoveCopyCoord = useAppStore((s) => s.applyWallMoveCopyCoordinateModal);
   const applyLengthChangeCoord = useAppStore((s) => s.applyLengthChangeCoordinateModal);
-  const session = useAppStore((s) => s.wallPlacementSession);
   const lastError = useAppStore((s) => s.lastError);
 
   const titleId = useId();
@@ -26,49 +23,42 @@ export function WallCoordinateModal() {
   const [deltaStr, setDeltaStr] = useState("0");
   const [localError, setLocalError] = useState<string | null>(null);
 
+  /** Один снимок значений при открытии модалки; движение мыши по холсту не должно перезаписывать поля. */
   useEffect(() => {
     if (!open) {
       return;
     }
-    if (lengthChangeCoordOpen && lengthChangeSession) {
-      const dx = lengthChangeSession.previewMovingMm.x - lengthChangeSession.fixedEndMm.x;
-      const dy = lengthChangeSession.previewMovingMm.y - lengthChangeSession.fixedEndMm.y;
-      const L = dx * lengthChangeSession.axisUx + dy * lengthChangeSession.axisUy;
-      const d = Math.round(L - lengthChangeSession.initialLengthMm);
+    const st = useAppStore.getState();
+    if (st.lengthChangeCoordinateModalOpen && st.lengthChange2dSession) {
+      const lc = st.lengthChange2dSession;
+      const dx = lc.previewMovingMm.x - lc.fixedEndMm.x;
+      const dy = lc.previewMovingMm.y - lc.fixedEndMm.y;
+      const L = dx * lc.axisUx + dy * lc.axisUy;
+      const d = Math.round(L - lc.initialLengthMm);
       setDeltaStr(String(d));
       setLocalError(null);
       return;
     }
-    if (moveCopyCoordOpen && wallMoveCopy?.anchorWorldMm && wallMoveCopy.previewTargetMm) {
-      const dx = wallMoveCopy.previewTargetMm.x - wallMoveCopy.anchorWorldMm.x;
-      const dy = wallMoveCopy.previewTargetMm.y - wallMoveCopy.anchorWorldMm.y;
+    if (st.wallMoveCopyCoordinateModalOpen) {
+      const wm = st.wallMoveCopySession;
+      if (wm?.anchorWorldMm && wm.previewTargetMm) {
+        const dx = wm.previewTargetMm.x - wm.anchorWorldMm.x;
+        const dy = wm.previewTargetMm.y - wm.anchorWorldMm.y;
+        setXStr(String(Math.round(dx)));
+        setYStr(String(Math.round(dy)));
+        setLocalError(null);
+      }
+      return;
+    }
+    const ws = st.wallPlacementSession;
+    if (ws?.firstPointMm && ws.previewEndMm) {
+      const dx = ws.previewEndMm.x - ws.firstPointMm.x;
+      const dy = ws.previewEndMm.y - ws.firstPointMm.y;
       setXStr(String(Math.round(dx)));
       setYStr(String(Math.round(dy)));
       setLocalError(null);
-      return;
     }
-    if (!session?.firstPointMm || !session.previewEndMm) {
-      return;
-    }
-    const dx = session.previewEndMm.x - session.firstPointMm.x;
-    const dy = session.previewEndMm.y - session.firstPointMm.y;
-    setXStr(String(Math.round(dx)));
-    setYStr(String(Math.round(dy)));
-    setLocalError(null);
-  }, [
-    open,
-    lengthChangeCoordOpen,
-    lengthChangeSession?.previewMovingMm,
-    lengthChangeSession?.fixedEndMm,
-    lengthChangeSession?.axisUx,
-    lengthChangeSession?.axisUy,
-    lengthChangeSession?.initialLengthMm,
-    moveCopyCoordOpen,
-    wallMoveCopy?.anchorWorldMm,
-    wallMoveCopy?.previewTargetMm,
-    session?.firstPointMm,
-    session?.previewEndMm,
-  ]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -77,9 +67,10 @@ export function WallCoordinateModal() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        if (lengthChangeCoordOpen) {
+        const st = useAppStore.getState();
+        if (st.lengthChangeCoordinateModalOpen) {
           closeLengthChangeCoord();
-        } else if (moveCopyCoordOpen) {
+        } else if (st.wallMoveCopyCoordinateModalOpen) {
           closeMoveCopyCoord();
         } else {
           closeWallCoord();
@@ -88,7 +79,7 @@ export function WallCoordinateModal() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, lengthChangeCoordOpen, moveCopyCoordOpen, closeWallCoord, closeMoveCopyCoord, closeLengthChangeCoord]);
+  }, [open, closeWallCoord, closeMoveCopyCoord, closeLengthChangeCoord]);
 
   if (!open) {
     return null;
@@ -147,7 +138,17 @@ export function WallCoordinateModal() {
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" && !e.shiftKey) {
+            const el = e.target as HTMLElement | null;
+            if (el?.tagName === "TEXTAREA") {
+              return;
+            }
+            e.preventDefault();
+            submit();
+          }
+        }}
       >
         <h2 id={titleId} className="wcm-title">
           {lengthChangeCoordOpen ? "Изменение длины" : "Координаты"}

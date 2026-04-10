@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import "./shell.css";
 
-import { useDeleteSelectionKeyboard } from "@/features/project/useDeleteSelectionKeyboard";
+import { useEditorToolShortcuts } from "@/features/editor2d/useEditorToolShortcuts";
 import { useOpeningPropertiesKeyboard } from "@/features/project/useOpeningPropertiesKeyboard";
 import { AddWallModal } from "@/features/ui/AddWallModal";
 import { WallJointParamsModal } from "@/features/ui/WallJointParamsModal";
@@ -14,6 +14,7 @@ import { WallCoordinateModal } from "@/features/ui/WallCoordinateModal";
 import { LayerManagerModal } from "@/features/ui/LayerManagerModal";
 import { LayerParamsModal } from "@/features/ui/LayerParamsModal";
 import { ProfilesModal } from "@/features/ui/ProfilesModal";
+import { EditorHotkeysModal } from "@/features/ui/EditorHotkeysModal";
 
 import { LeftNavRail } from "./LeftNavRail";
 import { RightPropertiesPanel } from "./RightPropertiesPanel";
@@ -21,6 +22,7 @@ import { StatusBar } from "./StatusBar";
 import { TopBar } from "./TopBar";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 import { useAppStore } from "@/store/useAppStore";
+import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
 function LayerManagerHost() {
   const open = useAppStore((s) => s.layerManagerOpen);
@@ -40,8 +42,14 @@ function ProfilesHost() {
   return <ProfilesModal open={open} onClose={close} />;
 }
 
+function EditorHotkeysHost() {
+  const open = useEditorShortcutsStore((s) => s.shortcutsSettingsModalOpen);
+  const close = useEditorShortcutsStore((s) => s.closeShortcutsSettings);
+  return <EditorHotkeysModal open={open} onClose={close} />;
+}
+
 export function AppShell() {
-  useDeleteSelectionKeyboard(true);
+  useEditorToolShortcuts();
   useOpeningPropertiesKeyboard(true);
   const [cursorWorldMm, setCursorWorldMm] = useState<{ x: number; y: number } | null>(null);
   const onWorldCursorMm = useCallback((p: { x: number; y: number } | null) => {
@@ -71,6 +79,7 @@ export function AppShell() {
       <WallCalculationModal />
       <WindowParamsModal />
       <DoorParamsModal />
+      <EditorHotkeysHost />
     </div>
   );
 }
