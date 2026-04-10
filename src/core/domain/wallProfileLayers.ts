@@ -3,8 +3,11 @@ import { sortProfileLayersByOrder } from "./profileOps";
 
 const THICK_EPS_MM = 0.5;
 
-/** Минимальная толщина стены на экране (px), ниже которой послойный 2D не рисуется. */
-export const MIN_LAYERED_WALL_SCREEN_THICKNESS_PX = 12;
+/**
+ * Минимальная толщина в px для обводок и швов между слоями на 2D-плане (Pixi и т.п.),
+ * чтобы линии оставались читаемыми при любом zoom (геометрия — в мм, линии — в экранных px).
+ */
+export const MIN_WALL_2D_LAYER_LINE_STROKE_PX = 1.35;
 
 export interface WallProfileLayerStripMm {
   readonly layerId: string;

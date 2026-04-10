@@ -186,14 +186,14 @@ function sliceOpeningAttachmentKey(
     if (!o) {
       return "missing-opening";
     }
-    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "top");
+    return `${openingAdjacencyProductionKey(o, wallBottomSheetMm, "top")}#seg${sl.segmentIndex}`;
   }
   if (sl.kind === "below_opening") {
     const o = openings.find((x) => x.id === sl.openingId);
     if (!o) {
       return "missing-opening";
     }
-    return openingAdjacencyProductionKey(o, wallBottomSheetMm, "bottom");
+    return `${openingAdjacencyProductionKey(o, wallBottomSheetMm, "bottom")}#seg${sl.segmentIndex}`;
   }
 
   const { startOffsetMm: start, endOffsetMm: end } = sl.region;

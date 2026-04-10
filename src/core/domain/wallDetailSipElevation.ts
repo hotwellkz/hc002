@@ -6,6 +6,9 @@
 import type { Opening } from "./opening";
 import type { SipPanelRegion } from "./wallCalculation";
 import type { Wall } from "./wall";
+import { openingStripVerticalCutXsMm } from "./sipWallLayout";
+
+export { openingStripVerticalCutXsMm };
 
 /** Координаты стены на листе (y вниз). */
 export interface WallDetailSipSheetFrameMm {
@@ -26,10 +29,12 @@ export interface WallDetailSipFacadeSliceColumn {
   readonly specHeightMm: number;
 }
 
-/** Полоса SIP над световым проёмом (ширина = ширина проёма по оси стены). */
+/** Сегмент полосы SIP над световым проёмом (ширина — кусок по модульной сетке, не целиком проём). */
 export interface WallDetailSipFacadeSliceAbove {
   readonly kind: "above_opening";
   readonly openingId: string;
+  /** Порядковый индекс сегмента слева направо над этим проёмом (0…). */
+  readonly segmentIndex: number;
   readonly drawX0: number;
   readonly drawX1: number;
   readonly drawY0: number;
@@ -38,10 +43,11 @@ export interface WallDetailSipFacadeSliceAbove {
   readonly specHeightMm: number;
 }
 
-/** Полоса SIP под окном (от подоконника до низа стены); только для окон с подоконником > 0. */
+/** Сегмент полосы SIP под окном; только для окон с подоконником > 0. */
 export interface WallDetailSipFacadeSliceBelow {
   readonly kind: "below_opening";
   readonly openingId: string;
+  readonly segmentIndex: number;
   readonly drawX0: number;
   readonly drawX1: number;
   readonly drawY0: number;
@@ -78,8 +84,26 @@ export function openingBottomSheetYMm(o: Opening, wallBottomMm: number): number 
   return openingTopSheetYMm(o, wallBottomMm) + o.heightMm;
 }
 
+function inferPanelNominalWidthMmFromRegions(
+  regions: readonly { readonly startOffsetMm: number; readonly endOffsetMm: number }[],
+): number {
+  let best = 0;
+  for (const r of regions) {
+    const w = Math.round(r.endOffsetMm - r.startOffsetMm);
+    if (w > best) {
+      best = w;
+    }
+  }
+  return best > 0 ? best : 1250;
+}
+
+export interface BuildWallDetailSipFacadeSlicesOptions {
+  /** Номинал ширины панели (мм), как в расчёте стены; иначе берётся эвристика по sipRegions. */
+  readonly panelNominalWidthMm?: number;
+}
+
 /**
- * Слева направо: колонки sipRegions до проёма → полоса над проёмом → колонки после.
+ * Слева направо: колонки sipRegions до проёма → сегменты полосы над проёмом → колонки после.
  * spec* совпадает с draw* (мм листа).
  */
 export function buildWallDetailSipFacadeSlices(
@@ -87,6 +111,7 @@ export function buildWallDetailSipFacadeSlices(
   openings: readonly Opening[],
   wall: Wall,
   frame: WallDetailSipSheetFrameMm,
+  options?: BuildWallDetailSipFacadeSlicesOptions,
 ): WallDetailSipFacadeSlice[] {
   const wallTop = frame.wallTopMm;
   const wallBottom = frame.wallBottomMm;
@@ -102,6 +127,10 @@ export function buildWallDetailSipFacadeSlices(
     .sort((a, b) => a.offsetFromStartMm - b.offsetFromStartMm);
 
   const sortedRegs = [...regions].sort((a, b) => a.startOffsetMm - b.startOffsetMm || a.index - b.index);
+  const panelNominalW =
+    options?.panelNominalWidthMm != null && options.panelNominalWidthMm > 0
+      ? Math.round(options.panelNominalWidthMm)
+      : inferPanelNominalWidthMmFromRegions(sortedRegs);
 
   const out: WallDetailSipFacadeSlice[] = [];
   let ri = 0;
@@ -132,30 +161,50 @@ export function buildWallDetailSipFacadeSlices(
     const yOpenTop = openingTopSheetYMm(o, wallBottom);
     const stripHeight = yOpenTop - wallTop;
     if (stripHeight > 1 && x1 - x0 > 1) {
-      out.push({
-        kind: "above_opening",
-        openingId: o.id,
-        drawX0: x0,
-        drawX1: x1,
-        drawY0: wallTop,
-        drawY1: yOpenTop,
-        specWidthMm: o.widthMm,
-        specHeightMm: stripHeight,
-      });
+      const cutsAbove = openingStripVerticalCutXsMm(x0, x1, sortedRegs, panelNominalW, eps);
+      let seg = 0;
+      for (let ci = 0; ci < cutsAbove.length - 1; ci++) {
+        const xa = cutsAbove[ci]!;
+        const xb = cutsAbove[ci + 1]!;
+        if (xb - xa <= eps) {
+          continue;
+        }
+        out.push({
+          kind: "above_opening",
+          openingId: o.id,
+          segmentIndex: seg++,
+          drawX0: xa,
+          drawX1: xb,
+          drawY0: wallTop,
+          drawY1: yOpenTop,
+          specWidthMm: xb - xa,
+          specHeightMm: stripHeight,
+        });
+      }
     }
     const yOpenBottom = openingBottomSheetYMm(o, wallBottom);
     const belowHeight = wallBottom - yOpenBottom;
     if (o.kind === "window" && belowHeight > 1 && x1 - x0 > 1) {
-      out.push({
-        kind: "below_opening",
-        openingId: o.id,
-        drawX0: x0,
-        drawX1: x1,
-        drawY0: yOpenBottom,
-        drawY1: wallBottom,
-        specWidthMm: o.widthMm,
-        specHeightMm: belowHeight,
-      });
+      const cutsBelow = openingStripVerticalCutXsMm(x0, x1, sortedRegs, panelNominalW, eps);
+      let segB = 0;
+      for (let ci = 0; ci < cutsBelow.length - 1; ci++) {
+        const xa = cutsBelow[ci]!;
+        const xb = cutsBelow[ci + 1]!;
+        if (xb - xa <= eps) {
+          continue;
+        }
+        out.push({
+          kind: "below_opening",
+          openingId: o.id,
+          segmentIndex: segB++,
+          drawX0: xa,
+          drawX1: xb,
+          drawY0: yOpenBottom,
+          drawY1: wallBottom,
+          specWidthMm: xb - xa,
+          specHeightMm: belowHeight,
+        });
+      }
     }
   }
   while (ri < sortedRegs.length) {
@@ -181,6 +230,85 @@ export function wallDetailSipVerticalBoundaryXsMm(
     s.add(sl.drawX1);
   }
   return [...s].sort((a, b) => a - b);
+}
+
+/**
+ * Вертикали швов OSB на полную высоту листа: центры стыковочных досок + края полноразмерных колонок.
+ * Границы между сегментами только над/под проёмом сюда не входят — пунктир не пересекает световой проём.
+ */
+export function wallDetailSipFullHeightOsbSeamXsMm(
+  facadeSlices: readonly WallDetailSipFacadeSlice[],
+  jointSeamCentersAlongMm: readonly number[],
+): number[] {
+  const s = new Set<number>();
+  for (const c of jointSeamCentersAlongMm) {
+    s.add(c);
+  }
+  for (const sl of facadeSlices) {
+    if (sl.kind === "column") {
+      s.add(sl.drawX0);
+      s.add(sl.drawX1);
+    }
+  }
+  return [...s].sort((a, b) => a - b);
+}
+
+/** Вертикальный штрихпунктир только в полосе SIP (мм листа, y вниз). */
+export interface WallDetailSipVerticalSeamSegmentMm {
+  readonly xMm: number;
+  readonly y0Mm: number;
+  readonly y1Mm: number;
+}
+
+/**
+ * Внутренние вертикали между соседними сегментами `above_opening` / `below_opening` одного проёма.
+ * Для пунктира стыка OSB только там, где есть панель (не через световой проём).
+ */
+export function wallDetailSipOpeningStripVerticalSeamSegmentsMm(
+  facadeSlices: readonly WallDetailSipFacadeSlice[],
+): WallDetailSipVerticalSeamSegmentMm[] {
+  const eps = 0.5;
+  const aboveByOpening = new Map<string, WallDetailSipFacadeSliceAbove[]>();
+  const belowByOpening = new Map<string, WallDetailSipFacadeSliceBelow[]>();
+  for (const sl of facadeSlices) {
+    if (sl.kind === "above_opening") {
+      const arr = aboveByOpening.get(sl.openingId) ?? [];
+      arr.push(sl);
+      aboveByOpening.set(sl.openingId, arr);
+    } else if (sl.kind === "below_opening") {
+      const arr = belowByOpening.get(sl.openingId) ?? [];
+      arr.push(sl);
+      belowByOpening.set(sl.openingId, arr);
+    }
+  }
+  const out: WallDetailSipVerticalSeamSegmentMm[] = [];
+  const pushSharedEdge = (
+    left: WallDetailSipFacadeSliceAbove | WallDetailSipFacadeSliceBelow,
+    right: WallDetailSipFacadeSliceAbove | WallDetailSipFacadeSliceBelow,
+  ) => {
+    const x = left.drawX1;
+    if (Math.abs(x - right.drawX0) > eps) {
+      return;
+    }
+    const y0 = Math.min(left.drawY0, left.drawY1);
+    const y1 = Math.max(left.drawY0, left.drawY1);
+    if (y1 - y0 > eps) {
+      out.push({ xMm: x, y0Mm: y0, y1Mm: y1 });
+    }
+  };
+  for (const arr of aboveByOpening.values()) {
+    const sorted = [...arr].sort((a, b) => a.drawX0 - b.drawX0 || a.segmentIndex - b.segmentIndex);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      pushSharedEdge(sorted[i]!, sorted[i + 1]!);
+    }
+  }
+  for (const arr of belowByOpening.values()) {
+    const sorted = [...arr].sort((a, b) => a.drawX0 - b.drawX0 || a.segmentIndex - b.segmentIndex);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      pushSharedEdge(sorted[i]!, sorted[i + 1]!);
+    }
+  }
+  return out;
 }
 
 /** Только вертикали границ листов/секций облицовки (без осей стоек каркаса). */

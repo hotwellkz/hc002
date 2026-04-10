@@ -500,7 +500,7 @@ export function WindowParamsModal() {
                 />
               </div>
             </div>
-            <div className="wp-preview-wrap">
+            <div className="wp-preview-wrap wp-preview-wrap--position">
               <WindowPositionDimPreview
                 widthMm={widthMm ?? DEFAULT_WINDOW_WIDTH_MM}
                 heightMm={heightMm ?? DEFAULT_WINDOW_HEIGHT_MM}

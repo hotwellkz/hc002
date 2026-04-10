@@ -4,7 +4,7 @@ import type { Project } from "@/core/domain/project";
 import { getProfileById } from "@/core/domain/profileOps";
 import type { Wall } from "@/core/domain/wall";
 import {
-  MIN_LAYERED_WALL_SCREEN_THICKNESS_PX,
+  MIN_WALL_2D_LAYER_LINE_STROKE_PX,
   resolveWallProfileLayerStripsMm,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
@@ -31,7 +31,7 @@ export interface DrawWalls2dOptions {
   readonly appearance?: Draw2dLayerAppearance;
   /** Если false — дорисовать поверх уже нарисованного (без clear). */
   readonly clear?: boolean;
-  /** false — одна полоса (как раньше); true — послойно при достаточном zoom. */
+  /** false — одна полоса (как раньше); true — послойно по профилю. */
   readonly show2dProfileLayers?: boolean;
 }
 
@@ -210,7 +210,7 @@ function drawWallLayeredPlan(
   const px = -dy / len;
   const py = dx / len;
   const T = w.thicknessMm;
-  const strokePx = Math.max(2, T * t.zoomPixelsPerMm);
+  const wallThicknessScreenPx = Math.max(2, T * t.zoomPixelsPerMm);
 
   const fillAlpha = ctx ? 0.38 : showSel ? 0.98 : 0.92;
   const edgeAlpha = ctx ? 0.1 : 0.18;
@@ -219,7 +219,7 @@ function drawWallLayeredPlan(
   if (showSel && !ctx) {
     const outer = quadCornersAlongWallMm(sx, sy, ex, ey, -T / 2, T / 2);
     if (outer) {
-      strokeQuadMm(wallsG, outer, t, 0x000000, 0.4, Math.max(2, strokePx * 0.06 + 2));
+      strokeQuadMm(wallsG, outer, t, 0x000000, 0.4, Math.max(2, wallThicknessScreenPx * 0.06 + 2));
     }
   }
 
@@ -233,7 +233,7 @@ function drawWallLayeredPlan(
       continue;
     }
     fillQuadMm(wallsG, corners, t, fillColor2dForMaterialType(strip.materialType), fillAlpha);
-    strokeQuadMm(wallsG, corners, t, 0x0f1218, edgeAlpha, 1);
+    strokeQuadMm(wallsG, corners, t, 0x0f1218, edgeAlpha, MIN_WALL_2D_LAYER_LINE_STROKE_PX);
   }
 
   acc = -T / 2;
@@ -244,13 +244,13 @@ function drawWallLayeredPlan(
     const p1 = worldToScreen(ex + px * off, ey + py * off, t);
     wallsG.moveTo(p0.x, p0.y);
     wallsG.lineTo(p1.x, p1.y);
-    wallsG.stroke({ width: 1, color: 0x0a0c10, alpha: seamAlpha, cap: "butt" });
+    wallsG.stroke({ width: MIN_WALL_2D_LAYER_LINE_STROKE_PX, color: 0x0a0c10, alpha: seamAlpha, cap: "butt" });
   }
 
   if (showSel && !ctx) {
     const a = worldToScreen(sx, sy, t);
     const b = worldToScreen(ex, ey, t);
-    const r = Math.max(4, strokePx * 0.55);
+    const r = Math.max(4, wallThicknessScreenPx * 0.55);
     for (const p of [a, b]) {
       openingsG.circle(p.x, p.y, r * 0.45);
       openingsG.fill({ color: WALL_SELECTED, alpha: 0.9 });
@@ -262,7 +262,7 @@ function drawWallLayeredPlan(
 /**
  * Стены: обычные и выбранные; проёмы — точки по центру.
  * В режиме context слой приглушён, выделение не отображается.
- * Послойный режим: заливки по resolveWallProfileLayerStripsMm при достаточной толщине на экране.
+ * Послойный режим: заливки по resolveWallProfileLayerStripsMm; обводки/швы — не ниже MIN_WALL_2D_LAYER_LINE_STROKE_PX.
  */
 export function drawWallsAndOpenings2d(
   wallsG: Graphics,
@@ -286,11 +286,8 @@ export function drawWallsAndOpenings2d(
     const sel = selectedIds.has(w.id);
     const showSel = !ctx && sel;
     const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-    const strokePx = Math.max(2, w.thicknessMm * t.zoomPixelsPerMm);
     const strips =
-      show2dProfileLayers && strokePx >= MIN_LAYERED_WALL_SCREEN_THICKNESS_PX && profile
-        ? resolveWallProfileLayerStripsMm(w.thicknessMm, profile)
-        : null;
+      show2dProfileLayers && profile ? resolveWallProfileLayerStripsMm(w.thicknessMm, profile) : null;
 
     if (strips && strips.length >= 2) {
       drawWallLayeredPlan(wallsG, openingsG, w, strips, t, showSel, ctx);

@@ -12,6 +12,13 @@ import { wallJointHintRu } from "@/core/domain/wallJointSession";
 import { pickNearestWallEnd, pickWallSegmentInterior } from "@/core/domain/wallJointPick";
 import { getProfileById } from "@/core/domain/profileOps";
 import { cssHexToPixiNumber } from "@/shared/cssColor";
+import {
+  DIMENSION_FONT_SIZE_PX,
+  DIMENSION_TEXT_FONT_STACK,
+  DIMENSION_TICK_HALF_PX,
+  dimensionLabelOffsetFromDimAxisPx,
+  readDimensionStyleColors,
+} from "@/shared/dimensionStyle";
 import { isEditableKeyboardTarget } from "@/shared/editableKeyboardTarget";
 import { useAppStore } from "@/store/useAppStore";
 import { useUiThemeStore } from "@/store/useUiThemeStore";
@@ -748,6 +755,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const uy = dy / L;
               const nx = -uy;
               const ny = ux;
+              const wmx = (wall.start.x + wall.end.x) / 2;
+              const wmy = (wall.start.y + wall.end.y) / 2;
+              const outRef0 = worldToScreen(wmx, wmy, t);
+              const outRef1 = worldToScreen(wmx + nx * 100, wmy + ny * 100, t);
+              const nOutSx = outRef1.x - outRef0.x;
+              const nOutSy = outRef1.y - outRef0.y;
+              const { line: dimLineCol, text: dimTextCol } = readDimensionStyleColors();
               const innerSign = wallInnerNormalSign(currentProject, wall.id);
               const halfT = wall.thicknessMm / 2;
               const faceShiftMm = 12 / t.zoomPixelsPerMm;
@@ -780,8 +794,6 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               };
               const inner = faceGeom("inner");
               const outer = faceGeom("outer");
-              const lineColor = 0x6f7f95;
-              const textColor = 0x1f2937;
               const drawDim = (
                 s0: { x: number; y: number },
                 s1: { x: number; y: number },
@@ -791,7 +803,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               ) => {
                 openingMoveG.moveTo(s0.x, s0.y);
                 openingMoveG.lineTo(s1.x, s1.y);
-                openingMoveG.stroke({ width: 1, color: lineColor, alpha: 0.95 });
+                openingMoveG.stroke({ width: 1, color: dimLineCol, alpha: 0.95, cap: "butt" });
                 const vxRaw = s1.x - s0.x;
                 const vyRaw = s1.y - s0.y;
                 const vLen = Math.hypot(vxRaw, vyRaw);
@@ -804,11 +816,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                   vy = vyRaw / vLen;
                   px = -vy;
                   py = vx;
-                  const tick = 5;
+                  const tick = DIMENSION_TICK_HALF_PX;
                   const drawTick = (x: number, y: number) => {
                     openingMoveG.moveTo(x - px * tick, y - py * tick);
                     openingMoveG.lineTo(x + px * tick, y + py * tick);
-                    openingMoveG.stroke({ width: 1, color: lineColor, alpha: 0.95 });
+                    openingMoveG.stroke({ width: 1, color: dimLineCol, alpha: 0.95, cap: "butt" });
                   };
                   drawTick(s0.x, s0.y);
                   drawTick(s1.x, s1.y);
@@ -818,10 +830,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                 const txt = new Text({
                   text: `${Math.round(valueMm)}`,
                   style: {
-                    fontFamily: "ui-sans-serif, system-ui, sans-serif",
-                    fontSize: 11,
-                    fontWeight: "700",
-                    fill: textColor,
+                    fontFamily: DIMENSION_TEXT_FONT_STACK,
+                    fontSize: DIMENSION_FONT_SIZE_PX,
+                    fontWeight: "400",
+                    fill: dimTextCol,
                   },
                 });
                 txt.anchor.set(0.5);
@@ -834,12 +846,15 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                   const ly1 = ly0 + vy * 10 * sideMul;
                   openingMoveG.moveTo(lx0, ly0);
                   openingMoveG.lineTo(lx1, ly1);
-                  openingMoveG.stroke({ width: 1, color: lineColor, alpha: 0.95 });
+                  openingMoveG.stroke({ width: 1, color: dimLineCol, alpha: 0.95, cap: "butt" });
                   txt.x = lx1 + px * 10;
                   txt.y = ly1 + py * 10;
                 } else {
-                  txt.x = mx;
-                  txt.y = my - 8;
+                  const offPx = dimensionLabelOffsetFromDimAxisPx();
+                  const dot = px * nOutSx + py * nOutSy;
+                  const sign = dot >= 0 ? 1 : -1;
+                  txt.x = mx + px * sign * offPx;
+                  txt.y = my + py * sign * offPx;
                 }
                 openingMoveLabelC.addChild(txt);
                 const wbox = Math.max(34, txt.width + 10);

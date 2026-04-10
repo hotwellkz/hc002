@@ -1,32 +1,32 @@
 import type { ReactNode } from "react";
 
+import {
+  DIMENSION_H_TEXT_GAP_PX,
+  DIMENSION_LABEL_GAP_PX,
+  DIMENSION_LABEL_H_PAD_PX,
+  DIMENSION_LABEL_OUTSIDE_SEGMENT_PX,
+  DIMENSION_SHORT_LEADER_RISE_PX,
+  DIMENSION_SHORT_LEADER_RUN_PX,
+  measureDimensionLabelTextWidthPx,
+  DIMENSION_TICK_HALF_PX,
+  DIMENSION_V_LABEL_GAP_EXTRA_PX,
+  DIMENSION_V_LABEL_GAP_PX,
+} from "@/shared/dimensionStyle";
+
 /**
  * Размерные линии для режима «Вид стены» (SVG).
  * Засечки и отступы подписей в пикселях экрана — стабильная читаемость при любом zoom.
  */
 
-/** Совпадает с `.wd-dim-text` / `.wd-dim-text-out` для measureText. */
-const WD_DIM_TEXT_FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const WD_DIM_TICK_HALF_PX = DIMENSION_TICK_HALF_PX;
+export const WD_DIM_V_LABEL_GAP_PX = DIMENSION_V_LABEL_GAP_PX;
+export const WD_DIM_V_LABEL_GAP_EXTRA_PX = DIMENSION_V_LABEL_GAP_EXTRA_PX;
+export const WD_DIM_H_TEXT_GAP_PX = DIMENSION_H_TEXT_GAP_PX;
+export const WD_DIM_SHORT_LEADER_RUN_PX = DIMENSION_SHORT_LEADER_RUN_PX;
+export const WD_DIM_SHORT_LEADER_RISE_PX = DIMENSION_SHORT_LEADER_RISE_PX;
 
-/** Горизонтальный зазор между bbox соседних подписей на одной линии, px. */
-const WD_DIM_LABEL_GAP_PX = 5;
-/** Насколько подпись может выходить за границы своего сегмента по X (если не конфликтует с соседями), px. */
-const WD_DIM_LABEL_OUTSIDE_SEGMENT_PX = 64;
-/** Доп. поля к измеренной ширине текста (визуальный bbox). */
-const WD_DIM_LABEL_H_PAD_PX = 6;
-
-export function measureHorizontalDimTextWidthPx(text: string): number {
-  if (typeof document === "undefined") {
-    return text.length * 8.5;
-  }
-  const c = document.createElement("canvas");
-  const ctx = c.getContext("2d");
-  if (!ctx) {
-    return text.length * 8.5;
-  }
-  ctx.font = `14px ${WD_DIM_TEXT_FONT_STACK}`;
-  return ctx.measureText(text).width;
-}
+/** @deprecated Используйте {@link measureDimensionLabelTextWidthPx} из `@/shared/dimensionStyle`. */
+export const measureHorizontalDimTextWidthPx = measureDimensionLabelTextWidthPx;
 
 interface DimSegLayoutItem {
   readonly segIndex: number;
@@ -44,8 +44,8 @@ type DimLabelPlacement = { readonly kind: "inline"; readonly cx: number } | { re
  */
 export function layoutHorizontalDimLabelsForRowPx(items: readonly DimSegLayoutItem[]): Map<number, DimLabelPlacement> {
   const result = new Map<number, DimLabelPlacement>();
-  const OUT = WD_DIM_LABEL_OUTSIDE_SEGMENT_PX;
-  const GAP = WD_DIM_LABEL_GAP_PX;
+  const OUT = DIMENSION_LABEL_OUTSIDE_SEGMENT_PX;
+  const GAP = DIMENSION_LABEL_GAP_PX;
   const EPS = 0.5;
 
   const tryPack = (queue: DimSegLayoutItem[]): { left: number[] } | null => {
@@ -140,18 +140,6 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** Половина длины поперечной засечки (полная ~10px). */
-export const WD_DIM_TICK_HALF_PX = 5;
-/** Зазор центра подписи от оси размерной линии (вертикальные размеры). */
-export const WD_DIM_V_LABEL_GAP_PX = 12;
-/** Дополнительный зазор для узких вертикальных цепочек (напр. толщина в «Вид сверху»). */
-export const WD_DIM_V_LABEL_GAP_EXTRA_PX = 4;
-/** Горизонтальные размеры: зазор подписи от оси линии (подпись ниже линии — в сторону белого поля). */
-export const WD_DIM_H_TEXT_GAP_PX = 16;
-/** Вынос короткого сегмента (px). */
-export const WD_DIM_SHORT_LEADER_RUN_PX = 24;
-export const WD_DIM_SHORT_LEADER_RISE_PX = 18;
-
 /** Вертикальная размерная цепочка: линия, засечки ⟂ линии, подпись rotate(−90°). */
 export function VerticalDimensionMm({
   xLineMm,
@@ -160,7 +148,10 @@ export function VerticalDimensionMm({
   text,
   sx,
   sy,
-  labelGapPx = WD_DIM_V_LABEL_GAP_PX,
+  labelGapPx = DIMENSION_V_LABEL_GAP_PX,
+  editKey = null,
+  interaction,
+  reportedValueMm,
 }: {
   readonly xLineMm: number;
   readonly y0Mm: number;
@@ -170,23 +161,55 @@ export function VerticalDimensionMm({
   readonly sy: (mm: number) => number;
   /** Дополнительный отступ подписи от линии (px). */
   readonly labelGapPx?: number;
+  readonly editKey?: string | null;
+  readonly interaction?: WallDetailDimInteraction;
+  /** Значение в мм для редактора (модель), не обязательно |y1−y0| на листе. */
+  readonly reportedValueMm?: number;
 }) {
   const yLo = Math.min(y0Mm, y1Mm);
   const yHi = Math.max(y0Mm, y1Mm);
   const xL = sx(xLineMm);
   const yT = sy(yLo);
   const yB = sy(yHi);
-  const tick = WD_DIM_TICK_HALF_PX;
+  const tick = DIMENSION_TICK_HALF_PX;
   const labelX = xL - tick - labelGapPx;
   const labelY = (yT + yB) / 2;
+  const key = editKey?.trim() ? editKey : null;
+  const canEdit = Boolean(interaction && key);
+  const valueMm = reportedValueMm ?? Math.round(Math.abs(yHi - yLo));
+  const isActive = canEdit && interaction!.activeKey === key;
+  const isHover = canEdit && interaction!.hoverKey === key;
+  const gClass =
+    "wd-dim-group wd-dim-group--vertical" +
+    (isActive ? " wd-dim-group--edit-active" : "") +
+    (isHover ? " wd-dim-group--edit-hover" : "");
+  const hitHalf = 36;
   return (
-    <g className="wd-dim-group wd-dim-group--vertical" pointerEvents="none">
+    <g className={gClass} pointerEvents={canEdit ? "auto" : "none"}>
       <line x1={xL} y1={yT} x2={xL} y2={yB} className="wd-dim-line" vectorEffect="non-scaling-stroke" />
       <line x1={xL - tick} y1={yT} x2={xL + tick} y2={yT} className="wd-dim-cap" vectorEffect="non-scaling-stroke" />
       <line x1={xL - tick} y1={yB} x2={xL + tick} y2={yB} className="wd-dim-cap" vectorEffect="non-scaling-stroke" />
       <text transform={`translate(${labelX},${labelY}) rotate(-90)`} className="wd-dim-text-v">
         {text}
       </text>
+      {canEdit ? (
+        <rect
+          x={xL - hitHalf}
+          y={Math.min(yT, yB) - 12}
+          width={hitHalf * 2 + labelGapPx + tick}
+          height={Math.abs(yB - yT) + 24}
+          className="wd-dim-hit"
+          fill="transparent"
+          pointerEvents="all"
+          style={{ cursor: "pointer" }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            interaction!.onActivate(key!, e.clientX, e.clientY, valueMm);
+          }}
+          onPointerEnter={() => interaction!.onHoverKey(key)}
+          onPointerLeave={() => interaction!.onHoverKey(null)}
+        />
+      ) : null}
     </g>
   );
 }
@@ -196,14 +219,31 @@ export interface DrawDimensionLevelOptions {
   readonly singleBaseline?: boolean;
   /**
    * Расстояние от оси размерной линии до верха подписи (px), `dominant-baseline: hanging`.
-   * По умолчанию: засечка + {@link WD_DIM_H_TEXT_GAP_PX}.
+   * По умолчанию: засечка + {@link DIMENSION_H_TEXT_GAP_PX}.
    */
   readonly horizontalLabelBelowLinePx?: number;
+  /** Клик по размеру, hover, подсветка активного сегмента. */
+  readonly interaction?: WallDetailDimInteraction;
+}
+
+/** Сегмент размерной линии; `editKey` — если задан, сегмент интерактивен (клик → редактор). */
+export interface WallDetailDimSegmentView {
+  readonly a: number;
+  readonly b: number;
+  readonly text: string;
+  readonly editKey?: string | null;
+}
+
+export interface WallDetailDimInteraction {
+  readonly activeKey: string | null;
+  readonly hoverKey: string | null;
+  readonly onActivate: (editKey: string, clientX: number, clientY: number, valueMm: number) => void;
+  readonly onHoverKey: (key: string | null) => void;
 }
 
 interface DimSegWork {
   readonly i: number;
-  readonly s: { a: number; b: number; text: string };
+  readonly s: WallDetailDimSegmentView;
   readonly x0: number;
   readonly x1: number;
   readonly minX: number;
@@ -216,7 +256,7 @@ interface DimSegWork {
  * Горизонтальные размерные цепочки (фасад: длины сегментов).
  */
 export function drawDimensionLevel(
-  segments: readonly { a: number; b: number; text: string }[],
+  segments: readonly WallDetailDimSegmentView[],
   yMm: number,
   sx: (x: number) => number,
   sy: (y: number) => number,
@@ -224,9 +264,14 @@ export function drawDimensionLevel(
   options?: DrawDimensionLevelOptions,
 ): ReactNode[] {
   const placed: { x0: number; x1: number; row: number }[] = [];
-  const tick = WD_DIM_TICK_HALF_PX;
-  const textBelowLinePx = options?.horizontalLabelBelowLinePx ?? tick + WD_DIM_H_TEXT_GAP_PX;
+  const tick = DIMENSION_TICK_HALF_PX;
+  const textBelowLinePx = options?.horizontalLabelBelowLinePx ?? tick + DIMENSION_H_TEXT_GAP_PX;
   const singleBaseline = options?.singleBaseline === true;
+  const interaction = options?.interaction;
+  const hitPadX = 22;
+  const hitPadYTop = 26;
+  const hitPadYBot = 14;
+  const hitLineStrokePx = 22;
 
   const works: DimSegWork[] = [];
   for (let i = 0; i < segments.length; i++) {
@@ -262,7 +307,7 @@ export function drawDimensionLevel(
   const placementBySeg = new Map<number, DimLabelPlacement>();
   for (const group of byRow.values()) {
     const items: DimSegLayoutItem[] = group.map((w) => {
-      const tw = measureHorizontalDimTextWidthPx(w.s.text) + WD_DIM_LABEL_H_PAD_PX;
+      const tw = measureDimensionLabelTextWidthPx(w.s.text) + DIMENSION_LABEL_H_PAD_PX;
       return {
         segIndex: w.i,
         L: w.minX,
@@ -281,8 +326,23 @@ export function drawDimensionLevel(
     const { s, x0, x1, minX, maxX, row, yLine } = w;
     const rightX = maxX;
     const pl = placementBySeg.get(w.i) ?? { kind: "inline", cx: (minX + maxX) / 2 };
+    const editKey = s.editKey?.trim() ? s.editKey : null;
+    const canEdit = Boolean(interaction && editKey);
+    const leaderY =
+      yLine + Math.min(DIMENSION_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2)) + 3;
+    const isActive = canEdit && interaction!.activeKey === editKey;
+    const isHover = canEdit && interaction!.hoverKey === editKey;
+    const gClass =
+      "wd-dim-group wd-dim-group--horizontal" +
+      (isActive ? " wd-dim-group--edit-active" : "") +
+      (isHover ? " wd-dim-group--edit-hover" : "");
+    const valueMm = Math.round(Math.abs(s.b - s.a));
+    const hitTop = pl.kind === "leader" ? Math.min(yLine - hitPadYTop, leaderY - 18) : yLine - hitPadYTop;
+    const hitBottom = pl.kind === "leader" ? Math.max(yLine + hitPadYBot, leaderY + 18) : yLine + textBelowLinePx + hitPadYBot;
+    const hitLeft = pl.kind === "leader" ? Math.min(minX, rightX) - hitPadX : minX - hitPadX;
+    const hitRight = pl.kind === "leader" ? Math.max(maxX, rightX + DIMENSION_SHORT_LEADER_RUN_PX + 48) + hitPadX : maxX + hitPadX;
     return (
-      <g key={`dim-${w.i}-${row}`} className="wd-dim-group wd-dim-group--horizontal" pointerEvents="none">
+      <g key={`dim-${w.i}-${row}`} className={gClass} pointerEvents={canEdit ? "auto" : "none"}>
         <line x1={x0} y1={yLine} x2={x1} y2={yLine} className="wd-dim-line" vectorEffect="non-scaling-stroke" />
         <line x1={x0} y1={yLine - tick} x2={x0} y2={yLine + tick} className="wd-dim-cap" vectorEffect="non-scaling-stroke" />
         <line x1={x1} y1={yLine - tick} x2={x1} y2={yLine + tick} className="wd-dim-cap" vectorEffect="non-scaling-stroke" />
@@ -291,14 +351,14 @@ export function drawDimensionLevel(
             <line
               x1={rightX}
               y1={yLine}
-              x2={rightX + WD_DIM_SHORT_LEADER_RUN_PX}
-              y2={yLine + Math.min(WD_DIM_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2))}
+              x2={rightX + DIMENSION_SHORT_LEADER_RUN_PX}
+              y2={yLine + Math.min(DIMENSION_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2))}
               className="wd-dim-line"
               vectorEffect="non-scaling-stroke"
             />
             <text
-              x={rightX + WD_DIM_SHORT_LEADER_RUN_PX + 6}
-              y={yLine + Math.min(WD_DIM_SHORT_LEADER_RISE_PX, Math.max(tick, textBelowLinePx + 2)) + 3}
+              x={rightX + DIMENSION_SHORT_LEADER_RUN_PX + 6}
+              y={leaderY}
               className="wd-dim-text-out wd-dim-text-h-below"
             >
               {s.text}
@@ -309,6 +369,45 @@ export function drawDimensionLevel(
             {s.text}
           </text>
         )}
+        {canEdit ? (
+          <>
+            <line
+              x1={x0}
+              y1={yLine}
+              x2={x1}
+              y2={yLine}
+              stroke="transparent"
+              strokeWidth={hitLineStrokePx}
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="stroke"
+              className="wd-dim-hit-line"
+              style={{ cursor: "pointer" }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                interaction!.onActivate(editKey!, e.clientX, e.clientY, valueMm);
+              }}
+              onPointerEnter={() => interaction!.onHoverKey(editKey)}
+              onPointerLeave={() => interaction!.onHoverKey(null)}
+            />
+            <rect
+              x={hitLeft}
+              y={hitTop}
+              width={Math.max(8, hitRight - hitLeft)}
+              height={Math.max(8, hitBottom - hitTop)}
+              className="wd-dim-hit"
+              fill="transparent"
+              pointerEvents="all"
+              style={{ cursor: "pointer" }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                interaction!.onActivate(editKey!, e.clientX, e.clientY, valueMm);
+              }}
+              onPointerEnter={() => interaction!.onHoverKey(editKey)}
+              onPointerLeave={() => interaction!.onHoverKey(null)}
+            />
+          </>
+        ) : null}
       </g>
     );
   });

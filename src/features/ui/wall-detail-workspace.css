@@ -36,6 +36,9 @@
   overflow: hidden;
   border-right: 1px solid var(--color-border-subtle);
   background: #fff;
+  /* Фасад всегда на белом фоне — фиксируем контраст размеров независимо от data-theme приложения. */
+  --color-dimension-line: #64748b;
+  --color-dimension-text: #1f2937;
 }
 
 .wd-canvas {
@@ -158,6 +161,7 @@
   fill: #fff;
   stroke: #1f2937;
   stroke-width: 1.5;
+  pointer-events: none;
 }
 
 .wd-open-label {
@@ -169,16 +173,16 @@
   pointer-events: none;
 }
 
-/** Размерные линии «Вид стены»: единая толщина и цвет. */
+/** Размерные линии: те же токены, что 2D-план (Pixi) — theme.css --color-dimension-*. */
 .wd-dim-line {
-  stroke: #64748b;
+  stroke: var(--color-dimension-line);
   stroke-width: 1;
   stroke-linecap: butt;
 }
 
 /** Поперечные засечки на концах (не стрелки). */
 .wd-dim-cap {
-  stroke: #64748b;
+  stroke: var(--color-dimension-line);
   stroke-width: 1;
   stroke-linecap: butt;
 }
@@ -187,10 +191,35 @@
   pointer-events: none;
 }
 
+.wd-dim-group--edit-hover .wd-dim-line,
+.wd-dim-group--edit-hover .wd-dim-cap {
+  stroke: var(--color-dimension-text, #1e293b);
+  stroke-width: 1.5;
+}
+
+.wd-dim-group--edit-active .wd-dim-line,
+.wd-dim-group--edit-active .wd-dim-cap {
+  stroke: var(--color-accent, #5b8cff);
+  stroke-width: 2;
+}
+
+.wd-dim-group--edit-hover .wd-dim-text,
+.wd-dim-group--edit-hover .wd-dim-text-v,
+.wd-dim-group--edit-hover .wd-dim-text-out {
+  font-weight: 600;
+}
+
+.wd-dim-group--edit-active .wd-dim-text,
+.wd-dim-group--edit-active .wd-dim-text-v,
+.wd-dim-group--edit-active .wd-dim-text-out {
+  fill: var(--color-accent, #5b8cff);
+  font-weight: 600;
+}
+
 .wd-dim-text {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  fill: #1f2937;
+  fill: var(--color-dimension-text);
   text-anchor: middle;
 }
 
@@ -201,8 +230,10 @@
 
 /** Вертикальный размер: текст вдоль линии (rotate −90°), центр по середине цепочки. */
 .wd-dim-text-v {
-  font-size: 14px;
-  fill: #1f2937;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  fill: var(--color-dimension-text);
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
@@ -211,7 +242,7 @@
 .wd-dim-text-out {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  fill: #1f2937;
+  fill: var(--color-dimension-text);
   text-anchor: start;
 }
 

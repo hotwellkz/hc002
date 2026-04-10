@@ -104,6 +104,32 @@ export function internalWallJointSeamCentersAlongMm(calc: WallCalculationResult)
 }
 
 /**
+ * Стыки `joint_board` на полную высоту ядра — без укороченных досок деления полосы SIP над/под окном
+ * (`metadata.openingStripJoint`), иначе на фасаде пунктир тянут на всю высоту через проём.
+ */
+export function internalWallJointSeamCentersAlongFullHeightMm(calc: WallCalculationResult): number[] {
+  const centers: number[] = [];
+  for (const p of calc.lumberPieces) {
+    const m = p.metadata as { openingStripJoint?: string } | undefined;
+    if (m?.openingStripJoint) {
+      continue;
+    }
+    const c = jointBoardSeamCenterAlongMm(p);
+    if (c != null) {
+      centers.push(c);
+    }
+  }
+  centers.sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const x of centers) {
+    if (out.length === 0 || Math.abs(x - out[out.length - 1]!) > 0.5) {
+      out.push(x);
+    }
+  }
+  return out;
+}
+
+/**
  * Центры вертикалей каркаса (перегородка/каркас): стойки и торцы без SIP-сдвига joint_board.
  */
 export function frameStudCentersAlongWallMm(calc: WallCalculationResult): number[] {
@@ -516,6 +542,22 @@ function lumberPieceCenterYWorld(
       }
       if (meta.studSegment === "bottom") {
         return botCenter * MM_TO_M;
+      }
+    }
+  }
+  if (piece.role === "joint_board" && piece.orientation === "across_wall") {
+    const jm = piece.metadata as { openingStripJoint?: "above" | "below"; openingId?: string } | undefined;
+    if (jm?.openingStripJoint && jm.openingId) {
+      const op = openingById(project, jm.openingId);
+      if (op && op.wallId === wall.id && op.kind === "window") {
+        const sill = Math.max(0, op.sillHeightMm ?? 0);
+        const openTop = sill + op.heightMm;
+        const horT = plateT;
+        const len = piece.lengthMm;
+        if (jm.openingStripJoint === "above") {
+          return (bottomMm + openTop + horT + len / 2) * MM_TO_M;
+        }
+        return (bottomMm + (sill - horT) - len / 2) * MM_TO_M;
       }
     }
   }

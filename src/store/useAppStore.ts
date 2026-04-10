@@ -55,7 +55,7 @@ import {
   validateWindowPlacementOnWall,
 } from "@/core/domain/openingWindowGeometry";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
-import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
+import { type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
 import { applyWallDirectionAngleSnapToPoint } from "@/core/geometry/wallDirectionAngleSnap";
 import { resolveSnap2d, type SnapKind } from "@/core/geometry/snap2d";
@@ -265,6 +265,8 @@ interface AppActions {
   openDoorEditModal: (openingId: string, initialTab?: WindowEditModalTab) => void;
   /** Перемещение окна вдоль стены (левый край, мм); без lastError — для drag. false если невалидно. */
   applyOpeningRepositionLeftEdge: (openingId: string, leftEdgeMm: number) => boolean;
+  /** Сохранить проект после редактирования размеров в «Виде стены» (пересчёт стены уже выполнен в домене). */
+  commitWallDetailProjectUpdate: (nextProject: Project) => void;
   setOpeningMoveModeActive: (active: boolean) => void;
   toggleOpeningMoveMode: () => void;
   openWallDetail: (wallId: string) => void;
@@ -401,15 +403,6 @@ function resolvePlacementSnap(
     },
     gridStepMm: p0.settings.gridStepMm,
   });
-}
-
-function getViewportForSnapFromStore(get: () => AppStore): ViewportTransform | null {
-  const sz = get().viewportCanvas2dPx;
-  if (!sz || sz.width <= 0 || sz.height <= 0) {
-    return null;
-  }
-  const v = get().viewport2d;
-  return buildViewportTransform(sz.width, sz.height, v.panXMm, v.panYMm, v.zoomPixelsPerMm);
 }
 
 function mergeViewState(
@@ -1048,6 +1041,8 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({ currentProject: r.project, dirty: true });
       return true;
     },
+    commitWallDetailProjectUpdate: (nextProject) =>
+      set({ currentProject: touchProjectMeta(nextProject), dirty: true, lastError: null }),
     setOpeningMoveModeActive: (active) => set({ openingMoveModeActive: active }),
     toggleOpeningMoveMode: () => set((s) => ({ openingMoveModeActive: !s.openingMoveModeActive })),
     openWallDetail: (wallId) =>
@@ -1571,10 +1566,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Введите числовые X и Y (мм)." });
         return;
       }
-      const raw = { x: anchor.x + input.dxMm, y: anchor.y + input.dyMm };
-      const vp = getViewportForSnapFromStore(get);
-      const snap = resolvePlacementSnap(get, raw, vp);
-      const pt = snap.point;
+      /** Ручной ввод из модалки: точка в мировых мм без grid/vertex/edge snap. */
+      const pt = { x: anchor.x + input.dxMm, y: anchor.y + input.dyMm };
       const p0 = get().currentProject;
       const clearAfterStart = {
         wallPlacementAnchorMm: null as Point2D | null,
@@ -1592,7 +1585,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             phase: "waitingSecondPoint",
             firstPointMm: pt,
             previewEndMm: pt,
-            lastSnapKind: snap.kind,
+            lastSnapKind: "none",
             angleSnapLockedDeg: null,
           },
           ...clearAfterStart,
@@ -1607,7 +1600,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           phase: "waitingSecondPoint",
           firstPointMm: pt,
           previewEndMm: pt,
-          lastSnapKind: snap.kind,
+          lastSnapKind: "none",
           angleSnapLockedDeg: null,
         },
         ...clearAfterStart,
@@ -1837,11 +1830,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Введите числовые X и Y (мм)." });
         return;
       }
-      const raw = { x: s.anchorWorldMm.x + input.dxMm, y: s.anchorWorldMm.y + input.dyMm };
-      const vp = getViewportForSnapFromStore(get);
-      const snap = resolvePlacementSnap(get, raw, vp);
-      let finalPt = snap.point;
-      finalPt = applyWallDirectionAngleSnapToPoint(s.anchorWorldMm, finalPt, s.angleSnapLockedDeg ?? null, {}).point;
+      /** Ручной ввод: целевая точка строго по ΔX/ΔY, без snap и без угловой привязки направления. */
+      const finalPt = { x: s.anchorWorldMm.x + input.dxMm, y: s.anchorWorldMm.y + input.dyMm };
       get().wallMoveCopyCommitTarget(finalPt);
     },
 
@@ -2122,10 +2112,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const first = session.firstPointMm;
-      const raw = { x: first.x + input.dxMm, y: first.y + input.dyMm };
-      const vp = getViewportForSnapFromStore(get);
-      const snap = resolvePlacementSnap(get, raw, vp);
-      get().wallPlacementCompleteSecondPoint(snap.point);
+      /** Ручной ввод: вторая точка строго first + (dx,dy), без snap и без угловой привязки. */
+      const exactSecond = { x: first.x + input.dxMm, y: first.y + input.dyMm };
+      get().wallPlacementCompleteSecondPoint(exactSecond);
     },
 
     openWallCalculationModal: () => {

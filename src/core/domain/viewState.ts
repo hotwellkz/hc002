@@ -28,7 +28,7 @@ export interface ViewState {
    */
   readonly show3dProfileLayers: boolean;
   /**
-   * true: layered-профили на 2D-плане как полосы по толщине (при достаточном zoom).
+   * true: layered-профили на 2D-плане как полосы по толщине (независимо от масштаба).
    * false: одна полоса как раньше.
    */
   readonly show2dProfileLayers: boolean;

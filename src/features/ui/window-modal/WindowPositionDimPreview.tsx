@@ -1,5 +1,7 @@
 import type { OpeningAlongAnchor, OpeningAlongAlignment } from "@/core/domain/openingWindowTypes";
 
+import { WindowPositionDiagramSvg } from "./WindowPositionDiagramSvg";
+
 export interface WindowPositionDimPreviewProps {
   readonly widthMm: number;
   readonly heightMm: number;
@@ -9,113 +11,79 @@ export interface WindowPositionDimPreviewProps {
   readonly sillLevelMm: number;
 }
 
-function anchorShort(a: OpeningAlongAnchor): string {
+function anchorLabel(a: OpeningAlongAnchor): string {
   switch (a) {
     case "wall_start":
-      return "Нач.";
+      return "Начало стены";
     case "wall_end":
-      return "Кон.";
+      return "Конец стены";
     case "wall_center":
-      return "Центр";
+      return "Центр стены";
     default:
       return "";
   }
 }
 
-/** Схематичное превью: стена, проём, подписи смещения и уровня (синие размерные линии в стиле формы окна). */
-export function WindowPositionDimPreview({
-  widthMm,
-  heightMm,
-  anchorAlongWall,
-  offsetAlongWallMm,
-  alignment,
-  sillLevelMm,
-}: WindowPositionDimPreviewProps) {
-  const wLab = `${Math.round(widthMm)}`;
-  const hLab = `${Math.round(heightMm)}`;
-  const offLab = `${Math.round(offsetAlongWallMm)}`;
-  const sillLab = `${Math.round(sillLevelMm)}`;
-  const al =
-    alignment === "center" ? "центр" : alignment === "leading" ? "лево" : "право";
+function alignmentLabel(al: OpeningAlongAlignment): string {
+  switch (al) {
+    case "center":
+      return "По центру";
+    case "leading":
+      return "По левому краю";
+    case "trailing":
+      return "По правому краю";
+    default:
+      return "";
+  }
+}
+
+function fmtMm(n: number): string {
+  if (!Number.isFinite(n)) {
+    return "—";
+  }
+  return `${Math.round(n).toLocaleString("ru-RU")} мм`;
+}
+
+/**
+ * Карточка превью вкладки «Позиция»: заголовок, SVG-схема (короткие подписи),
+ * текстовый summary — длинные значения без обрезания.
+ */
+export function WindowPositionDimPreview(props: WindowPositionDimPreviewProps) {
+  const { widthMm, heightMm, anchorAlongWall, offsetAlongWallMm, alignment, sillLevelMm } = props;
 
   return (
-    <div className="wp-preview wp-preview--position" aria-hidden>
-      <svg className="wp-preview__svg" viewBox="0 0 220 300" preserveAspectRatio="xMidYMid meet">
-        <line
-          x1="24"
-          y1="200"
-          x2="196"
-          y2="200"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <text x="110" y="222" textAnchor="middle" className="wp-preview__dim-text" fontSize="10">
-          ось стены · {anchorShort(anchorAlongWall)} · {al}
-        </text>
+    <div className="wp-position-preview">
+      <h3 className="wp-position-preview__title">Схема положения окна</h3>
 
-        <rect
-          x="70"
-          y="118"
-          width="80"
-          height="72"
-          rx="2"
-          fill="var(--color-surface-raised, rgba(255,255,255,0.06))"
-          stroke="var(--color-accent, #2563eb)"
-          strokeWidth="1.4"
-        />
+      <div className="wp-position-preview__diagram">
+        <WindowPositionDiagramSvg {...props} />
+      </div>
 
-        <line
-          x1="40"
-          y1="260"
-          x2="180"
-          y2="260"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="1.1"
-        />
-        <text x="110" y="278" textAnchor="middle" className="wp-preview__dim-text" fontSize="11">
-          {wLab} мм
-        </text>
-
-        <line
-          x1="188"
-          y1="110"
-          x2="188"
-          y2="198"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="1.1"
-        />
-        <text
-          x="198"
-          y="158"
-          textAnchor="start"
-          className="wp-preview__dim-text"
-          fontSize="11"
-          transform="rotate(-90 198 158)"
-        >
-          {hLab}
-        </text>
-
-        <line
-          x1="32"
-          y1="246"
-          x2="32"
-          y2="190"
-          stroke="var(--wp-dim-line, var(--color-accent, #2563eb))"
-          strokeWidth="1"
-          strokeDasharray="3 2"
-        />
-        <text x="20" y="218" textAnchor="end" className="wp-preview__dim-text" fontSize="9.5">
-          уровень
-        </text>
-        <text x="20" y="232" textAnchor="end" className="wp-preview__dim-text" fontSize="10">
-          {sillLab}
-        </text>
-
-        <text x="110" y="104" textAnchor="middle" className="wp-preview__dim-text" fontSize="10">
-          смещение по оси: {offLab} мм
-        </text>
-      </svg>
+      <dl className="wp-position-preview__summary">
+        <div className="wp-position-preview__row">
+          <dt>Привязка</dt>
+          <dd>{anchorLabel(anchorAlongWall)}</dd>
+        </div>
+        <div className="wp-position-preview__row">
+          <dt>Смещение</dt>
+          <dd>{fmtMm(offsetAlongWallMm)}</dd>
+        </div>
+        <div className="wp-position-preview__row">
+          <dt>Выравнивание</dt>
+          <dd>{alignmentLabel(alignment)}</dd>
+        </div>
+        <div className="wp-position-preview__row">
+          <dt>Низ проёма</dt>
+          <dd>{fmtMm(sillLevelMm)}</dd>
+        </div>
+        <div className="wp-position-preview__row wp-position-preview__row--emph">
+          <dt>Ширина × высота</dt>
+          <dd>
+            {Number.isFinite(widthMm) ? Math.round(widthMm).toLocaleString("ru-RU") : "—"} ×{" "}
+            {Number.isFinite(heightMm) ? Math.round(heightMm).toLocaleString("ru-RU") : "—"} мм
+          </dd>
+        </div>
+      </dl>
     </div>
   );
 }

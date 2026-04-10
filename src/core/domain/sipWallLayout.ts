@@ -160,6 +160,52 @@ export function computeSipPanelWidthsOpeningAdjacentMm(
 }
 
 /**
+ * Вертикали разреза полосы SIP над/под световым проёмом (модуль + границы sipRegions внутри интервала).
+ * Совпадает с фасадом «Вид стены» / спецификацией сегментов.
+ */
+export function openingStripVerticalCutXsMm(
+  x0: number,
+  x1: number,
+  regions: readonly { readonly startOffsetMm: number; readonly endOffsetMm: number }[],
+  panelNominalWidthMm: number,
+  epsMm = 0.5,
+): number[] {
+  const lo = Math.min(x0, x1);
+  const hi = Math.max(x0, x1);
+  const span = hi - lo;
+  if (span <= epsMm) {
+    return [lo, hi];
+  }
+  const W = Math.max(1, Math.round(panelNominalWidthMm));
+  const widths = computeSipPanelWidthsOpeningAdjacentMm(Math.round(span), W);
+  const cut = new Set<number>();
+  cut.add(lo);
+  cut.add(hi);
+  for (const r of regions) {
+    for (const bx of [r.startOffsetMm, r.endOffsetMm]) {
+      if (bx > lo + epsMm && bx < hi - epsMm) {
+        cut.add(bx);
+      }
+    }
+  }
+  let cx = lo;
+  for (let i = 0; i < widths.length - 1; i++) {
+    cx += widths[i]!;
+    if (cx > lo + epsMm && cx < hi - epsMm) {
+      cut.add(cx);
+    }
+  }
+  const sorted = [...cut].sort((a, b) => a - b);
+  const merged: number[] = [];
+  for (const x of sorted) {
+    if (merged.length === 0 || x - merged[merged.length - 1]! > epsMm) {
+      merged.push(x);
+    }
+  }
+  return merged;
+}
+
+/**
  * Единая точка входа для раскладки SIP по длине сплошного участка (как на глухой стене).
  */
 export function calculateSipPanelLayoutOnWall(
@@ -803,6 +849,54 @@ export function buildWallCalculationForWall(
           orientation: "along_wall",
           metadata: { ...metaBase, note: "Подоконная зона (упрощённо)", splitLowerMm: splitLower, sillLevelMm: sill },
         });
+      }
+
+      /**
+       * SIP: полоса SIP над/под окном режется на несколько панелей (модуль по ширине светового проёма).
+       * Вертикальный стык — та же joint_board, что между панелями по длине стены; длина = сегмент ядра над/под проёмом.
+       */
+      if (o.kind === "window" && !isSheetWall) {
+        const panelNomW = Math.max(1, Math.round(m.panelNominalWidthMm ?? 1250));
+        const sortedRegs = [...sipRegions].sort((a, b) => a.startOffsetMm - b.startOffsetMm || a.index - b.index);
+        const stripCuts = openingStripVerticalCutXsMm(o0, o1, sortedRegs, panelNomW, EPS);
+        for (let ci = 1; ci < stripCuts.length - 1; ci++) {
+          const xCut = stripCuts[ci]!;
+          if (seamPositions.has(Math.round(xCut))) {
+            continue;
+          }
+          if (upperSegLen > EPS) {
+            verticalDrafts.push({
+              id: newEntityId(),
+              wallId: wall.id,
+              calculationId,
+              role: "joint_board",
+              sectionThicknessMm: Tj,
+              sectionDepthMm: m.jointBoardDepthMm,
+              startOffsetMm: xCut,
+              endOffsetMm: xCut + Tj,
+              lengthMm: Math.round(upperSegLen),
+              orientation: "across_wall",
+              materialType: frameMaterialType,
+              metadata: { ...metaBase, openingStripJoint: "above" as const },
+            });
+          }
+          if (lowerSegLen > EPS) {
+            verticalDrafts.push({
+              id: newEntityId(),
+              wallId: wall.id,
+              calculationId,
+              role: "joint_board",
+              sectionThicknessMm: Tj,
+              sectionDepthMm: m.jointBoardDepthMm,
+              startOffsetMm: xCut,
+              endOffsetMm: xCut + Tj,
+              lengthMm: Math.round(lowerSegLen),
+              orientation: "across_wall",
+              materialType: frameMaterialType,
+              metadata: { ...metaBase, openingStripJoint: "below" as const },
+            });
+          }
+        }
       }
     }
   }

@@ -5,6 +5,7 @@ import type { Project } from "@/core/domain/project";
 import { cssHexToPixiNumber } from "@/shared/cssColor";
 
 import { collectDimensionLabelScreenPositions } from "./dimensions2dPixi";
+import { openingPlanLabelRotationRad } from "./openingPlanLabelOrientation2d";
 import { exteriorNormalForWallLabelMm } from "./wallLabelExteriorNormalMm";
 import type { WallMarkAppearance } from "./wallMarks2dPixi";
 import type { AppendWallMarkLabels2dOptions } from "./wallMarks2dPixi";
@@ -143,8 +144,7 @@ export function appendWindowOpeningLabels2d(
     label.anchor.set(0.5);
     label.x = pos.mid.x;
     label.y = pos.mid.y;
-    /** В чертежном плане держим подпись горизонтально для стабильной читаемости. */
-    label.rotation = 0;
+    label.rotation = openingPlanLabelRotationRad(dx, dy, t);
     label.alpha = ctx ? 0.4 : 0.94;
     container.addChild(label);
   }

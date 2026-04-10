@@ -9,6 +9,8 @@ import {
   buildCalculationSolidSpecsForProject,
   buildCalculationSolidSpecsForWall,
   CALCULATION_SOLID_MIN_EXTENT_M,
+  internalWallJointSeamCentersAlongFullHeightMm,
+  internalWallJointSeamCentersAlongMm,
   lumberPieceWallElevationRectMm,
 } from "./wallCalculation3dSpecs";
 import { buildSipSeamVerticalLineSegmentsForProject } from "./sipSeamLines3d";
@@ -190,5 +192,31 @@ describe("wallCalculation3dSpecs", () => {
       expect(rr.b0).toBeCloseTo(door.heightMm + plateT, 3);
       expect(rr.b1).toBeCloseTo(bottomUpperPlateFromBase, 3);
     }
+  });
+
+  it("internalWallJointSeamCentersAlongFullHeightMm не включает укороченные JB деления полосы над/под окном", () => {
+    const p = createDemoProject();
+    const wall = p.walls[0]!;
+    const profile = p.profiles[0]!;
+    const o0 = 2000;
+    const opening: Opening = {
+      id: "o-wide-seam",
+      wallId: wall.id,
+      kind: "window",
+      offsetFromStartMm: o0,
+      widthMm: 1875,
+      heightMm: 1200,
+      sillHeightMm: 900,
+    };
+    const calc = buildWallCalculationForWall(wall, profile, {
+      openings: [opening],
+      wallJoints: [],
+      options: { includeOpeningFraming: true, includeWallConnectionElements: false },
+    });
+    const xSplit = o0 + 1250;
+    const all = internalWallJointSeamCentersAlongMm(calc);
+    const fullOnly = internalWallJointSeamCentersAlongFullHeightMm(calc);
+    expect(all.some((x) => Math.abs(x - xSplit) < 1)).toBe(true);
+    expect(fullOnly.some((x) => Math.abs(x - xSplit) < 1)).toBe(false);
   });
 });

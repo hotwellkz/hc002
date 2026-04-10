@@ -1,7 +1,7 @@
 import { Graphics } from "pixi.js";
 
 import {
-  MIN_LAYERED_WALL_SCREEN_THICKNESS_PX,
+  MIN_WALL_2D_LAYER_LINE_STROKE_PX,
   resolveWallProfileLayerStripsMm,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
@@ -30,7 +30,7 @@ const RECT_REF = 0x6b7688;
 const EPS = 1e-6;
 
 export interface WallPreview2dLayeredOptions {
-  /** Профиль черновика стены; послойный preview только при layered + достаточном zoom. */
+  /** Профиль черновика стены; послойный preview при layered-профиле. */
   readonly profile: Profile | undefined;
   readonly show2dProfileLayers: boolean;
   readonly thicknessMm: number;
@@ -110,7 +110,7 @@ function drawWallBandLayeredFromCenterline(
     }
     g.closePath();
     g.fill({ color: fillColor2dForMaterialType(strip.materialType), alpha: 0.32 });
-    g.stroke({ width: 1, color: 0x5aa7ff, alpha: 0.45 });
+    g.stroke({ width: MIN_WALL_2D_LAYER_LINE_STROKE_PX, color: 0x5aa7ff, alpha: 0.45 });
   }
   acc = -T / 2;
   for (let i = 0; i < strips.length - 1; i++) {
@@ -120,16 +120,12 @@ function drawWallBandLayeredFromCenterline(
     const p1 = worldToScreen(ex + px * off, ey + py * off, t);
     g.moveTo(p0.x, p0.y);
     g.lineTo(p1.x, p1.y);
-    g.stroke({ width: 1, color: 0x0a0c10, alpha: 0.35, cap: "butt" });
+    g.stroke({ width: MIN_WALL_2D_LAYER_LINE_STROKE_PX, color: 0x0a0c10, alpha: 0.35, cap: "butt" });
   }
 }
 
 function resolvePreviewStrips(opts: WallPreview2dLayeredOptions | undefined): WallProfileLayerStripMm[] | null {
   if (!opts?.profile || !opts.show2dProfileLayers) {
-    return null;
-  }
-  const strokePx = Math.max(2, opts.thicknessMm * opts.zoomPixelsPerMm);
-  if (strokePx < MIN_LAYERED_WALL_SCREEN_THICKNESS_PX) {
     return null;
   }
   return resolveWallProfileLayerStripsMm(opts.thicknessMm, opts.profile);

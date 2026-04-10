@@ -3,21 +3,37 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Opening } from "@/core/domain/opening";
 import { getProfileById } from "@/core/domain/profileOps";
 import { resolveWallCalculationModel } from "@/core/domain/wallManufacturing";
+import {
+  applyWallDetailDimensionEdit,
+  buildWallDetailOpeningChainSegmentsWithEdit,
+  mapSipOrSheetHorizontalSegmentsWithEdit,
+  wallDetailDimEditHandleKey,
+  wallDetailHorizontalInteractionKey,
+  type WallDetailDimEditHandle,
+  type WallDetailHorizontalDimSegment,
+} from "@/core/domain/wallDetailDimensionEdit";
 
 import { useAppStore } from "@/store/useAppStore";
 
+import { DimensionMmPopover } from "@/features/ui/DimensionMmPopover";
 import "./wall-detail-workspace.css";
 import {
   frameStudCentersAlongWallMm,
+  internalWallJointSeamCentersAlongFullHeightMm,
   internalWallJointSeamCentersAlongMm,
   lumberPieceWallElevationRectMm,
 } from "@/core/domain/wallCalculation3dSpecs";
+import {
+  DIMENSION_V_LABEL_GAP_OPENING_EXTRA_PX,
+  DIMENSION_V_LABEL_GAP_PX,
+} from "@/shared/dimensionStyle";
 import {
   buildWallDetailSipFacadeSlices,
   sheetInteriorCutXsAlongWallFromRegionsMm,
   sipPanelHorizontalDimensionSegmentsWallDetailMm,
   wallDetailSheetPanelVerticalBoundaryXsMm,
-  wallDetailSipVerticalBoundaryXsMm,
+  wallDetailSipFullHeightOsbSeamXsMm,
+  wallDetailSipOpeningStripVerticalSeamSegmentsMm,
 } from "@/core/domain/wallDetailSipElevation";
 import { buildWallDetailSipPanelDisplayGrouping } from "@/core/domain/wallDetailSipPanelGrouping";
 import {
@@ -33,7 +49,10 @@ import {
   VerticalDimensionMm,
   WD_DIM_V_LABEL_GAP_EXTRA_PX,
   WD_DIM_V_LABEL_GAP_PX,
+  type WallDetailDimInteraction,
+  type WallDetailDimSegmentView,
 } from "@/features/ui/wallDetailDimensionsSvg";
+import { computeOpeningVerticalDimColumnXmm } from "@/features/ui/wallDetailOpeningVerticalDimsLayout";
 import {
   computeWallDetailOpeningLabelLayout,
   openingLabelLineHeightPx,
@@ -253,7 +272,13 @@ export function WallDetailWorkspace() {
     if (!wall || !calc || !wallDetailSipFrameMm || calc.sipRegions.length === 0) {
       return [];
     }
-    return buildWallDetailSipFacadeSlices(calc.sipRegions, openingsOnWall, wall, wallDetailSipFrameMm);
+    const panelNominalW = Math.max(
+      1,
+      Math.round(calc.settingsSnapshot.panelNominalWidthMm ?? 1250),
+    );
+    return buildWallDetailSipFacadeSlices(calc.sipRegions, openingsOnWall, wall, wallDetailSipFrameMm, {
+      panelNominalWidthMm: panelNominalW,
+    });
   }, [wall, calc, openingsOnWall, wallDetailSipFrameMm]);
 
   const sipPanelGrouping = useMemo(() => {
@@ -308,14 +333,17 @@ export function WallDetailWorkspace() {
         : calc
           ? internalWallJointSeamCentersAlongMm(calc)
           : [];
-    const frontLevel1 =
+    const frontLevel1Raw =
       calc && calc.sipRegions.length > 0
         ? sipPanelHorizontalDimensionSegmentsWallDetailMm(sipShell.x0, sipShell.x1, seamCentersForSheetDims, openingsOnWall, {
             omitClearOpeningCutsAlongWall: isFrameWallModel,
           })
         : [];
-    const frontLevel2Raw = buildOpeningGapSegments(L, openingsOnWall);
-    const frontLevel3 = [{ a: 0, b: L, text: `${Math.round(L)}` }];
+    const frontLevel1 = mapSipOrSheetHorizontalSegmentsWithEdit(frontLevel1Raw, L, openingsOnWall);
+    const frontLevel2Raw = buildWallDetailOpeningChainSegmentsWithEdit(L, openingsOnWall);
+    const frontLevel3: WallDetailHorizontalDimSegment[] = [
+      { a: 0, b: L, text: `${Math.round(L)}`, edit: { kind: "wall_total_length" } },
+    ];
 
     /** Одна SIP-панель на всю длину — общий габарит уже в первой цепочке; третья строка дублировала бы число (напр. 5937). */
     const showOverallLengthRow = !(
@@ -325,13 +353,43 @@ export function WallDetailWorkspace() {
       Math.abs(calc.sipRegions[0]!.endOffsetMm - L) < 0.5
     );
 
-    /** Без проёмов `buildOpeningGapSegments` даёт один сегмент 0…L — тот же общий габарит, что и в `frontLevel3`. */
-    const frontLevel2 = filterDuplicateFullWallHorizontalDim(
-      frontLevel2Raw,
-      L,
-      showOverallLengthRow,
-      frontLevel1,
-    );
+    /** Без проёмов цепочка даёт один сегмент 0…L — тот же общий габарит, что и в `frontLevel3`. */
+    const frontLevel2 = filterDuplicateFullWallHorizontalDimSegments(frontLevel2Raw, L, showOverallLengthRow, frontLevel1);
+
+    const dimHandleByKey = new Map<string, WallDetailDimEditHandle>();
+    const collectDimKeys = (segs: readonly WallDetailHorizontalDimSegment[]): void => {
+      for (const s of segs) {
+        if (s.edit) {
+          dimHandleByKey.set(wallDetailHorizontalInteractionKey(s.edit, s.a, s.b), s.edit);
+        }
+      }
+    };
+    collectDimKeys(frontLevel1);
+    collectDimKeys(frontLevel2);
+    if (showOverallLengthRow) {
+      collectDimKeys(frontLevel3);
+    }
+    dimHandleByKey.set(wallDetailDimEditHandleKey({ kind: "wall_height", wallId: wall.id }), {
+      kind: "wall_height",
+      wallId: wall.id,
+    });
+    for (const o of openingsOnWall) {
+      if (o.kind === "window") {
+        dimHandleByKey.set(wallDetailDimEditHandleKey({ kind: "opening_sill_height", openingId: o.id }), {
+          kind: "opening_sill_height",
+          openingId: o.id,
+        });
+        dimHandleByKey.set(wallDetailDimEditHandleKey({ kind: "opening_height", openingId: o.id }), {
+          kind: "opening_height",
+          openingId: o.id,
+        });
+      } else if (o.kind === "door") {
+        dimHandleByKey.set(wallDetailDimEditHandleKey({ kind: "opening_height", openingId: o.id }), {
+          kind: "opening_height",
+          openingId: o.id,
+        });
+      }
+    }
 
     /** Сверху вниз: SIP по ширине → общий габарит → пролёты у проёмов (если есть) → большой отступ → «Вид сверху» → план → поле под размер толщины. */
     let y = wallBottom + gapWallToPanelDimsMm;
@@ -374,8 +432,73 @@ export function WallDetailWorkspace() {
       frontLevel2,
       frontLevel3,
       showOverallLengthRow,
+      dimHandleByKey,
     };
   }, [wall, H, L, calc, openingsOnWall, project]);
+
+  /** Вертикали стыков/границ листов и стоек — чтобы оси размеров проёмов не совпадали с линиями чертежа. */
+  const verticalBoundaryXsForOpeningDims = useMemo(() => {
+    if (sipFacadeSlices.length === 0) {
+      return [] as number[];
+    }
+    /** Без укороченных JB над/под окном — иначе пунктир на всю высоту через проём. */
+    const internalSeamCentersAlong = calc ? internalWallJointSeamCentersAlongFullHeightMm(calc) : [];
+    const sheetPanelVerticalBoundaryXsMm = wallDetailSheetPanelVerticalBoundaryXsMm(sipFacadeSlices);
+    return isSipLikeWall
+      ? wallDetailSipFullHeightOsbSeamXsMm(sipFacadeSlices, internalSeamCentersAlong)
+      : sheetPanelVerticalBoundaryXsMm;
+  }, [sipFacadeSlices, calc, isSipLikeWall]);
+
+  /** Пунктир деления полосы SIP над/под окном — только по высоте этих вставок. */
+  const sipOpeningStripVerticalSeamSegments = useMemo(
+    () =>
+      sipFacadeSlices.length > 0 && isSipLikeWall ? wallDetailSipOpeningStripVerticalSeamSegmentsMm(sipFacadeSlices) : [],
+    [sipFacadeSlices, isSipLikeWall],
+  );
+
+  const frameStudXsForOpeningDims = useMemo(
+    () => (calc && !isSipLikeWall ? frameStudCentersAlongWallMm(calc) : []),
+    [calc, isSipLikeWall],
+  );
+
+  const openingVerticalDimLabelGapPx = DIMENSION_V_LABEL_GAP_PX + DIMENSION_V_LABEL_GAP_OPENING_EXTRA_PX;
+
+  const openingVerticalDimColumnXmm = useMemo(() => {
+    if (!wall) {
+      return new Map<string, number>();
+    }
+    const wallBottom = SHEET_WALL_TOP_MM + H;
+    const items = openingsOnWall.map((o) => {
+      const x = o.offsetFromStartMm ?? 0;
+      const yTop =
+        o.kind === "door" ? wallBottom - o.heightMm : wallBottom - o.heightMm - (o.sillHeightMm ?? 0);
+      const openBottom = yTop + o.heightMm;
+      const sillMm = o.kind === "window" ? o.sillHeightMm ?? o.position?.sillLevelMm ?? 900 : 0;
+      const yDimBottomMm = o.kind === "window" ? wallBottom : openBottom;
+      const dimTexts =
+        o.kind === "window"
+          ? [`${Math.round(sillMm)}`, `${Math.round(o.heightMm)}`]
+          : [`${Math.round(o.heightMm)}`];
+      return {
+        id: o.id,
+        x0: x,
+        x1: x + o.widthMm,
+        yDimTopMm: yTop,
+        yDimBottomMm,
+        dimTexts,
+      };
+    });
+    const obstacles = [...verticalBoundaryXsForOpeningDims, ...frameStudXsForOpeningDims];
+    return computeOpeningVerticalDimColumnXmm(items, obstacles, zoom, openingVerticalDimLabelGapPx);
+  }, [
+    wall,
+    H,
+    openingsOnWall,
+    verticalBoundaryXsForOpeningDims,
+    frameStudXsForOpeningDims,
+    zoom,
+    openingVerticalDimLabelGapPx,
+  ]);
 
   const sheetBounds = useMemo(() => {
     if (!wall || !layout) {
@@ -407,7 +530,9 @@ export function WallDetailWorkspace() {
       const openTopY = o.kind === "door" ? wallBottom - o.heightMm : wallBottom - o.heightMm - (o.sillHeightMm ?? 0);
       const labelY = openTopY - 14;
       minY = Math.min(minY, labelY - 8);
-      maxX = Math.max(maxX, x + o.widthMm + 8);
+      const colX = openingVerticalDimColumnXmm.get(o.id);
+      const reserveRight = colX != null ? colX + 96 : x + o.widthMm + (o.kind === "window" ? 220 : 140);
+      maxX = Math.max(maxX, reserveRight);
     }
 
     if (calc) {
@@ -440,7 +565,7 @@ export function WallDetailWorkspace() {
     maxY = Math.max(maxY, sheetBottom);
 
     return { minX, minY, maxX, maxY };
-  }, [wall, layout, L, H, calc, project, openingsOnWall]);
+  }, [wall, layout, L, H, calc, project, openingsOnWall, openingVerticalDimColumnXmm]);
 
   const applyFit = useCallback(() => {
     if (!layout) return;
@@ -484,9 +609,78 @@ export function WallDetailWorkspace() {
   const sx = useCallback((x: number) => panX + x * zoom, [panX, zoom]);
   const sy = useCallback((y: number) => panY + y * zoom, [panY, zoom]);
 
+  const commitWallDetailProjectUpdate = useAppStore((s) => s.commitWallDetailProjectUpdate);
+  const [wallDimHoverKey, setWallDimHoverKey] = useState<string | null>(null);
+  const [wallDimPopover, setWallDimPopover] = useState<{
+    readonly editKey: string;
+    readonly clientX: number;
+    readonly clientY: number;
+    readonly valueStr: string;
+    readonly error: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    setWallDimPopover(null);
+    setWallDimHoverKey(null);
+  }, [wall?.id]);
+
+  const wallDimInteraction: WallDetailDimInteraction | undefined = useMemo(() => {
+    if (!wall) {
+      return undefined;
+    }
+    return {
+      activeKey: wallDimPopover?.editKey ?? null,
+      hoverKey: wallDimHoverKey,
+      onActivate: (editKey: string, clientX: number, clientY: number, valueMm: number) => {
+        setWallDimHoverKey(null);
+        setWallDimPopover({
+          editKey,
+          clientX,
+          clientY,
+          valueStr: String(valueMm),
+          error: null,
+        });
+      },
+      onHoverKey: (k: string | null) => setWallDimHoverKey(k),
+    };
+  }, [wall, wallDimPopover?.editKey, wallDimHoverKey]);
+
+  const applyWallDimPopover = useCallback(() => {
+    if (!wall || !layout || !wallDimPopover) {
+      return;
+    }
+    const handle = layout.dimHandleByKey.get(wallDimPopover.editKey);
+    if (!handle) {
+      setWallDimPopover((p) => (p ? { ...p, error: "Неизвестный размер." } : null));
+      return;
+    }
+    const digits = wallDimPopover.valueStr.replace(/\D/g, "");
+    if (digits.length === 0) {
+      setWallDimPopover((p) => (p ? { ...p, error: "Введите число в мм." } : null));
+      return;
+    }
+    const v = parseInt(digits, 10);
+    const r = applyWallDetailDimensionEdit(project, wall.id, handle, v);
+    if ("error" in r) {
+      setWallDimPopover((p) => (p ? { ...p, error: r.error } : null));
+      return;
+    }
+    commitWallDetailProjectUpdate(r.project);
+    setWallDimPopover(null);
+  }, [wall, layout, wallDimPopover, project, commitWallDetailProjectUpdate]);
+
+  const cancelWallDimPopover = useCallback(() => setWallDimPopover(null), []);
+
   if (!wall || !layout) {
     return <div className="wd-empty">Нет стен для отображения.</div>;
   }
+
+  const dimSegView = (s: WallDetailHorizontalDimSegment): WallDetailDimSegmentView => ({
+    a: s.a,
+    b: s.b,
+    text: s.text,
+    editKey: s.edit ? wallDetailHorizontalInteractionKey(s.edit, s.a, s.b) : null,
+  });
 
   const {
     wallTop,
@@ -520,33 +714,9 @@ export function WallDetailWorkspace() {
     };
   }, [calc, L]);
 
-  const internalSeamCentersAlong = useMemo(
-    () => (calc ? internalWallJointSeamCentersAlongMm(calc) : []),
-    [calc],
-  );
-
-  /** Границы листов/секций облицовки (без сетки каркаса). */
-  const sheetPanelVerticalBoundaryXsMm = useMemo(
-    () => (sipFacadeSlices.length > 0 ? wallDetailSheetPanelVerticalBoundaryXsMm(sipFacadeSlices) : []),
-    [sipFacadeSlices],
-  );
-
-  /** SIP: стыки OSB + границы панелей. Каркас/ГКЛ: только границы листов — сетка каркаса отдельно. */
-  const verticalSipBoundaryXsMm = useMemo(
-    () =>
-      sipFacadeSlices.length > 0
-        ? isSipLikeWall
-          ? wallDetailSipVerticalBoundaryXsMm(sipFacadeSlices, internalSeamCentersAlong)
-          : sheetPanelVerticalBoundaryXsMm
-        : [],
-    [sipFacadeSlices, internalSeamCentersAlong, isSipLikeWall, sheetPanelVerticalBoundaryXsMm],
-  );
-
-  /** Центры вертикалей каркаса (шаг 400 мм и т.д.) — только для режима frame. */
-  const frameStudCenterXsMm = useMemo(
-    () => (calc && !isSipLikeWall ? frameStudCentersAlongWallMm(calc) : []),
-    [calc, isSipLikeWall],
-  );
+  /** Те же массивы, что для раскладки вертикальных размеров проёмов. */
+  const verticalSipBoundaryXsMm = verticalBoundaryXsForOpeningDims;
+  const frameStudCenterXsMm = frameStudXsForOpeningDims;
 
   const onWheelZoom = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -640,6 +810,9 @@ export function WallDetailWorkspace() {
               text={`${Math.round(H)} мм`}
               sx={sx}
               sy={sy}
+              editKey={wallDetailDimEditHandleKey({ kind: "wall_height", wallId: wall.id })}
+              interaction={wallDimInteraction}
+              reportedValueMm={Math.round(H)}
             />
 
             {calc ? (
@@ -709,7 +882,9 @@ export function WallDetailWorkspace() {
                   const wPx = Math.max(1, (sl.drawX1 - sl.drawX0) * zoom);
                   const hPx = Math.max(1, (sl.drawY1 - sl.drawY0) * zoom);
                   const stripKey =
-                    sl.kind === "above_opening" ? `sip-above-${sl.openingId}` : `sip-below-${sl.openingId}`;
+                    sl.kind === "above_opening"
+                      ? `sip-above-${sl.openingId}-${sl.segmentIndex}`
+                      : `sip-below-${sl.openingId}-${sl.segmentIndex}`;
                   return (
                     <g key={stripKey} className="wd-sip-panel-layer">
                       <rect
@@ -773,33 +948,77 @@ export function WallDetailWorkspace() {
             {openingsOnWall.map((o) => {
               const x = o.offsetFromStartMm ?? 0;
               const y = o.kind === "door" ? wallBottom - o.heightMm : wallBottom - o.heightMm - (o.sillHeightMm ?? 0);
+              const sillMm = o.kind === "window" ? o.sillHeightMm ?? o.position?.sillLevelMm ?? 900 : 0;
+              const openBottomMm = y + o.heightMm;
+              const vDimX = openingVerticalDimColumnXmm.get(o.id) ?? x + o.widthMm + 40;
               const mark = o.markLabel?.trim() || (o.kind === "door" ? `Д_${o.doorSequenceNumber ?? "?"}` : `OK_${o.windowSequenceNumber ?? "?"}`);
               /** Ниже верхней кромки проёма — в верхней трети светового проёма, без «прилипания» к перемычке. */
               const labelCenterYMm = y + o.heightMm * 0.28;
               const openingWPx = Math.max(1, o.widthMm * zoom);
               const openingHPx = Math.max(1, o.heightMm * zoom);
-              const layout = computeWallDetailOpeningLabelLayout(mark, o.widthMm, o.heightMm, openingWPx, openingHPx);
-              const lhPx = openingLabelLineHeightPx(layout.fontSizePx);
+              const openLab = computeWallDetailOpeningLabelLayout(mark, o.widthMm, o.heightMm, openingWPx, openingHPx);
+              const lhPx = openingLabelLineHeightPx(openLab.fontSizePx);
               const cxPx = sx(x + o.widthMm / 2);
               const cyPx = sy(labelCenterYMm);
-              const fsStyle = { fontSize: layout.fontSizePx } as const;
+              const fsStyle = { fontSize: openLab.fontSizePx } as const;
               return (
                 <g key={o.id}>
                   <rect x={sx(x)} y={sy(y)} width={openingWPx} height={openingHPx} className="wd-opening" />
-                  {layout.mode === "one" ? (
+                  {openLab.mode === "one" ? (
                     <text x={cxPx} y={cyPx} className="wd-open-label" style={fsStyle}>
-                      {layout.text}
+                      {openLab.text}
                     </text>
                   ) : (
                     <>
                       <text x={cxPx} y={cyPx - lhPx / 2} className="wd-open-label" style={fsStyle}>
-                        {layout.line1}
+                        {openLab.line1}
                       </text>
                       <text x={cxPx} y={cyPx + lhPx / 2} className="wd-open-label" style={fsStyle}>
-                        {layout.line2}
+                        {openLab.line2}
                       </text>
                     </>
                   )}
+                  {o.kind === "window" ? (
+                    <>
+                      <VerticalDimensionMm
+                        xLineMm={vDimX}
+                        y0Mm={openBottomMm}
+                        y1Mm={wallBottom}
+                        text={`${Math.round(sillMm)}`}
+                        sx={sx}
+                        sy={sy}
+                        labelGapPx={openingVerticalDimLabelGapPx}
+                        editKey={wallDetailDimEditHandleKey({ kind: "opening_sill_height", openingId: o.id })}
+                        interaction={wallDimInteraction}
+                        reportedValueMm={Math.round(sillMm)}
+                      />
+                      <VerticalDimensionMm
+                        xLineMm={vDimX}
+                        y0Mm={y}
+                        y1Mm={openBottomMm}
+                        text={`${Math.round(o.heightMm)}`}
+                        sx={sx}
+                        sy={sy}
+                        labelGapPx={openingVerticalDimLabelGapPx}
+                        editKey={wallDetailDimEditHandleKey({ kind: "opening_height", openingId: o.id })}
+                        interaction={wallDimInteraction}
+                        reportedValueMm={Math.round(o.heightMm)}
+                      />
+                    </>
+                  ) : o.kind === "door" ? (
+                    <VerticalDimensionMm
+                      xLineMm={vDimX}
+                      y0Mm={y}
+                      y1Mm={openBottomMm}
+                      text={`${Math.round(o.heightMm)}`}
+                      sx={sx}
+                      sy={sy}
+                      labelGapPx={openingVerticalDimLabelGapPx}
+                      editKey={wallDetailDimEditHandleKey({ kind: "opening_height", openingId: o.id })}
+                      interaction={wallDimInteraction}
+                      reportedValueMm={Math.round(o.heightMm)}
+                    />
+                  ) : null}
                 </g>
               );
             })}
@@ -831,6 +1050,18 @@ export function WallDetailWorkspace() {
                     className={isSipLikeWall ? "wd-sip-seam" : "wd-sheet-panel-seam"}
                   />
                 ))}
+                {isSipLikeWall
+                  ? sipOpeningStripVerticalSeamSegments.map((seg, idx) => (
+                      <line
+                        key={`sip-seam-v-strip-${seg.xMm.toFixed(2)}-${seg.y0Mm.toFixed(0)}-${idx}`}
+                        x1={sx(seg.xMm)}
+                        y1={sy(seg.y0Mm)}
+                        x2={sx(seg.xMm)}
+                        y2={sy(seg.y1Mm)}
+                        className="wd-sip-seam"
+                      />
+                    ))
+                  : null}
                 {!isSipLikeWall
                   ? frameStudCenterXsMm.map((cx) => (
                       <line
@@ -852,8 +1083,8 @@ export function WallDetailWorkspace() {
                     sl.kind === "column"
                       ? `sip-label-${sl.region.id}`
                       : sl.kind === "above_opening"
-                        ? `sip-label-above-${sl.openingId}`
-                        : `sip-label-below-${sl.openingId}`;
+                        ? `sip-label-above-${sl.openingId}-${sl.segmentIndex}`
+                        : `sip-label-below-${sl.openingId}-${sl.segmentIndex}`;
                   const pos = sipPanelGrouping.slicePositionOneBased[i] ?? i + 1;
                   return (
                     <text
@@ -868,19 +1099,29 @@ export function WallDetailWorkspace() {
                 })
               : null}
 
-            {drawDimensionLevel(frontLevel1, dimRowSipY, sx, sy, DIM_ROW_STACK_STEP_MM, {
-              singleBaseline: true,
-              horizontalLabelBelowLinePx: wallPanelDimLabelOffsetY,
-            })}
+            {drawDimensionLevel(
+              frontLevel1.map(dimSegView),
+              dimRowSipY,
+              sx,
+              sy,
+              DIM_ROW_STACK_STEP_MM,
+              {
+                singleBaseline: true,
+                horizontalLabelBelowLinePx: wallPanelDimLabelOffsetY,
+                interaction: wallDimInteraction,
+              },
+            )}
             {showOverallLengthRow && dimRowOverallY != null
-              ? drawDimensionLevel(frontLevel3, dimRowOverallY, sx, sy, DIM_ROW_STACK_STEP_MM, {
+              ? drawDimensionLevel(frontLevel3.map(dimSegView), dimRowOverallY, sx, sy, DIM_ROW_STACK_STEP_MM, {
                   singleBaseline: true,
                   horizontalLabelBelowLinePx: wallOverallDimLabelOffsetY,
+                  interaction: wallDimInteraction,
                 })
               : null}
             {frontLevel2.length > 0 && dimRowOpeningY != null
-              ? drawDimensionLevel(frontLevel2, dimRowOpeningY, sx, sy, DIM_ROW_STACK_STEP_MM, {
+              ? drawDimensionLevel(frontLevel2.map(dimSegView), dimRowOpeningY, sx, sy, DIM_ROW_STACK_STEP_MM, {
                   horizontalLabelBelowLinePx: wallPanelDimLabelOffsetY,
+                  interaction: wallDimInteraction,
                 })
               : null}
 
@@ -893,7 +1134,6 @@ export function WallDetailWorkspace() {
               project={project}
               wallCalculation={calc}
               topViewY={topViewY}
-              zoom={zoom}
               sx={sx}
               sy={sy}
               openings={project.openings}
@@ -908,7 +1148,9 @@ export function WallDetailWorkspace() {
               labelGapPx={WD_DIM_V_LABEL_GAP_PX + WD_DIM_V_LABEL_GAP_EXTRA_PX}
             />
           </svg>
-          <div className="wd-hint">Колесо: масштаб · ЛКМ+drag: панорама · двойной клик по полю — вписать лист</div>
+          <div className="wd-hint">
+            Колесо: масштаб · ЛКМ+drag: панорама · двойной клик по полю — вписать лист · клик по размеру — правка в мм
+          </div>
         </div>
         <aside className="wd-side">
           <section className="wd-card">
@@ -972,6 +1214,16 @@ export function WallDetailWorkspace() {
           </section>
         </aside>
       </div>
+      <DimensionMmPopover
+        open={wallDimPopover != null}
+        leftPx={(wallDimPopover?.clientX ?? 0) + 12}
+        topPx={(wallDimPopover?.clientY ?? 0) + 12}
+        valueStr={wallDimPopover?.valueStr ?? ""}
+        error={wallDimPopover?.error ?? null}
+        onChange={(next) => setWallDimPopover((p) => (p ? { ...p, valueStr: next, error: null } : null))}
+        onApply={applyWallDimPopover}
+        onCancel={cancelWallDimPopover}
+      />
     </div>
   );
 }
@@ -980,42 +1232,27 @@ export function WallDetailWorkspace() {
  * Убирает из ряда «пролёты между проёмами» сегмент 0…L, если он дублирует уже показанный общий габарит
  * (строка `frontLevel3`) или одну SIP-цепочку на всю длину (`frontLevel1`).
  */
-function filterDuplicateFullWallHorizontalDim(
-  segments: readonly { a: number; b: number; text: string }[],
+function filterDuplicateFullWallHorizontalDimSegments(
+  segments: readonly WallDetailHorizontalDimSegment[],
   wallLenMm: number,
   showOverallLengthRow: boolean,
-  sipRowSegments: readonly { a: number; b: number; text: string }[],
-): { a: number; b: number; text: string }[] {
+  sipRowSegments: readonly WallDetailHorizontalDimSegment[],
+): WallDetailHorizontalDimSegment[] {
   const tol = 0.5;
   const overallText = `${Math.round(wallLenMm)}`;
-  const isFullWallSpan = (s: { a: number; b: number; text: string }) =>
+  const isFullWallSpan = (s: WallDetailHorizontalDimSegment) =>
     Math.abs(s.a) < tol && Math.abs(s.b - wallLenMm) < tol && s.text === overallText;
-  const sipIsSingleFullWallSpan =
-    sipRowSegments.length === 1 && isFullWallSpan(sipRowSegments[0]!);
+  const sipIsSingleFullWallSpan = sipRowSegments.length === 1 && isFullWallSpan(sipRowSegments[0]!);
   return segments.filter((s) => {
-    if (!isFullWallSpan(s)) return true;
-    if (showOverallLengthRow) return false;
-    if (sipIsSingleFullWallSpan) return false;
+    if (!isFullWallSpan(s)) {
+      return true;
+    }
+    if (showOverallLengthRow) {
+      return false;
+    }
+    if (sipIsSingleFullWallSpan) {
+      return false;
+    }
     return true;
   });
-}
-
-function buildOpeningGapSegments(
-  wallLenMm: number,
-  openings: readonly { offsetFromStartMm: number | null; widthMm: number }[],
-): { a: number; b: number; text: string }[] {
-  const points = [0, wallLenMm];
-  for (const o of openings) {
-    if (o.offsetFromStartMm == null) continue;
-    points.push(o.offsetFromStartMm, o.offsetFromStartMm + o.widthMm);
-  }
-  points.sort((a, b) => a - b);
-  const out: { a: number; b: number; text: string }[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i]!;
-    const b = points[i + 1]!;
-    if (b - a < 2) continue;
-    out.push({ a, b, text: `${Math.round(b - a)}` });
-  }
-  return out;
 }

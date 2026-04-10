@@ -1,0 +1,130 @@
+/**
+ * Редактор размера (мм) на «Виде стены» — только токены из theme.css (светлая / тёмная).
+ * Не использовать несуществующие переменные: иначе сработают тёмные fallback и пропадет контраст.
+ */
+
+.dim-mm-popover {
+  position: fixed;
+  z-index: 80;
+  min-width: 208px;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-panel);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-sm);
+  line-height: var(--lh-body-sm);
+  color: var(--color-text-primary);
+}
+
+.dim-mm-popover__title {
+  margin-bottom: var(--space-sm);
+  font-weight: var(--fw-label);
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.dim-mm-popover__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-input-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.dim-mm-popover__input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.dim-mm-popover__input:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+}
+
+.dim-mm-popover__input:focus {
+  outline: none;
+}
+
+.dim-mm-popover__input:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.dim-mm-popover__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dim-mm-popover__err {
+  margin-top: var(--space-sm);
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  color: var(--color-danger);
+}
+
+.dim-mm-popover__actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  justify-content: flex-end;
+}
+
+.dim-mm-popover__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    opacity var(--t-fast) var(--ease-standard);
+}
+
+.dim-mm-popover__btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.dim-mm-popover__btn:focus {
+  outline: none;
+}
+
+.dim-mm-popover__btn:focus-visible {
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.dim-mm-popover__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dim-mm-popover__btn--primary {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-outline);
+  color: var(--color-text-on-accent-soft);
+}
+
+.dim-mm-popover__btn--primary:hover:not(:disabled) {
+  background: var(--color-surface-active);
+  border-color: var(--color-accent);
+}

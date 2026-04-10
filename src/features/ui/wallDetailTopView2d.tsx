@@ -11,7 +11,7 @@ import type { Wall } from "@/core/domain/wall";
 import type { WallCalculationResult } from "@/core/domain/wallCalculation";
 import { getProfileById } from "@/core/domain/profileOps";
 import {
-  MIN_LAYERED_WALL_SCREEN_THICKNESS_PX,
+  MIN_WALL_2D_LAYER_LINE_STROKE_PX,
   resolveWallProfileLayerStripsMm,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
@@ -85,7 +85,6 @@ export interface WallDetailTopViewPlanProps {
   /** Расчёт стены — для отрисовки каркаса в плане (как на 2D). */
   readonly wallCalculation: WallCalculationResult | null;
   readonly topViewY: number;
-  readonly zoom: number;
   readonly sx: (mm: number) => number;
   readonly sy: (mm: number) => number;
   readonly openings: readonly Opening[];
@@ -96,7 +95,7 @@ export interface WallDetailTopViewPlanProps {
  * и расчётный слой из collectWallCalculationPlanQuads (как drawWallCalculationOverlay2d).
  */
 export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
-  const { wall, lengthMm: L, project, wallCalculation, topViewY, zoom, sx, sy, openings } = props;
+  const { wall, lengthMm: L, project, wallCalculation, topViewY, sx, sy, openings } = props;
   const T = wall.thicknessMm;
   const wPlan = wallAlongPositiveX(wall, L);
   const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
@@ -105,11 +104,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
     ? resolveWallProfileLayerStripsMm(T, profile)
     : null;
 
-  const strokePx = Math.max(2, T * zoom);
-  const layered =
-    stripsResolved != null &&
-    stripsResolved.length >= 2 &&
-    strokePx >= MIN_LAYERED_WALL_SCREEN_THICKNESS_PX;
+  const layered = stripsResolved != null && stripsResolved.length >= 2;
 
   const seamAlpha = 0.26;
   const edgeAlpha = 0.18;
@@ -139,7 +134,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
           points={pts}
           fill={pixiHexToCss(fillHex, 0.92)}
           stroke={pixiHexToCss(0x0f1218, edgeAlpha)}
-          strokeWidth={1}
+          strokeWidth={MIN_WALL_2D_LAYER_LINE_STROKE_PX}
           vectorEffect="non-scaling-stroke"
         />,
       );
@@ -159,7 +154,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
           x2={sx(L)}
           y2={sy(yLine)}
           stroke={pixiHexToCss(0x0a0c10, seamAlpha)}
-          strokeWidth={1}
+          strokeWidth={MIN_WALL_2D_LAYER_LINE_STROKE_PX}
           vectorEffect="non-scaling-stroke"
         />,
       );

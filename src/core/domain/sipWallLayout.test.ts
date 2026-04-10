@@ -126,6 +126,10 @@ describe("buildWallCalculationForWall", () => {
     const calc = buildWallCalculationForWall(wall, profile);
     for (const piece of calc.lumberPieces) {
       if (piece.role === "joint_board" || piece.role === "edge_board") {
+        const stripJoint = (piece.metadata as { openingStripJoint?: string })?.openingStripJoint;
+        if (stripJoint) {
+          continue;
+        }
         expect(piece.lengthMm).toBe(expected);
       }
     }
@@ -159,6 +163,42 @@ describe("buildWallCalculationForWall", () => {
     expect(calc.lumberPieces.some((x) => x.role === "opening_left_stud")).toBe(true);
     expect(calc.lumberPieces.some((x) => x.role === "opening_header")).toBe(true);
     expect(calc.lumberPieces.some((x) => x.role === "opening_sill")).toBe(true);
+  });
+
+  it("окно шире номинала панели: вертикальный стык полосы над/под проёмом — две joint_board (above/below) на одной оси", () => {
+    const p = createDemoProject();
+    const wall = p.walls[0]!;
+    const profile = p.profiles[0]!;
+    const o0 = 2000;
+    const opening: Opening = {
+      id: "o-wide",
+      wallId: wall.id,
+      kind: "window",
+      offsetFromStartMm: o0,
+      widthMm: 1875,
+      heightMm: 1200,
+      sillHeightMm: 900,
+    };
+    const calc = buildWallCalculationForWall(wall, profile, {
+      openings: [opening],
+      wallJoints: [],
+      options: { includeOpeningFraming: true, includeWallConnectionElements: false },
+    });
+    const xCut = o0 + 1250;
+    const stripJoints = calc.lumberPieces.filter(
+      (x) =>
+        x.role === "joint_board" &&
+        (x.metadata as { openingStripJoint?: string; openingId?: string })?.openingId === opening.id,
+    );
+    expect(stripJoints.length).toBe(2);
+    for (const j of stripJoints) {
+      expect(j.startOffsetMm).toBeCloseTo(xCut, 2);
+      expect((j.metadata as { openingStripJoint?: string }).openingStripJoint).toMatch(/above|below/);
+    }
+    const above = stripJoints.find((j) => (j.metadata as { openingStripJoint?: string }).openingStripJoint === "above");
+    const below = stripJoints.find((j) => (j.metadata as { openingStripJoint?: string }).openingStripJoint === "below");
+    expect(above && below && above.lengthMm > 0 && below.lengthMm > 0).toBe(true);
+    expect(above!.lengthMm).not.toBe(below!.lengthMm);
   });
 
   it("дверной проём: боковые стойки на нижней обвязке — длина heightMm − plate, над проёмом +plate к верху ядра", () => {
