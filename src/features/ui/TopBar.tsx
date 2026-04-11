@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Keyboard, List, MoreHorizontal, Redo2, Undo2 } from "lucide-react";
+import { Keyboard, List, MoreHorizontal, Redo2, Save, Undo2 } from "lucide-react";
 
 import { Editor2DPlanToolbar } from "@/features/ui/Editor2DPlanToolbar";
 import { Editor2DFloorStructureToolbar } from "@/features/ui/Editor2DFloorStructureToolbar";
@@ -16,7 +16,7 @@ import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
 import "./top-bar.css";
 
-type TopBarMode = "wide" | "medium" | "narrow";
+type TopBarMode = "wide" | "comfortable" | "medium" | "narrow" | "compact";
 
 type OverflowAction = {
   id: string;
@@ -24,12 +24,22 @@ type OverflowAction = {
   onClick: () => void;
 };
 
+/**
+ * Desktop-first: при сужении окна поэтапно ужимаем отступы → прячем вторичные действия в «Ещё» →
+ * скролл центральной колонки (CSS) — без наложения блоков.
+ */
 function getTopBarMode(width: number): TopBarMode {
-  if (width < 1220) {
+  if (width < 920) {
+    return "compact";
+  }
+  if (width < 1140) {
     return "narrow";
   }
-  if (width < 1480) {
+  if (width < 1320) {
     return "medium";
+  }
+  if (width < 1520) {
+    return "comfortable";
   }
   return "wide";
 }
@@ -190,7 +200,7 @@ export function TopBar() {
   }, []);
 
   const overflowActions: OverflowAction[] = [];
-  if (mode !== "wide") {
+  if (mode === "medium" || mode === "narrow" || mode === "compact") {
     overflowActions.push({
       id: "new",
       label: "Новый",
@@ -201,22 +211,29 @@ export function TopBar() {
       label: "Открыть…",
       onClick: () => void projectCommands.open(),
     });
-  }
-  if (mode === "medium") {
     overflowActions.push({
       id: "demo",
       label: "Демо",
       onClick: () => projectCommands.bootstrapDemo(),
     });
   }
-  if (mode === "narrow") {
+  if (mode === "compact") {
     overflowActions.push({
-      id: "demo",
-      label: "Демо",
-      onClick: () => projectCommands.bootstrapDemo(),
+      id: "hotkeys",
+      label: "Горячие клавиши",
+      onClick: () => openHotkeys(),
+    });
+    overflowActions.push({
+      id: "profiles",
+      label: "Профили",
+      onClick: () => openProfiles(),
     });
   }
   const showOverflow = overflowActions.length > 0;
+  const showLayerToolbar = mode === "wide" || mode === "comfortable" || mode === "medium";
+  const showTextFileButtons = mode === "wide" || mode === "comfortable";
+  const saveAsIconOnly = mode === "compact";
+  const showHotkeysAndProfiles = mode !== "compact";
 
   return (
     <header className="shell-top" data-topbar-mode={mode}>
@@ -232,7 +249,7 @@ export function TopBar() {
         {activeTab === "2d" ? (
           <>
             {planScope === "floorStructure" ? <Editor2DFloorStructureToolbar /> : <Editor2DPlanToolbar />}
-            {mode !== "narrow" ? <LayerToolbar /> : null}
+            {showLayerToolbar ? <LayerToolbar /> : null}
           </>
         ) : activeTab === "3d" ? (
           <Editor3DToolbar />
@@ -259,26 +276,30 @@ export function TopBar() {
         >
           <LucideToolIcon icon={Redo2} className="tb-keys-icon" />
         </button>
-        <button
-          type="button"
-          className="tb-prof-btn"
-          title="Горячие клавиши"
-          aria-label="Горячие клавиши"
-          onClick={() => openHotkeys()}
-        >
-          <LucideToolIcon icon={Keyboard} className="tb-keys-icon" />
-        </button>
+        {showHotkeysAndProfiles ? (
+          <button
+            type="button"
+            className="tb-prof-btn"
+            title="Горячие клавиши"
+            aria-label="Горячие клавиши"
+            onClick={() => openHotkeys()}
+          >
+            <LucideToolIcon icon={Keyboard} className="tb-keys-icon" />
+          </button>
+        ) : null}
         <ThemeMenu />
-        <button
-          type="button"
-          className="tb-prof-btn"
-          title="Профили"
-          aria-label="Профили"
-          onClick={() => openProfiles()}
-        >
-          <LucideToolIcon icon={List} className="tb-prof-icon" />
-        </button>
-        {mode === "wide" ? (
+        {showHotkeysAndProfiles ? (
+          <button
+            type="button"
+            className="tb-prof-btn"
+            title="Профили"
+            aria-label="Профили"
+            onClick={() => openProfiles()}
+          >
+            <LucideToolIcon icon={List} className="tb-prof-icon" />
+          </button>
+        ) : null}
+        {showTextFileButtons ? (
           <>
             <button type="button" className="btn" onClick={() => projectCommands.createNew()}>
               Новый
@@ -288,10 +309,22 @@ export function TopBar() {
             </button>
           </>
         ) : null}
-        <button type="button" className="btn" onClick={() => void projectCommands.save()}>
-          Сохранить…
-        </button>
-        {mode === "wide" ? (
+        {saveAsIconOnly ? (
+          <button
+            type="button"
+            className="tb-prof-btn"
+            title="Сохранить…"
+            aria-label="Сохранить"
+            onClick={() => void projectCommands.save()}
+          >
+            <LucideToolIcon icon={Save} className="tb-keys-icon" />
+          </button>
+        ) : (
+          <button type="button" className="btn" onClick={() => void projectCommands.save()}>
+            Сохранить…
+          </button>
+        )}
+        {showTextFileButtons ? (
           <button type="button" className="btn" onClick={() => projectCommands.bootstrapDemo()}>
             Демо
           </button>

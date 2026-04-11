@@ -4,6 +4,7 @@
   left: var(--space-md);
   z-index: 5;
   min-height: 36px;
+  max-width: calc(100% - 2 * var(--space-md));
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
@@ -46,4 +47,7 @@
 
 .alb-text {
   pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

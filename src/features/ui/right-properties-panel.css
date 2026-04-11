@@ -126,6 +126,19 @@ html[data-theme="dark"] .rpp-rail-btn:hover {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+html[data-theme="light"] .rpp-icon-btn,
+html[data-theme="light"] .rpp-rail-btn {
+  background: rgba(255, 255, 255, 0.52);
+  border-color: rgba(120, 150, 185, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+html[data-theme="light"] .rpp-icon-btn:hover,
+html[data-theme="light"] .rpp-rail-btn:hover {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(100, 155, 215, 0.35);
+}
+
 html[data-theme="dark"] .rpp-action-btn {
   background: rgba(45, 85, 140, 0.35);
   border-color: rgba(94, 169, 255, 0.35);

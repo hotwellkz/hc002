@@ -7,6 +7,13 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-raised) 94%, var(--color-app-bg) 6%);
   box-shadow: var(--shadow-inset-highlight), 0 1px 2px rgba(0, 0, 0, 0.04);
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 html[data-theme="dark"] .e2dpt {
@@ -19,6 +26,22 @@ html[data-theme="dark"] .e2dpt-btn:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
+html[data-theme="light"] .e2dpt {
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(120, 150, 185, 0.2);
+  box-shadow: var(--shadow-glass-inner), 0 2px 10px rgba(55, 85, 120, 0.05);
+}
+
+html[data-theme="light"] .e2dpt-btn:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme="light"] .e2dpt-btn[data-active="true"] {
+  background: rgba(215, 233, 252, 0.92);
+  border-color: rgba(100, 155, 215, 0.42);
+  box-shadow: var(--shadow-accent-glow);
+}
+
 .e2dpt-btn {
   display: inline-flex;
   align-items: center;
@@ -26,6 +49,7 @@ html[data-theme="dark"] .e2dpt-btn:hover {
   width: var(--tool-button-size);
   height: var(--tool-button-size);
   padding: 0;
+  flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;

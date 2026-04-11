@@ -7,6 +7,13 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-raised) 94%, var(--color-app-bg) 6%);
   box-shadow: var(--shadow-inset-highlight), 0 1px 2px rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 html[data-theme="dark"] .ltb {
@@ -19,6 +26,16 @@ html[data-theme="dark"] .ltb-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
 }
 
+html[data-theme="light"] .ltb {
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(120, 150, 185, 0.2);
+  box-shadow: var(--shadow-glass-inner), 0 2px 10px rgba(55, 85, 120, 0.05);
+}
+
+html[data-theme="light"] .ltb-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.75);
+}
+
 .ltb-btn {
   display: inline-flex;
   align-items: center;
@@ -26,6 +43,7 @@ html[data-theme="dark"] .ltb-btn:hover:not(:disabled) {
   width: var(--tool-button-size);
   height: 36px;
   padding: 0;
+  flex-shrink: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;

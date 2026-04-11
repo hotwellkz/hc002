@@ -1,11 +1,17 @@
 {
-  "themeName": "sip-premium-dark-glass",
-  "styleIntent": "Dark: deep navy gradient + atmospheric violet/blue/wine glows; glass chrome rails; electric blue accent #4da3ff; layered rgba panels. Light: unchanged cool workspace.",
+  "themeName": "sip-premium-glass-2",
+  "styleIntent": "Dark: deep navy + glows, glass chrome, accent #4da3ff. Light: milky cool base, semi-transparent glass layers, backdrop blur on chrome, soft slate borders, ice-blue accent #3a7fd4, delicate 2D grid and drawing contrast.",
   "darkSurfaces": {
     "appGradient": "linear-gradient + radial glows on body",
     "chromeBar": "linear-gradient 180deg slate glass",
     "modalFill": "linear-gradient 165deg glass card",
     "accent": "#4da3ff"
+  },
+  "lightSurfaces": {
+    "appGradient": "milky #eef3f9 + soft blue radial glows",
+    "chromeBar": "semi-transparent white gradient + blur 18px",
+    "toolbars": "rgba white glass + inset highlight",
+    "accent": "#3a7fd4"
   },
   "sourceCss": "src/styles/theme.css"
 }

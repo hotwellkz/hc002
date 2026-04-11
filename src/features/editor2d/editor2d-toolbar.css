@@ -6,6 +6,20 @@
   border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 85%, transparent);
   background: color-mix(in srgb, var(--color-chrome) 92%, var(--color-app-bg) 8%);
   flex-shrink: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ed2d-toolbar::-webkit-scrollbar {
+  height: 5px;
+}
+
+.ed2d-toolbar::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-border-strong) 50%, transparent);
 }
 
 .ed2d-toolbtn {
@@ -16,6 +30,7 @@
   width: var(--tool-button-size);
   height: var(--tool-button-size);
   padding: 0;
+  flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--color-border-subtle) 75%, transparent);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
@@ -109,4 +124,30 @@ html[data-theme="dark"] .ed2d-toolbtn {
 html[data-theme="dark"] .ed2d-toolbtn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+html[data-theme="light"] .ed2d-toolbar {
+  background: rgba(255, 255, 255, 0.28);
+  border-bottom-color: rgba(120, 150, 185, 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+html[data-theme="light"] .ed2d-toolbtn {
+  background: rgba(255, 255, 255, 0.52);
+  border-color: rgba(120, 150, 185, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 1px 3px rgba(55, 85, 120, 0.04);
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="light"] .ed2d-toolbtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(95, 130, 175, 0.3);
+  color: var(--color-text-primary);
+}
+
+html[data-theme="light"] .ed2d-toolbtn[data-active="true"] {
+  background: rgba(215, 233, 252, 0.95);
+  border-color: rgba(100, 155, 215, 0.45);
+  box-shadow: var(--shadow-accent-glow);
 }

@@ -104,12 +104,23 @@ html[data-theme="dark"] .ui-btn:not(.ui-btn--primary):not(.ui-btn--ghost):not(.u
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 18px rgba(77, 163, 255, 0.28);
 }
 
+html[data-theme="light"] .ui-btn:not(.ui-btn--primary):not(.ui-btn--ghost):not(.ui-btn--destructive) {
+  background: rgba(255, 255, 255, 0.52);
+  border-color: rgba(120, 150, 185, 0.22);
+  box-shadow: var(--shadow-inset-highlight), 0 2px 10px rgba(55, 85, 120, 0.05);
+}
+
+html[data-theme="light"] .ui-btn:not(.ui-btn--primary):not(.ui-btn--ghost):not(.ui-btn--destructive):hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(95, 130, 175, 0.3);
+}
+
 html[data-theme="light"] .ui-btn--primary {
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 3px 16px rgba(45, 100, 180, 0.18);
 }
 
 html[data-theme="light"] .ui-btn--primary:hover:not(:disabled) {
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 5px 22px rgba(40, 95, 175, 0.22);
 }
 
 .ui-btn--ghost {
@@ -191,6 +202,19 @@ html[data-theme="dark"] .ui-icon-btn:hover:not(:disabled) {
   cursor: not-allowed;
 }
 
+html[data-theme="light"] .ui-icon-btn {
+  border-color: rgba(120, 150, 185, 0.18);
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  color: var(--color-text-secondary);
+}
+
+html[data-theme="light"] .ui-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(100, 140, 185, 0.28);
+  color: var(--color-text-primary);
+}
+
 /* Input */
 .ui-input {
   min-height: 40px;
@@ -251,6 +275,12 @@ html[data-theme="dark"] .ui-input {
   }
 }
 
+@media (max-width: 640px) {
+  .ui-modal-backdrop {
+    padding: var(--space-sm);
+  }
+}
+
 @keyframes ui-backdrop-in {
   from {
     opacity: 0;
@@ -262,7 +292,7 @@ html[data-theme="dark"] .ui-input {
 
 .ui-modal-panel {
   width: 100%;
-  max-width: var(--modal-max-w);
+  max-width: min(var(--modal-max-w), calc(100vw - 2 * var(--space-md)));
   max-height: min(82vh, calc(100vh - var(--space-xxl) * 2));
   border-radius: var(--radius-modal);
   border: 1px solid var(--color-border-strong);
@@ -353,9 +383,16 @@ html[data-theme="dark"] .ui-segmented {
   font-weight: 600;
 }
 
+html[data-theme="light"] .ui-segmented {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-glass-inner), 0 2px 14px rgba(55, 88, 125, 0.06);
+}
+
 html[data-theme="light"] .ui-segmented button[data-active="true"] {
-  background: #ffffff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(242, 248, 255, 0.88) 100%);
   color: var(--color-accent);
+  box-shadow: var(--shadow-segment-active);
 }
 
 html[data-theme="dark"] .ui-segmented button[data-active="true"] {
@@ -401,6 +438,27 @@ html[data-theme="dark"] .ui-tooltip {
 html[data-theme="light"] .ui-tooltip {
   color: var(--color-tooltip-fg);
   border-color: color-mix(in srgb, var(--color-border-subtle) 40%, transparent);
+}
+
+html[data-theme="light"] .ui-input {
+  border-color: rgba(120, 150, 185, 0.22);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 2px rgba(55, 85, 120, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+html[data-theme="light"] .ui-input:focus {
+  border-color: var(--color-accent-outline);
+  box-shadow: var(--shadow-focus-glow), inset 0 1px 2px rgba(55, 85, 120, 0.04);
+}
+
+html[data-theme="light"] .ui-modal-panel {
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-modal), 0 0 0 1px rgba(140, 175, 210, 0.12);
+}
+
+html[data-theme="light"] .ui-glass-popover {
+  border-color: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-popover), 0 0 0 1px rgba(130, 165, 200, 0.1);
 }
 
 .ui-error-banner {
