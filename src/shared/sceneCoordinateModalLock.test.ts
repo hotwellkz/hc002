@@ -11,6 +11,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         wallMoveCopyCoordinateModalOpen: false,
         lengthChangeCoordinateModalOpen: false,
         projectOriginCoordinateModalOpen: false,
+        openingAlongMoveNumericModalOpen: false,
       }),
     ).toBe(false);
   });
@@ -23,6 +24,20 @@ describe("isSceneCoordinateModalBlocking", () => {
         wallMoveCopyCoordinateModalOpen: false,
         lengthChangeCoordinateModalOpen: false,
         projectOriginCoordinateModalOpen: false,
+        openingAlongMoveNumericModalOpen: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("true если открыт числовой ввод смещения проёма", () => {
+    expect(
+      isSceneCoordinateModalBlocking({
+        wallCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallMoveCopyCoordinateModalOpen: false,
+        lengthChangeCoordinateModalOpen: false,
+        projectOriginCoordinateModalOpen: false,
+        openingAlongMoveNumericModalOpen: true,
       }),
     ).toBe(true);
   });

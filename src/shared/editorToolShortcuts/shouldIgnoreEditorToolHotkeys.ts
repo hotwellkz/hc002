@@ -19,6 +19,7 @@ export interface EditorToolHotkeyAppSnapshot {
   readonly wallMoveCopyCoordinateModalOpen: boolean;
   readonly lengthChangeCoordinateModalOpen: boolean;
   readonly projectOriginCoordinateModalOpen: boolean;
+  readonly openingAlongMoveNumericModalOpen: boolean;
 }
 
 export interface EditorToolHotkeyIgnoreOptions {

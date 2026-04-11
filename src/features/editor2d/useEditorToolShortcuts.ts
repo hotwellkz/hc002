@@ -26,6 +26,7 @@ function appSnapshotFromStore(): Parameters<typeof shouldIgnoreEditorToolHotkeys
     wallMoveCopyCoordinateModalOpen: s.wallMoveCopyCoordinateModalOpen,
     lengthChangeCoordinateModalOpen: s.lengthChangeCoordinateModalOpen,
     projectOriginCoordinateModalOpen: s.projectOriginCoordinateModalOpen,
+    openingAlongMoveNumericModalOpen: s.openingAlongMoveNumericModalOpen,
   };
 }
 

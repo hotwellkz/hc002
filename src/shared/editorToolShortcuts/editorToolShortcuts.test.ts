@@ -21,6 +21,7 @@ const baseApp = {
   wallMoveCopyCoordinateModalOpen: false,
   lengthChangeCoordinateModalOpen: false,
   projectOriginCoordinateModalOpen: false,
+  openingAlongMoveNumericModalOpen: false,
 } as const;
 
 describe("getResolvedShortcutCodes", () => {

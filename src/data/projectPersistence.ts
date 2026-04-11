@@ -4,6 +4,7 @@ import { projectToWire } from "@/core/io/projectWire";
 import { tryGetFirestoreDb } from "@/firebase/app";
 import { isFirebaseConfigured } from "@/firebase/config";
 import { useAppStore } from "@/store/useAppStore";
+import { initialProjectHistory } from "@/store/projectHistory";
 
 import {
   createProjectInDb,
@@ -154,6 +155,11 @@ export async function initProjectPersistence(): Promise<void> {
       activeTab: project.viewState.activeTab,
       selectedEntityIds: [],
       dirty: false,
+      history: initialProjectHistory,
+      wallPlacementHistoryBaseline: null,
+      pendingOpeningPlacementHistoryBaseline: null,
+      wallMoveCopyHistoryBaseline: null,
+      lengthChangeHistoryBaseline: null,
       persistenceReady: true,
       firestoreEnabled: true,
       persistenceStatus: "saved",
@@ -169,6 +175,11 @@ export async function initProjectPersistence(): Promise<void> {
       activeTab: fallback.viewState.activeTab,
       selectedEntityIds: [],
       dirty: false,
+      history: initialProjectHistory,
+      wallPlacementHistoryBaseline: null,
+      pendingOpeningPlacementHistoryBaseline: null,
+      wallMoveCopyHistoryBaseline: null,
+      lengthChangeHistoryBaseline: null,
       persistenceReady: true,
       firestoreEnabled: true,
       persistenceStatus: "error",

@@ -114,6 +114,17 @@ import { pickAndLoadProject, saveProjectWithFallback } from "@/core/io/projectFi
 import { validateProjectSchema } from "@/core/validation/validateProjectSchema";
 import type { LinearProfilePlacementMode } from "@/core/geometry/linearPlacementGeometry";
 import { isSceneCoordinateModalBlocking } from "@/shared/sceneCoordinateModalLock";
+import {
+  appendPastClearFuture,
+  capFutureFront,
+  cloneProjectSnapshot,
+  filterSelectionToExistingProjectIds,
+  initialProjectHistory,
+  mergeLiveNavigationIntoProject,
+  projectsModelEqual,
+  PROJECT_HISTORY_LIMIT,
+  type ProjectHistoryStacks,
+} from "@/store/projectHistory";
 
 export type ActiveTool = "select" | "pan" | "ruler" | "changeLength" | "line";
 
@@ -148,10 +159,7 @@ export interface UiPanelsState {
   readonly rightPropertiesOpen: boolean;
 }
 
-export interface UndoRedoSkeleton {
-  readonly past: readonly Project[];
-  readonly future: readonly Project[];
-}
+export type UndoRedoSkeleton = ProjectHistoryStacks;
 
 interface AppState {
   readonly currentProject: Project;
@@ -196,6 +204,14 @@ interface AppState {
   readonly dirty: boolean;
   readonly lastError: string | null;
   readonly history: UndoRedoSkeleton;
+  /** Снимок до начала постановки стены (модалка «Добавить стену») — один undo на завершённую стену. */
+  readonly wallPlacementHistoryBaseline: Project | null;
+  /** Снимок до добавления черновика окна/двери — один undo на полную установку. */
+  readonly pendingOpeningPlacementHistoryBaseline: Project | null;
+  /** Снимок до переноса/копии стены. */
+  readonly wallMoveCopyHistoryBaseline: Project | null;
+  /** Снимок до изменения длины по торцу. */
+  readonly lengthChangeHistoryBaseline: Project | null;
   readonly persistenceReady: boolean;
   readonly persistenceStatus: "idle" | "loading" | "saving" | "saved" | "error";
   readonly firestoreEnabled: boolean;
@@ -216,6 +232,8 @@ interface AppState {
   /** Перенос базовой точки плана (0,0) без сдвига геометрии. */
   readonly projectOriginMoveToolActive: boolean;
   readonly projectOriginCoordinateModalOpen: boolean;
+  /** Пробел во время перетаскивания проёма: точный ввод смещения вдоль стены (мм). */
+  readonly openingAlongMoveNumericModalOpen: boolean;
 }
 
 interface AppActions {
@@ -297,11 +315,16 @@ interface AppActions {
   openWindowEditModal: (openingId: string, initialTab?: WindowEditModalTab) => void;
   openDoorEditModal: (openingId: string, initialTab?: WindowEditModalTab) => void;
   /** Перемещение окна вдоль стены (левый край, мм); без lastError — для drag. false если невалидно. */
-  applyOpeningRepositionLeftEdge: (openingId: string, leftEdgeMm: number) => boolean;
+  applyOpeningRepositionLeftEdge: (
+    openingId: string,
+    leftEdgeMm: number,
+    opts?: { readonly skipHistory?: boolean },
+  ) => boolean;
   /** Сохранить проект после редактирования размеров в «Виде стены» (пересчёт стены уже выполнен в домене). */
   commitWallDetailProjectUpdate: (nextProject: Project) => void;
   setOpeningMoveModeActive: (active: boolean) => void;
   toggleOpeningMoveMode: () => void;
+  setOpeningAlongMoveNumericModalOpen: (open: boolean) => void;
   toggleProjectOriginMoveTool: () => void;
   openProjectOriginCoordinateModal: () => void;
   closeProjectOriginCoordinateModal: () => void;
@@ -441,11 +464,93 @@ interface AppActions {
     readonly clearWallFirst: boolean;
     readonly stage3Options?: Partial<WallCalculationStage3Options>;
   }) => void;
+  /** После серии правок без истории (например drag проёма) — одна запись undo, если модель изменилась. */
+  recordUndoIfModelChangedSince: (baseline: Project) => void;
 }
 
 export type AppStore = AppState & AppActions;
 
-const initialHistory: UndoRedoSkeleton = { past: [], future: [] };
+let projectHistorySuppressDepth = 0;
+
+/**
+ * Выполнить обновления проекта без записи в undo (вложенные вызовы, внутренняя логика).
+ */
+export function runWithoutProjectHistory<T>(fn: () => T): T {
+  projectHistorySuppressDepth += 1;
+  try {
+    return fn();
+  } finally {
+    projectHistorySuppressDepth -= 1;
+  }
+}
+
+function shouldRecordProjectHistory(): boolean {
+  return projectHistorySuppressDepth === 0;
+}
+
+function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<AppStore> {
+  const wd =
+    s.wallDetailWallId && restored.walls.some((w) => w.id === s.wallDetailWallId) ? s.wallDetailWallId : null;
+  return {
+    wallPlacementSession: null,
+    wallJointSession: null,
+    pendingWindowPlacement: null,
+    pendingDoorPlacement: null,
+    windowEditModal: null,
+    doorEditModal: null,
+    wallMoveCopySession: null,
+    wallMoveCopyCoordinateModalOpen: false,
+    wallCalculationModalOpen: false,
+    wallCoordinateModalOpen: false,
+    wallAnchorCoordinateModalOpen: false,
+    wallAnchorPlacementModeActive: false,
+    wallPlacementAnchorMm: null,
+    wallPlacementAnchorPreviewEndMm: null,
+    wallPlacementAnchorLastSnapKind: null,
+    wallPlacementAnchorAngleSnapLockedDeg: null,
+    wallContextMenu: null,
+    openingMoveModeActive: false,
+    ruler2dSession: null,
+    line2dSession: null,
+    lengthChange2dSession: null,
+    lengthChangeCoordinateModalOpen: false,
+    projectOriginMoveToolActive: false,
+    projectOriginCoordinateModalOpen: false,
+    openingAlongMoveNumericModalOpen: false,
+    wallPlacementHistoryBaseline: null,
+    pendingOpeningPlacementHistoryBaseline: null,
+    wallMoveCopyHistoryBaseline: null,
+    lengthChangeHistoryBaseline: null,
+    addWallModalOpen: false,
+    addWindowModalOpen: false,
+    addDoorModalOpen: false,
+    wallJointParamsModalOpen: false,
+    activeTool: "select",
+    wallDetailWallId: wd,
+  };
+}
+
+function buildProjectMutationState(
+  s: AppStore,
+  nextProject: Project,
+  extra: Partial<AppStore> = {},
+  opt?: { readonly historyBefore?: Project; readonly skipHistory?: boolean },
+): Partial<AppStore> {
+  const merged = mergeLiveNavigationIntoProject(nextProject, {
+    viewport2d: s.viewport2d,
+    viewport3d: s.viewport3d,
+    activeTab: s.activeTab,
+  });
+  if (opt?.skipHistory || !shouldRecordProjectHistory()) {
+    return { currentProject: merged, ...extra };
+  }
+  const beforeSnap = cloneProjectSnapshot(opt?.historyBefore ?? s.currentProject);
+  return {
+    currentProject: merged,
+    history: appendPastClearFuture(s.history, beforeSnap),
+    ...extra,
+  };
+}
 
 function resolvePlacementSnap(
   get: () => AppStore,
@@ -543,7 +648,11 @@ export const useAppStore = create<AppStore>((set, get) => {
     wallCalculationModalOpen: false,
     dirty: false,
     lastError: null,
-    history: initialHistory,
+    history: initialProjectHistory,
+    wallPlacementHistoryBaseline: null,
+    pendingOpeningPlacementHistoryBaseline: null,
+    wallMoveCopyHistoryBaseline: null,
+    lengthChangeHistoryBaseline: null,
     persistenceReady: false,
     persistenceStatus: "loading",
     firestoreEnabled: false,
@@ -556,6 +665,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     lengthChangeCoordinateModalOpen: false,
     projectOriginMoveToolActive: false,
     projectOriginCoordinateModalOpen: false,
+    openingAlongMoveNumericModalOpen: false,
 
     setViewportCanvas2dPx: (width, height) =>
       set({
@@ -575,20 +685,20 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const next = deleteEntitiesFromProject(currentProject, new Set(selectedEntityIds));
-      set({
-        currentProject: next,
-        selectedEntityIds: [],
-        dirty: true,
-      });
+      set((s) =>
+        buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }),
+      );
     },
 
     setActiveTool: (tool) =>
       set((s) => {
         let proj = s.currentProject;
         let dirty = s.dirty;
+        let projectMutated = false;
         if (tool !== "select" && s.wallMoveCopySession?.mode === "copy") {
           proj = touchProjectMeta(deleteEntitiesFromProject(s.currentProject, new Set([s.wallMoveCopySession.workingWallId])));
           dirty = true;
+          projectMutated = true;
         }
         const wallMoveCopySession = tool === "select" ? s.wallMoveCopySession : null;
         const wallMoveCopyCoordinateModalOpen = tool === "select" ? s.wallMoveCopyCoordinateModalOpen : false;
@@ -596,6 +706,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         const commonClear = {
           currentProject: proj,
           dirty,
+          wallMoveCopyHistoryBaseline: projectMutated ? null : s.wallMoveCopyHistoryBaseline,
           wallMoveCopySession,
           wallMoveCopyCoordinateModalOpen,
           wallContextMenu,
@@ -613,9 +724,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           addWindowModalOpen: false,
           projectOriginMoveToolActive: false,
           projectOriginCoordinateModalOpen: false,
+          openingAlongMoveNumericModalOpen: false,
         };
+        const mergeHist = (base: Partial<AppStore>): Partial<AppStore> =>
+          projectMutated ? { ...base, ...buildProjectMutationState(s, proj, { dirty: true }) } : base;
         if (tool === "select") {
-          return {
+          return mergeHist({
             activeTool: "select",
             ...commonClear,
             openingMoveModeActive: s.openingMoveModeActive,
@@ -623,10 +737,10 @@ export const useAppStore = create<AppStore>((set, get) => {
             line2dSession: null,
             lengthChange2dSession: null,
             lengthChangeCoordinateModalOpen: false,
-          };
+          });
         }
         if (tool === "ruler") {
-          return {
+          return mergeHist({
             activeTool: "ruler",
             ...commonClear,
             openingMoveModeActive: false,
@@ -634,10 +748,10 @@ export const useAppStore = create<AppStore>((set, get) => {
             line2dSession: null,
             lengthChange2dSession: null,
             lengthChangeCoordinateModalOpen: false,
-          };
+          });
         }
         if (tool === "line") {
-          return {
+          return mergeHist({
             activeTool: "line",
             ...commonClear,
             openingMoveModeActive: false,
@@ -645,10 +759,10 @@ export const useAppStore = create<AppStore>((set, get) => {
             line2dSession: initialLine2dSession(),
             lengthChange2dSession: null,
             lengthChangeCoordinateModalOpen: false,
-          };
+          });
         }
         if (tool === "changeLength") {
-          return {
+          return mergeHist({
             activeTool: "changeLength",
             ...commonClear,
             openingMoveModeActive: false,
@@ -656,9 +770,9 @@ export const useAppStore = create<AppStore>((set, get) => {
             line2dSession: null,
             lengthChange2dSession: null,
             lengthChangeCoordinateModalOpen: false,
-          };
+          });
         }
-        return {
+        return mergeHist({
           activeTool: "pan",
           ...commonClear,
           openingMoveModeActive: false,
@@ -666,7 +780,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           line2dSession: null,
           lengthChange2dSession: null,
           lengthChangeCoordinateModalOpen: false,
-        };
+        });
       }),
 
     setViewport2d: (v) =>
@@ -695,7 +809,20 @@ export const useAppStore = create<AppStore>((set, get) => {
         if (tab !== "2d" && s.wallMoveCopySession?.mode === "copy") {
           proj = deleteEntitiesFromProject(proj, new Set([s.wallMoveCopySession.workingWallId]));
         }
-        return {
+        const modelTouched =
+          tab !== "2d" &&
+          Boolean(s.pendingWindowPlacement || s.pendingDoorPlacement || s.wallMoveCopySession?.mode === "copy");
+        const projectForView = modelTouched ? proj : s.currentProject;
+        const nextProject = mergeViewState(projectForView, { activeTab: tab });
+        const baselinePatch: Partial<AppStore> = {
+          pendingOpeningPlacementHistoryBaseline:
+            tab !== "2d" && (s.pendingWindowPlacement != null || s.pendingDoorPlacement != null)
+              ? null
+              : s.pendingOpeningPlacementHistoryBaseline,
+          wallMoveCopyHistoryBaseline:
+            tab !== "2d" && s.wallMoveCopySession?.mode === "copy" ? null : s.wallMoveCopyHistoryBaseline,
+        };
+        const staticPart: Partial<AppStore> = {
           activeTab: tab,
           activeTool:
             tab === "2d"
@@ -728,19 +855,22 @@ export const useAppStore = create<AppStore>((set, get) => {
           openingMoveModeActive: tab === "2d" ? s.openingMoveModeActive : false,
           projectOriginMoveToolActive: tab === "2d" ? s.projectOriginMoveToolActive : false,
           projectOriginCoordinateModalOpen: tab === "2d" ? s.projectOriginCoordinateModalOpen : false,
+          openingAlongMoveNumericModalOpen: tab === "2d" ? s.openingAlongMoveNumericModalOpen : false,
           wallDetailWallId:
             tab === "wall"
               ? s.wallDetailWallId ?? s.currentProject.walls.find((w) => s.selectedEntityIds.includes(w.id))?.id ?? null
               : s.wallDetailWallId,
-          currentProject: mergeViewState(
-            tab !== "2d" &&
-              (s.pendingWindowPlacement || s.pendingDoorPlacement || s.wallMoveCopySession?.mode === "copy")
-              ? proj
-              : s.currentProject,
-            {
-              activeTab: tab,
-            },
-          ),
+          ...baselinePatch,
+        };
+        if (modelTouched) {
+          return {
+            ...staticPart,
+            ...buildProjectMutationState(s, nextProject, { dirty: true }),
+          };
+        }
+        return {
+          ...staticPart,
+          currentProject: nextProject,
           dirty: true,
         };
       }),
@@ -785,18 +915,86 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     markClean: () => set({ dirty: false }),
 
+    recordUndoIfModelChangedSince: (baseline) => {
+      set((s) => {
+        if (!shouldRecordProjectHistory()) {
+          return {};
+        }
+        if (projectsModelEqual(baseline, s.currentProject)) {
+          return {};
+        }
+        return {
+          history: appendPastClearFuture(s.history, cloneProjectSnapshot(baseline)),
+        };
+      });
+    },
+
     undo: () => {
-      /* skeleton */
+      runWithoutProjectHistory(() => {
+        set((s) => {
+          if (s.history.past.length === 0) {
+            return {};
+          }
+          const past = [...s.history.past];
+          const snapshot = past.pop()!;
+          const curSnap = cloneProjectSnapshot(s.currentProject);
+          const restored = mergeLiveNavigationIntoProject(snapshot, {
+            viewport2d: s.viewport2d,
+            viewport3d: s.viewport3d,
+            activeTab: s.activeTab,
+          });
+          const future = capFutureFront([curSnap, ...s.history.future]);
+          const ui = historyJumpClearTransientUi(s, restored);
+          return {
+            ...ui,
+            currentProject: restored,
+            viewport2d: restored.viewState.viewport2d,
+            viewport3d: restored.viewState.viewport3d,
+            activeTab: restored.viewState.activeTab,
+            history: { past, future },
+            dirty: true,
+            selectedEntityIds: filterSelectionToExistingProjectIds(s.selectedEntityIds, restored),
+          };
+        });
+      });
     },
     redo: () => {
-      /* skeleton */
+      runWithoutProjectHistory(() => {
+        set((s) => {
+          if (s.history.future.length === 0) {
+            return {};
+          }
+          const future = [...s.history.future];
+          const snapshot = future.shift()!;
+          const curSnap = cloneProjectSnapshot(s.currentProject);
+          const restored = mergeLiveNavigationIntoProject(snapshot, {
+            viewport2d: s.viewport2d,
+            viewport3d: s.viewport3d,
+            activeTab: s.activeTab,
+          });
+          const past = [...s.history.past, curSnap];
+          const cappedPast =
+            past.length > PROJECT_HISTORY_LIMIT ? past.slice(-PROJECT_HISTORY_LIMIT) : past;
+          const ui = historyJumpClearTransientUi(s, restored);
+          return {
+            ...ui,
+            currentProject: restored,
+            viewport2d: restored.viewState.viewport2d,
+            viewport3d: restored.viewState.viewport3d,
+            activeTab: restored.viewState.activeTab,
+            history: { past: cappedPast, future },
+            dirty: true,
+            selectedEntityIds: filterSelectionToExistingProjectIds(s.selectedEntityIds, restored),
+          };
+        });
+      });
     },
 
     getActiveLayerIdForNewEntities: () => get().currentProject.activeLayerId,
 
     createLayer: (input) => {
       const next = createLayerInProject(get().currentProject, input);
-      set({ currentProject: next, selectedEntityIds: [], dirty: true, lastError: null });
+      set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }));
     },
 
     goToPreviousLayer: () => {
@@ -806,7 +1004,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       const next = setActiveLayerId(get().currentProject, id);
       if (next) {
-        set({ currentProject: next, selectedEntityIds: [], dirty: true });
+        set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true }));
       }
     },
 
@@ -817,7 +1015,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       const next = setActiveLayerId(get().currentProject, id);
       if (next) {
-        set({ currentProject: next, selectedEntityIds: [], dirty: true });
+        set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true }));
       }
     },
 
@@ -828,29 +1026,29 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Нельзя удалить последний слой." });
         return;
       }
-      set({ currentProject: next, selectedEntityIds: [], dirty: true, lastError: null });
+      set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }));
     },
 
     setActiveLayer: (layerId) => {
       const next = setActiveLayerId(get().currentProject, layerId);
       if (next) {
-        set({ currentProject: next, selectedEntityIds: [], dirty: true });
+        set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true }));
       }
     },
 
     updateLayer: (layerId, patch) => {
       const next = updateLayerInProject(get().currentProject, layerId, patch);
-      set({ currentProject: next, dirty: true });
+      set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     reorderLayerUp: (layerId) => {
       const next = reorderLayerRelative(get().currentProject, layerId, "up");
-      set({ currentProject: next, dirty: true });
+      set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     reorderLayerDown: (layerId) => {
       const next = reorderLayerRelative(get().currentProject, layerId, "down");
-      set({ currentProject: next, dirty: true });
+      set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     deleteLayerById: (layerId) => {
@@ -859,7 +1057,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Нельзя удалить последний слой." });
         return;
       }
-      set({ currentProject: next, selectedEntityIds: [], dirty: true, lastError: null });
+      set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }));
     },
 
     openLayerManager: () => set({ layerManagerOpen: true }),
@@ -881,7 +1079,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         nextSet.add(layerId);
       }
       const next = setVisibleLayerIdsOnProject(p, [...nextSet]);
-      set({ currentProject: next, dirty: true });
+      set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     openProfilesModal: () => set({ profilesModalOpen: true }),
@@ -896,22 +1094,19 @@ export const useAppStore = create<AppStore>((set, get) => {
       const p = get().currentProject;
       const exists = p.profiles.some((pr) => pr.id === profile.id);
       const next = exists ? updateProfileInProject(p, profile) : addProfileToProject(p, profile);
-      set({ currentProject: next, dirty: true, lastError: null });
+      set((s) => buildProjectMutationState(s, next, { dirty: true, lastError: null }));
       return true;
     },
 
     removeProfileById: (profileId) => {
-      set({
-        currentProject: removeProfileFromProject(get().currentProject, profileId),
-        dirty: true,
-        lastError: null,
-      });
+      const next = removeProfileFromProject(get().currentProject, profileId);
+      set((s) => buildProjectMutationState(s, next, { dirty: true, lastError: null }));
     },
 
     duplicateProfileById: (profileId) => {
       const next = duplicateProfileInProject(get().currentProject, profileId);
       if (next) {
-        set({ currentProject: next, dirty: true, lastError: null });
+        set((s) => buildProjectMutationState(s, next, { dirty: true, lastError: null }));
       }
     },
 
@@ -966,22 +1161,26 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     applyWindowFormModal: (input) => {
       const p = get().currentProject;
+      const baseline = cloneProjectSnapshot(p);
       const r = addUnplacedWindowToProject(p, input);
       set({
         currentProject: r.project,
         addWindowModalOpen: false,
         pendingWindowPlacement: { openingId: r.openingId },
+        pendingOpeningPlacementHistoryBaseline: baseline,
         dirty: true,
         lastError: null,
       });
     },
     applyDoorFormModal: (input) => {
       const p = get().currentProject;
+      const baseline = cloneProjectSnapshot(p);
       const r = addUnplacedDoorToProject(p, input);
       set({
         currentProject: r.project,
         addDoorModalOpen: false,
         pendingDoorPlacement: { openingId: r.openingId, phase: "pickWall" },
+        pendingOpeningPlacementHistoryBaseline: baseline,
         dirty: true,
         lastError: null,
       });
@@ -992,11 +1191,14 @@ export const useAppStore = create<AppStore>((set, get) => {
         if (!s.pendingWindowPlacement) {
           return { pendingWindowPlacement: null };
         }
+        const next = removeUnplacedWindowDraft(s.currentProject, s.pendingWindowPlacement.openingId);
         return {
-          pendingWindowPlacement: null,
-          currentProject: removeUnplacedWindowDraft(s.currentProject, s.pendingWindowPlacement.openingId),
-          dirty: true,
-          lastError: null,
+          ...buildProjectMutationState(s, next, {
+            pendingWindowPlacement: null,
+            pendingOpeningPlacementHistoryBaseline: null,
+            dirty: true,
+            lastError: null,
+          }),
         };
       }),
     clearPendingDoorPlacement: () =>
@@ -1004,11 +1206,14 @@ export const useAppStore = create<AppStore>((set, get) => {
         if (!s.pendingDoorPlacement) {
           return { pendingDoorPlacement: null };
         }
+        const next = removeUnplacedWindowDraft(s.currentProject, s.pendingDoorPlacement.openingId);
         return {
-          pendingDoorPlacement: null,
-          currentProject: removeUnplacedWindowDraft(s.currentProject, s.pendingDoorPlacement.openingId),
-          dirty: true,
-          lastError: null,
+          ...buildProjectMutationState(s, next, {
+            pendingDoorPlacement: null,
+            pendingOpeningPlacementHistoryBaseline: null,
+            dirty: true,
+            lastError: null,
+          }),
         };
       }),
 
@@ -1058,13 +1263,22 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: fin.error });
         return;
       }
-      set({
-        currentProject: fin.project,
-        pendingWindowPlacement: null,
-        windowEditModal: { openingId: pend.openingId, initialTab: "position" },
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          fin.project,
+          {
+            pendingWindowPlacement: null,
+            pendingOpeningPlacementHistoryBaseline: null,
+            windowEditModal: { openingId: pend.openingId, initialTab: "position" },
+            dirty: true,
+            lastError: null,
+          },
+          {
+            historyBefore: s.pendingOpeningPlacementHistoryBaseline ?? s.currentProject,
+          },
+        ),
+      );
     },
     tryCommitPendingDoorPlacementAtWorld: (worldMm) => {
       const pend0 = get().pendingDoorPlacement;
@@ -1147,13 +1361,22 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: placed.error });
         return;
       }
-      set({
-        currentProject: placed.project,
-        pendingDoorPlacement: null,
-        doorEditModal: { openingId: pend.openingId, initialTab: "position" },
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          placed.project,
+          {
+            pendingDoorPlacement: null,
+            pendingOpeningPlacementHistoryBaseline: null,
+            doorEditModal: { openingId: pend.openingId, initialTab: "position" },
+            dirty: true,
+            lastError: null,
+          },
+          {
+            historyBefore: s.pendingOpeningPlacementHistoryBaseline ?? s.currentProject,
+          },
+        ),
+      );
     },
 
     updatePendingDoorSwingAtWorld: (worldMm) => {
@@ -1199,12 +1422,13 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: r.error });
         return;
       }
-      set({
-        currentProject: r.project,
-        windowEditModal: null,
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(s, r.project, {
+          windowEditModal: null,
+          dirty: true,
+          lastError: null,
+        }),
+      );
     },
     closeDoorEditModal: () => set({ doorEditModal: null }),
     applyDoorEditModal: (payload) => {
@@ -1217,12 +1441,13 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: r.error });
         return;
       }
-      set({
-        currentProject: r.project,
-        doorEditModal: null,
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(s, r.project, {
+          doorEditModal: null,
+          dirty: true,
+          lastError: null,
+        }),
+      );
     },
 
     openWindowEditModal: (openingId, initialTab = "form") =>
@@ -1240,7 +1465,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         lastError: null,
       }),
 
-    applyOpeningRepositionLeftEdge: (openingId, leftEdgeMm) => {
+    applyOpeningRepositionLeftEdge: (openingId, leftEdgeMm, opts) => {
       const p = get().currentProject;
       const op = p.openings.find((o) => o.id === openingId);
       const r =
@@ -1250,15 +1475,21 @@ export const useAppStore = create<AppStore>((set, get) => {
       if ("error" in r) {
         return false;
       }
-      set({ currentProject: r.project, dirty: true });
+      const next = r.project;
+      if (opts?.skipHistory) {
+        set({ currentProject: next, dirty: true });
+      } else {
+        set((s) => buildProjectMutationState(s, next, { dirty: true }));
+      }
       return true;
     },
     commitWallDetailProjectUpdate: (nextProject) =>
-      set({ currentProject: touchProjectMeta(nextProject), dirty: true, lastError: null }),
+      set((s) => buildProjectMutationState(s, touchProjectMeta(nextProject), { dirty: true, lastError: null })),
     setOpeningMoveModeActive: (active) =>
       set((s) => ({
         openingMoveModeActive: active,
         projectOriginMoveToolActive: active ? false : s.projectOriginMoveToolActive,
+        openingAlongMoveNumericModalOpen: active ? s.openingAlongMoveNumericModalOpen : false,
       })),
     toggleOpeningMoveMode: () =>
       set((s) => {
@@ -1266,14 +1497,17 @@ export const useAppStore = create<AppStore>((set, get) => {
         return {
           openingMoveModeActive: next,
           projectOriginMoveToolActive: next ? false : s.projectOriginMoveToolActive,
+          openingAlongMoveNumericModalOpen: next ? s.openingAlongMoveNumericModalOpen : false,
         };
       }),
+    setOpeningAlongMoveNumericModalOpen: (open) => set({ openingAlongMoveNumericModalOpen: open }),
     toggleProjectOriginMoveTool: () =>
       set((s) => {
         const next = !s.projectOriginMoveToolActive;
         return {
           projectOriginMoveToolActive: next,
           openingMoveModeActive: next ? false : s.openingMoveModeActive,
+          openingAlongMoveNumericModalOpen: next ? false : s.openingAlongMoveNumericModalOpen,
           projectOriginCoordinateModalOpen: next ? s.projectOriginCoordinateModalOpen : false,
           lastError: null,
         };
@@ -1285,14 +1519,15 @@ export const useAppStore = create<AppStore>((set, get) => {
       const nextOrigin = setProjectOrigin(p0, pt);
       const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
       const merged = mergeViewState(nextOrigin, { viewport3d: v3 });
-      set({
-        currentProject: merged,
-        viewport3d: v3,
-        dirty: true,
-        lastError: null,
-        projectOriginMoveToolActive: false,
-        projectOriginCoordinateModalOpen: false,
-      });
+      set((s) => ({
+        ...buildProjectMutationState(s, merged, {
+          viewport3d: v3,
+          dirty: true,
+          lastError: null,
+          projectOriginMoveToolActive: false,
+          projectOriginCoordinateModalOpen: false,
+        }),
+      }));
     },
     applyProjectOriginCoordinateModalWorldMm: (pt) => {
       get().applyProjectOriginAtWorldMm(pt);
@@ -1413,12 +1648,13 @@ export const useAppStore = create<AppStore>((set, get) => {
           set({ lastError: r.error });
           return;
         }
-        set({
-          currentProject: r.project,
-          wallJointSession: { kind: session.kind, phase: "pickFirst" },
-          dirty: true,
-          lastError: null,
-        });
+        set((s) =>
+          buildProjectMutationState(s, r.project, {
+            wallJointSession: { kind: session.kind, phase: "pickFirst" },
+            dirty: true,
+            lastError: null,
+          }),
+        );
         return;
       }
 
@@ -1444,12 +1680,13 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: r.error });
         return;
       }
-      set({
-        currentProject: r.project,
-        wallJointSession: { kind: session.kind, phase: "pickFirst" },
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(s, r.project, {
+          wallJointSession: { kind: session.kind, phase: "pickFirst" },
+          dirty: true,
+          lastError: null,
+        }),
+      );
     },
 
     applyAddWallModal: (input) => {
@@ -1477,7 +1714,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const phase = initialWallPlacementPhase(p);
+      const baseline = cloneProjectSnapshot(p);
       set({
+        wallPlacementHistoryBaseline: baseline,
         wallPlacementSession: {
           phase,
           draft: {
@@ -1514,6 +1753,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     cancelWallPlacement: () =>
       set({
         wallPlacementSession: null,
+        wallPlacementHistoryBaseline: null,
         wallCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
@@ -1553,6 +1793,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       set({
         wallPlacementSession: null,
+        wallPlacementHistoryBaseline: null,
         wallCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
@@ -1905,23 +2146,29 @@ export const useAppStore = create<AppStore>((set, get) => {
         const nextOrigin = setProjectOrigin(p0, pt);
         const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
         const nextProject = mergeViewState(nextOrigin, { viewport3d: v3 });
-        set({
-          currentProject: nextProject,
-          viewport3d: v3,
-          wallPlacementSession: {
-            ...session,
-            phase: "waitingSecondPoint",
-            firstPointMm: pt,
-            previewEndMm: pt,
-            lastSnapKind: snap.kind,
-            angleSnapLockedDeg: null,
-            shiftDirectionLockUnit: null,
-            shiftLockReferenceMm: null,
-          },
-          ...clearAfterWallStart,
-          dirty: true,
-          lastError: null,
-        });
+        set((s) => ({
+          ...buildProjectMutationState(
+            s,
+            nextProject,
+            {
+              viewport3d: v3,
+              wallPlacementSession: {
+                ...session,
+                phase: "waitingSecondPoint",
+                firstPointMm: pt,
+                previewEndMm: pt,
+                lastSnapKind: snap.kind,
+                angleSnapLockedDeg: null,
+                shiftDirectionLockUnit: null,
+                shiftLockReferenceMm: null,
+              },
+              ...clearAfterWallStart,
+              dirty: true,
+              lastError: null,
+            },
+            { skipHistory: true },
+          ),
+        }));
         return;
       }
 
@@ -1963,28 +2210,37 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const nextProject = result.project;
-      set({
-        currentProject: nextProject,
-        wallPlacementSession: {
-          phase: initialWallPlacementPhase(nextProject),
-          draft: session.draft,
-          firstPointMm: null,
-          previewEndMm: null,
-          lastSnapKind: null,
-          angleSnapLockedDeg: null,
-          shiftDirectionLockUnit: null,
-          shiftLockReferenceMm: null,
-        },
-        wallCoordinateModalOpen: false,
-        wallAnchorCoordinateModalOpen: false,
-        wallPlacementAnchorMm: null,
-        wallPlacementAnchorPreviewEndMm: null,
-        wallPlacementAnchorLastSnapKind: null,
-        wallPlacementAnchorAngleSnapLockedDeg: null,
-        selectedEntityIds: [...result.createdWallIds],
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          nextProject,
+          {
+            wallPlacementSession: {
+              phase: initialWallPlacementPhase(nextProject),
+              draft: session.draft,
+              firstPointMm: null,
+              previewEndMm: null,
+              lastSnapKind: null,
+              angleSnapLockedDeg: null,
+              shiftDirectionLockUnit: null,
+              shiftLockReferenceMm: null,
+            },
+            wallPlacementHistoryBaseline: null,
+            wallCoordinateModalOpen: false,
+            wallAnchorCoordinateModalOpen: false,
+            wallPlacementAnchorMm: null,
+            wallPlacementAnchorPreviewEndMm: null,
+            wallPlacementAnchorLastSnapKind: null,
+            wallPlacementAnchorAngleSnapLockedDeg: null,
+            selectedEntityIds: [...result.createdWallIds],
+            dirty: true,
+            lastError: null,
+          },
+          s.wallPlacementHistoryBaseline != null
+            ? { historyBefore: s.wallPlacementHistoryBaseline }
+            : {},
+        ),
+      );
     },
 
     toggleWallAnchorPlacementMode: () => {
@@ -2089,23 +2345,29 @@ export const useAppStore = create<AppStore>((set, get) => {
         const nextOrigin = setProjectOrigin(p0, pt);
         const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
         const nextProject = mergeViewState(nextOrigin, { viewport3d: v3 });
-        set({
-          currentProject: nextProject,
-          viewport3d: v3,
-          wallPlacementSession: {
-            ...session,
-            phase: "waitingSecondPoint",
-            firstPointMm: pt,
-            previewEndMm: pt,
-            lastSnapKind: "none",
-            angleSnapLockedDeg: null,
-            shiftDirectionLockUnit: null,
-            shiftLockReferenceMm: null,
-          },
-          ...clearAfterStart,
-          dirty: true,
-          lastError: null,
-        });
+        set((s) => ({
+          ...buildProjectMutationState(
+            s,
+            nextProject,
+            {
+              viewport3d: v3,
+              wallPlacementSession: {
+                ...session,
+                phase: "waitingSecondPoint",
+                firstPointMm: pt,
+                previewEndMm: pt,
+                lastSnapKind: "none",
+                angleSnapLockedDeg: null,
+                shiftDirectionLockUnit: null,
+                shiftLockReferenceMm: null,
+              },
+              ...clearAfterStart,
+              dirty: true,
+              lastError: null,
+            },
+            { skipHistory: true },
+          ),
+        }));
         return;
       }
       set({
@@ -2135,16 +2397,18 @@ export const useAppStore = create<AppStore>((set, get) => {
     deleteWallFromContextMenu: (wallId) => {
       const { currentProject, selectedEntityIds, wallDetailWallId } = get();
       const next = deleteEntitiesFromProject(currentProject, new Set([wallId]));
-      set({
-        currentProject: next,
-        wallContextMenu: null,
-        wallMoveCopySession: null,
-        wallMoveCopyCoordinateModalOpen: false,
-        selectedEntityIds: selectedEntityIds.filter((id) => id !== wallId),
-        wallDetailWallId: wallDetailWallId === wallId ? null : wallDetailWallId,
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(s, next, {
+          wallContextMenu: null,
+          wallMoveCopySession: null,
+          wallMoveCopyCoordinateModalOpen: false,
+          wallMoveCopyHistoryBaseline: null,
+          selectedEntityIds: selectedEntityIds.filter((id) => id !== wallId),
+          wallDetailWallId: wallDetailWallId === wallId ? null : wallDetailWallId,
+          dirty: true,
+          lastError: null,
+        }),
+      );
     },
 
     startWallMoveFromContextMenu: (wallId) => {
@@ -2153,7 +2417,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Стена не найдена.", wallContextMenu: null });
         return;
       }
+      const baseline = cloneProjectSnapshot(get().currentProject);
       set({
+        wallMoveCopyHistoryBaseline: baseline,
         wallContextMenu: null,
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
@@ -2185,36 +2451,45 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     startWallCopyFromContextMenu: (wallId) => {
-      const r = duplicateWallWithDependents(get().currentProject, wallId);
+      const p0 = get().currentProject;
+      const baseline = cloneProjectSnapshot(p0);
+      const r = duplicateWallWithDependents(p0, wallId);
       if ("error" in r) {
         set({ lastError: r.error, wallContextMenu: null });
         return;
       }
-      set({
-        currentProject: r.project,
-        wallContextMenu: null,
-        wallPlacementSession: null,
-        wallCoordinateModalOpen: false,
-        wallJointSession: null,
-        pendingWindowPlacement: null,
-        pendingDoorPlacement: null,
-        wallMoveCopyCoordinateModalOpen: false,
-        wallMoveCopySession: {
-          mode: "copy",
-          sourceWallId: wallId,
-          workingWallId: r.newWallId,
-          phase: "pickAnchor",
-          anchorWorldMm: null,
-          previewTargetMm: null,
-          lastSnapKind: null,
-          angleSnapLockedDeg: null,
-          shiftDirectionLockUnit: null,
-          shiftLockReferenceMm: null,
-        },
-        selectedEntityIds: [r.newWallId],
-        dirty: true,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          r.project,
+          {
+            wallMoveCopyHistoryBaseline: baseline,
+            wallContextMenu: null,
+            wallPlacementSession: null,
+            wallCoordinateModalOpen: false,
+            wallJointSession: null,
+            pendingWindowPlacement: null,
+            pendingDoorPlacement: null,
+            wallMoveCopyCoordinateModalOpen: false,
+            wallMoveCopySession: {
+              mode: "copy",
+              sourceWallId: wallId,
+              workingWallId: r.newWallId,
+              phase: "pickAnchor",
+              anchorWorldMm: null,
+              previewTargetMm: null,
+              lastSnapKind: null,
+              angleSnapLockedDeg: null,
+              shiftDirectionLockUnit: null,
+              shiftLockReferenceMm: null,
+            },
+            selectedEntityIds: [r.newWallId],
+            dirty: true,
+            lastError: null,
+          },
+          { skipHistory: true },
+        ),
+      );
     },
 
     cancelWallMoveCopy: () => {
@@ -2222,18 +2497,21 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!s) {
         return;
       }
-      let proj = get().currentProject;
-      if (s.mode === "copy") {
-        proj = deleteEntitiesFromProject(proj, new Set([s.workingWallId]));
-      }
-      set({
-        currentProject: proj,
-        wallMoveCopySession: null,
-        wallMoveCopyCoordinateModalOpen: false,
-        wallCoordinateModalOpen: false,
-        selectedEntityIds: proj.walls.some((w) => w.id === s.sourceWallId) ? [s.sourceWallId] : [],
-        dirty: true,
-        lastError: null,
+      runWithoutProjectHistory(() => {
+        let proj = get().currentProject;
+        if (s.mode === "copy") {
+          proj = deleteEntitiesFromProject(proj, new Set([s.workingWallId]));
+        }
+        set({
+          currentProject: proj,
+          wallMoveCopySession: null,
+          wallMoveCopyHistoryBaseline: null,
+          wallMoveCopyCoordinateModalOpen: false,
+          wallCoordinateModalOpen: false,
+          selectedEntityIds: proj.walls.some((w) => w.id === s.sourceWallId) ? [s.sourceWallId] : [],
+          dirty: true,
+          lastError: null,
+        });
       });
     },
 
@@ -2332,15 +2610,24 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       const proj = translateWallInProject(get().currentProject, s.workingWallId, dx, dy);
-      set({
-        currentProject: touchProjectMeta(proj),
-        wallMoveCopySession: null,
-        wallMoveCopyCoordinateModalOpen: false,
-        wallCoordinateModalOpen: false,
-        selectedEntityIds: [s.workingWallId],
-        dirty: true,
-        lastError: null,
-      });
+      set((st) =>
+        buildProjectMutationState(
+          st,
+          touchProjectMeta(proj),
+          {
+            wallMoveCopySession: null,
+            wallMoveCopyHistoryBaseline: null,
+            wallMoveCopyCoordinateModalOpen: false,
+            wallCoordinateModalOpen: false,
+            selectedEntityIds: [s.workingWallId],
+            dirty: true,
+            lastError: null,
+          },
+          {
+            historyBefore: st.wallMoveCopyHistoryBaseline ?? st.currentProject,
+          },
+        ),
+      );
     },
 
     openWallMoveCopyCoordinateModal: () => {
@@ -2578,13 +2865,14 @@ export const useAppStore = create<AppStore>((set, get) => {
           ...p0,
           planLines: [...p0.planLines, line],
         });
-        set({
-          currentProject: nextProject,
-          line2dSession: initialLine2dSession(),
-          selectedEntityIds: [id],
-          dirty: true,
-          lastError: null,
-        });
+        set((s) =>
+          buildProjectMutationState(s, nextProject, {
+            line2dSession: initialLine2dSession(),
+            selectedEntityIds: [id],
+            dirty: true,
+            lastError: null,
+          }),
+        );
       }
     },
 
@@ -2625,7 +2913,9 @@ export const useAppStore = create<AppStore>((set, get) => {
         MIN_WALL_SEGMENT_LENGTH_MM,
       );
       const pm = movingEndpointForLengthMm(fixed, ux, uy, L);
+      const baseline = cloneProjectSnapshot(cp);
       set({
+        lengthChangeHistoryBaseline: baseline,
         lengthChange2dSession: {
           wallId,
           movingEnd,
@@ -2697,13 +2987,20 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: r.error });
         return;
       }
-      set({
-        currentProject: r.project,
-        dirty: true,
-        lengthChange2dSession: null,
-        lengthChangeCoordinateModalOpen: false,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          r.project,
+          {
+            dirty: true,
+            lengthChange2dSession: null,
+            lengthChangeHistoryBaseline: null,
+            lengthChangeCoordinateModalOpen: false,
+            lastError: null,
+          },
+          { historyBefore: s.lengthChangeHistoryBaseline ?? s.currentProject },
+        ),
+      );
     },
 
     lengthChange2dEsc: () => {
@@ -2712,7 +3009,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       if (get().lengthChange2dSession) {
-        set({ lengthChange2dSession: null, lastError: null });
+        set({ lengthChange2dSession: null, lengthChangeHistoryBaseline: null, lastError: null });
         return;
       }
       if (get().activeTool === "changeLength") {
@@ -2755,13 +3052,20 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: r.error, lengthChangeCoordinateModalOpen: false });
         return;
       }
-      set({
-        currentProject: r.project,
-        dirty: true,
-        lengthChange2dSession: null,
-        lengthChangeCoordinateModalOpen: false,
-        lastError: null,
-      });
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          r.project,
+          {
+            dirty: true,
+            lengthChange2dSession: null,
+            lengthChangeHistoryBaseline: null,
+            lengthChangeCoordinateModalOpen: false,
+            lastError: null,
+          },
+          { historyBefore: s.lengthChangeHistoryBaseline ?? s.currentProject },
+        ),
+      );
     },
 
     openWallCoordinateModal: () => {
@@ -2855,76 +3159,93 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: errors.length ? errors.join(" ") : "Не удалось выполнить расчёт." });
         return;
       }
-      set({
-        currentProject: touchProjectMeta({
-          ...proj,
-          wallCalculations: [...kept, ...newCalcs],
-        }),
-        wallCalculationModalOpen: false,
-        dirty: true,
-        lastError: errors.length ? errors.join(" ") : null,
+      const nextProj = touchProjectMeta({
+        ...proj,
+        wallCalculations: [...kept, ...newCalcs],
       });
+      set((s) =>
+        buildProjectMutationState(s, nextProj, {
+          wallCalculationModalOpen: false,
+          dirty: true,
+          lastError: errors.length ? errors.join(" ") : null,
+        }),
+      );
     },
 
     setSnapToVertex: (value) =>
-      set((s) => ({
-        currentProject: touchProjectMeta({
-          ...s.currentProject,
-          settings: {
-            ...s.currentProject.settings,
-            editor2d: { ...s.currentProject.settings.editor2d, snapToVertex: value },
-          },
-        }),
-        dirty: true,
-      })),
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          touchProjectMeta({
+            ...s.currentProject,
+            settings: {
+              ...s.currentProject.settings,
+              editor2d: { ...s.currentProject.settings.editor2d, snapToVertex: value },
+            },
+          }),
+          { dirty: true },
+        ),
+      ),
 
     setSnapToEdge: (value) =>
-      set((s) => ({
-        currentProject: touchProjectMeta({
-          ...s.currentProject,
-          settings: {
-            ...s.currentProject.settings,
-            editor2d: { ...s.currentProject.settings.editor2d, snapToEdge: value },
-          },
-        }),
-        dirty: true,
-      })),
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          touchProjectMeta({
+            ...s.currentProject,
+            settings: {
+              ...s.currentProject.settings,
+              editor2d: { ...s.currentProject.settings.editor2d, snapToEdge: value },
+            },
+          }),
+          { dirty: true },
+        ),
+      ),
 
     setSnapToGrid: (value) =>
-      set((s) => ({
-        currentProject: touchProjectMeta({
-          ...s.currentProject,
-          settings: {
-            ...s.currentProject.settings,
-            editor2d: { ...s.currentProject.settings.editor2d, snapToGrid: value },
-          },
-        }),
-        dirty: true,
-      })),
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          touchProjectMeta({
+            ...s.currentProject,
+            settings: {
+              ...s.currentProject.settings,
+              editor2d: { ...s.currentProject.settings.editor2d, snapToGrid: value },
+            },
+          }),
+          { dirty: true },
+        ),
+      ),
 
     setWallShapeMode: (mode) =>
-      set((s) => ({
-        currentProject: touchProjectMeta({
-          ...s.currentProject,
-          settings: {
-            ...s.currentProject.settings,
-            editor2d: { ...s.currentProject.settings.editor2d, wallShapeMode: mode },
-          },
-        }),
-        dirty: true,
-      })),
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          touchProjectMeta({
+            ...s.currentProject,
+            settings: {
+              ...s.currentProject.settings,
+              editor2d: { ...s.currentProject.settings.editor2d, wallShapeMode: mode },
+            },
+          }),
+          { dirty: true },
+        ),
+      ),
 
     setLinearPlacementMode: (mode) =>
-      set((s) => ({
-        currentProject: touchProjectMeta({
-          ...s.currentProject,
-          settings: {
-            ...s.currentProject.settings,
-            editor2d: { ...s.currentProject.settings.editor2d, linearPlacementMode: mode },
-          },
-        }),
-        dirty: true,
-      })),
+      set((s) =>
+        buildProjectMutationState(
+          s,
+          touchProjectMeta({
+            ...s.currentProject,
+            settings: {
+              ...s.currentProject.settings,
+              editor2d: { ...s.currentProject.settings.editor2d, linearPlacementMode: mode },
+            },
+          }),
+          { dirty: true },
+        ),
+      ),
 
     bootstrapDemo: () => {
       void (async () => {
@@ -2951,7 +3272,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           dirty: false,
           lastError: null,
           selectedEntityIds: [],
-          history: initialHistory,
+          history: initialProjectHistory,
+          wallPlacementHistoryBaseline: null,
+          pendingOpeningPlacementHistoryBaseline: null,
+          wallMoveCopyHistoryBaseline: null,
+          lengthChangeHistoryBaseline: null,
           layerManagerOpen: false,
           layerParamsModalOpen: false,
           profilesModalOpen: false,
@@ -2998,7 +3323,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           dirty: false,
           lastError: null,
           selectedEntityIds: [],
-          history: initialHistory,
+          history: initialProjectHistory,
+          wallPlacementHistoryBaseline: null,
+          pendingOpeningPlacementHistoryBaseline: null,
+          wallMoveCopyHistoryBaseline: null,
+          lengthChangeHistoryBaseline: null,
           layerManagerOpen: false,
           layerParamsModalOpen: false,
           profilesModalOpen: false,
@@ -3040,7 +3369,11 @@ export const useAppStore = create<AppStore>((set, get) => {
         dirty: false,
         lastError: null,
         selectedEntityIds: [],
-        history: initialHistory,
+        history: initialProjectHistory,
+        wallPlacementHistoryBaseline: null,
+        pendingOpeningPlacementHistoryBaseline: null,
+        wallMoveCopyHistoryBaseline: null,
+        lengthChangeHistoryBaseline: null,
         layerManagerOpen: false,
         layerParamsModalOpen: false,
         profilesModalOpen: false,
@@ -3115,7 +3448,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           dirty: false,
           lastError: null,
           selectedEntityIds: [],
-          history: initialHistory,
+          history: initialProjectHistory,
+          wallPlacementHistoryBaseline: null,
+          pendingOpeningPlacementHistoryBaseline: null,
+          wallMoveCopyHistoryBaseline: null,
+          lengthChangeHistoryBaseline: null,
           layerManagerOpen: false,
           layerParamsModalOpen: false,
           profilesModalOpen: false,
@@ -3154,11 +3491,11 @@ export const useAppStore = create<AppStore>((set, get) => {
 });
 
 export function selectCanUndo(): boolean {
-  return false;
+  return useAppStore.getState().history.past.length > 0;
 }
 
 export function selectCanRedo(): boolean {
-  return false;
+  return useAppStore.getState().history.future.length > 0;
 }
 
 export function selectCanDeleteCurrentLayer(): boolean {

@@ -21,6 +21,7 @@ import {
 } from "@/shared/dimensionStyle";
 import { isEditableKeyboardTarget } from "@/shared/editableKeyboardTarget";
 import { useAppStore } from "@/store/useAppStore";
+import { cloneProjectSnapshot } from "@/store/projectHistory";
 import { useUiThemeStore } from "@/store/useUiThemeStore";
 
 import { computeAnchorRelativeHud } from "@/core/geometry/anchorPlacementHud";
@@ -57,14 +58,12 @@ import { appendWindowOpeningLabels2d } from "./windowOpeningLabels2dPixi";
 import { appendDoorOpeningLabels2d } from "./doorOpeningLabels2dPixi";
 import { buildViewportTransform, screenToWorld, worldToScreen } from "./viewportTransforms";
 import {
-  clampOpeningLeftEdgeMm,
   clampPlacedOpeningLeftEdgeMm,
   offsetFromStartForCursorCentered,
   pickClosestWallAlongPoint,
   pickPlacedOpeningOnLayerSlice,
   projectWorldToAlongMm,
   openingWallEndMarginAlongMm,
-  snapOpeningLeftEdgeMm,
   validateWindowPlacementOnWall,
 } from "@/core/domain/openingWindowGeometry";
 import {
@@ -137,6 +136,12 @@ interface OpeningPointerSession {
   readonly sy: number;
   readonly pointerId: number;
   dragActive: boolean;
+  /** Перетаскивание только в режиме «Переместить» по оси стены. */
+  readonly moveToolSession: boolean;
+  /** Левый край проёма (мм) в момент активации drag. */
+  startLeftEdgeMm: number | null;
+  suspendedForModal: boolean;
+  pointerReleasedWhileModalOpen: boolean;
 }
 
 type MoveDimSide = "left" | "right";
@@ -271,6 +276,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   } | null>(null);
   /** Клик/перетаскивание размещённого окна по стене (инструмент «Выделение»). */
   const openingPointerRef = useRef<OpeningPointerSession | null>(null);
+  /** Снимок до начала drag проёма — одна запись undo на перетаскивание. */
+  const openingDragHistoryBaselineRef = useRef<ReturnType<typeof cloneProjectSnapshot> | null>(null);
   const lastOpeningClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const lastWallClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -311,6 +318,18 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     readonly error: string | null;
   } | null>(null);
   const moveEditInputRef = useRef<HTMLInputElement | null>(null);
+  const [openingMoveDragHud, setOpeningMoveDragHud] = useState<{
+    readonly left: number;
+    readonly top: number;
+    readonly deltaMm: number;
+  } | null>(null);
+  const [openingAlongMoveModal, setOpeningAlongMoveModal] = useState<{
+    readonly valueStr: string;
+    readonly error: string | null;
+  } | null>(null);
+  const openingAlongMoveInputRef = useRef<HTMLInputElement | null>(null);
+  const canvasForOpeningDragRef = useRef<HTMLCanvasElement | null>(null);
+  const paintWorkspaceRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!wallPlacementSession) {
@@ -366,6 +385,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               wallMoveCopyCoordinateModalOpen: stA.wallMoveCopyCoordinateModalOpen,
               lengthChangeCoordinateModalOpen: stA.lengthChangeCoordinateModalOpen,
               projectOriginCoordinateModalOpen: stA.projectOriginCoordinateModalOpen,
+              openingAlongMoveNumericModalOpen: stA.openingAlongMoveNumericModalOpen,
             },
             {
               shortcutsSettingsModalOpen: uiA.shortcutsSettingsModalOpen,
@@ -411,6 +431,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             wallMoveCopyCoordinateModalOpen: st0.wallMoveCopyCoordinateModalOpen,
             lengthChangeCoordinateModalOpen: st0.lengthChangeCoordinateModalOpen,
             projectOriginCoordinateModalOpen: st0.projectOriginCoordinateModalOpen,
+            openingAlongMoveNumericModalOpen: st0.openingAlongMoveNumericModalOpen,
           })
         ) {
           return;
@@ -532,6 +553,32 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           st.openWallMoveCopyCoordinateModal();
           return;
         }
+        const opAlong = openingPointerRef.current;
+        if (
+          st.openingMoveModeActive &&
+          opAlong?.moveToolSession &&
+          opAlong.dragActive &&
+          opAlong.startLeftEdgeMm != null &&
+          !st.openingAlongMoveNumericModalOpen
+        ) {
+          e.preventDefault();
+          const cnv = canvasForOpeningDragRef.current;
+          if (cnv) {
+            try {
+              cnv.releasePointerCapture(opAlong.pointerId);
+            } catch {
+              /* ignore */
+            }
+          }
+          opAlong.suspendedForModal = true;
+          const p0 = st.currentProject;
+          const o0 = p0.openings.find((x) => x.id === opAlong.openingId);
+          const delta0 =
+            o0?.offsetFromStartMm != null ? Math.round(o0.offsetFromStartMm - opAlong.startLeftEdgeMm) : 0;
+          st.setOpeningAlongMoveNumericModalOpen(true);
+          setOpeningAlongMoveModal({ valueStr: String(delta0), error: null });
+          return;
+        }
         if (st.projectOriginMoveToolActive && !st.projectOriginCoordinateModalOpen) {
           e.preventDefault();
           st.openProjectOriginCoordinateModal();
@@ -640,8 +687,26 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   useEffect(() => {
     if (!openingMoveModeActive || selectedIds.length !== 1) {
       setMoveEdit(null);
+      setOpeningMoveDragHud(null);
+      setOpeningAlongMoveModal(null);
+      useAppStore.getState().setOpeningAlongMoveNumericModalOpen(false);
     }
   }, [openingMoveModeActive, selectedIds]);
+
+  useEffect(() => {
+    if (!openingAlongMoveModal) {
+      return;
+    }
+    const raf = requestAnimationFrame(() => {
+      const el = openingAlongMoveInputRef.current;
+      if (!el) {
+        return;
+      }
+      el.focus();
+      el.select();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [openingAlongMoveModal]);
 
   useEffect(() => {
     if (!projectOriginMoveToolActive) {
@@ -953,6 +1018,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     };
 
     const paint = () => {
+      paintWorkspaceRef.current = paint;
       const app = appRef.current;
       if (!app) {
         return;
@@ -1789,6 +1855,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       };
 
       const canvas = app.canvas as HTMLCanvasElement;
+      canvasForOpeningDragRef.current = canvas;
       canvas.addEventListener("wheel", onWheel, { passive: false });
 
       /** Capture для панорамы ПКМ в режиме «Выделение». */
@@ -1933,23 +2000,43 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         const opSess = openingPointerRef.current;
         if (!coordBlock && opSess && ev.pointerId === opSess.pointerId) {
           const distPx = Math.hypot(ev.global.x - opSess.sx, ev.global.y - opSess.sy);
-          if (!opSess.dragActive && distPx >= OPENING_DRAG_THRESHOLD_PX) {
+          if (!opSess.dragActive && distPx >= OPENING_DRAG_THRESHOLD_PX && opSess.moveToolSession) {
             opSess.dragActive = true;
             lastOpeningClickRef.current = null;
+            if (openingDragHistoryBaselineRef.current == null) {
+              openingDragHistoryBaselineRef.current = cloneProjectSnapshot(useAppStore.getState().currentProject);
+            }
+            const proj0 = useAppStore.getState().currentProject;
+            const o0 = proj0.openings.find((x) => x.id === opSess.openingId);
+            opSess.startLeftEdgeMm = o0?.offsetFromStartMm ?? null;
           }
-          if (opSess.dragActive) {
+          if (opSess.dragActive && opSess.moveToolSession) {
             const proj = useAppStore.getState().currentProject;
             const wall = proj.walls.find((x) => x.id === opSess.wallId);
             const opn = proj.openings.find((x) => x.id === opSess.openingId);
             if (wall && opn && (opSess.kind === "window" || opSess.kind === "door")) {
               const along = projectWorldToAlongMm(wall, p);
               const rawLeft = offsetFromStartForCursorCentered(along, opn.widthMm);
-              const left = clampOpeningLeftEdgeMm(wall, opn.widthMm, rawLeft, proj);
+              const placeKind = opSess.kind === "door" ? "door" : "window";
+              const left = clampPlacedOpeningLeftEdgeMm(wall, opn.widthMm, rawLeft, proj, placeKind);
               const v = validateWindowPlacementOnWall(wall, left, opn.widthMm, proj, opSess.openingId, {
                 openingKind: opSess.kind,
               });
               if (v.ok) {
-                useAppStore.getState().applyOpeningRepositionLeftEdge(opSess.openingId, left);
+                useAppStore.getState().applyOpeningRepositionLeftEdge(opSess.openingId, left, { skipHistory: true });
+              }
+              if (opSess.startLeftEdgeMm != null) {
+                const proj2 = useAppStore.getState().currentProject;
+                const o2 = proj2.openings.find((x) => x.id === opSess.openingId);
+                if (o2?.offsetFromStartMm != null) {
+                  const deltaMm = Math.round(o2.offsetFromStartMm - opSess.startLeftEdgeMm);
+                  const rectHud = canvas.getBoundingClientRect();
+                  setOpeningMoveDragHud({
+                    left: rectHud.left + (ev.global.x / w) * rectHud.width + 12,
+                    top: rectHud.top + (ev.global.y / h) * rectHud.height + 12,
+                    deltaMm,
+                  });
+                }
               }
             }
           }
@@ -2790,6 +2877,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           const tol = openingPickTolerancesMm(viewport2d.zoomPixelsPerMm);
           const hitOp = pickPlacedOpeningOnLayerSlice(layerView, worldMm, tol.along, tol.perp);
           if (hitOp && hitOp.wallId != null) {
+            openingDragHistoryBaselineRef.current = null;
+            const moveToolSession =
+              useAppStore.getState().openingMoveModeActive && (hitOp.kind === "window" || hitOp.kind === "door");
             openingPointerRef.current = {
               openingId: hitOp.id,
               wallId: hitOp.wallId,
@@ -2798,6 +2888,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               sy: ev.global.y,
               pointerId: ev.pointerId,
               dragActive: false,
+              moveToolSession,
+              startLeftEdgeMm: null,
+              suspendedForModal: false,
+              pointerReleasedWhileModalOpen: false,
             };
             try {
               canvas.setPointerCapture(ev.pointerId);
@@ -2874,12 +2968,23 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       const onPointerUp = (ev: FederatedPointerEvent) => {
         const opPtr = openingPointerRef.current;
         if (opPtr && ev.pointerId === opPtr.pointerId) {
+          if (useAppStore.getState().openingAlongMoveNumericModalOpen) {
+            opPtr.pointerReleasedWhileModalOpen = true;
+            try {
+              canvas.releasePointerCapture(ev.pointerId);
+            } catch {
+              /* ignore */
+            }
+            paint();
+            return;
+          }
           openingPointerRef.current = null;
           try {
             canvas.releasePointerCapture(ev.pointerId);
           } catch {
             /* ignore */
           }
+          setOpeningMoveDragHud(null);
           if (!opPtr.dragActive) {
             const now = Date.now();
             const last = lastOpeningClickRef.current;
@@ -2891,21 +2996,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             }
           } else {
             lastOpeningClickRef.current = null;
-            const proj = useAppStore.getState().currentProject;
-            const o = proj.openings.find((x) => x.id === opPtr.openingId);
-            const wall = proj.walls.find((w) => w.id === opPtr.wallId);
-            if ((opPtr.kind === "window" || opPtr.kind === "door") && o && wall && o.offsetFromStartMm != null) {
-              const snapped = snapOpeningLeftEdgeMm(
-                wall,
-                o.widthMm,
-                o.offsetFromStartMm,
-                proj.settings.gridStepMm,
-                proj.settings.editor2d.snapToGrid,
-                proj,
-              );
-              if (Math.abs(snapped - o.offsetFromStartMm) > 0.5) {
-                useAppStore.getState().applyOpeningRepositionLeftEdge(opPtr.openingId, snapped);
-              }
+            const dragBase = openingDragHistoryBaselineRef.current;
+            openingDragHistoryBaselineRef.current = null;
+            if (dragBase) {
+              useAppStore.getState().recordUndoIfModelChangedSince(dragBase);
             }
           }
           paint();
@@ -2923,32 +3017,33 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         syncAnchorCrosshairOverlay(canvas);
         const opPtr = openingPointerRef.current;
         if (opPtr) {
-          openingPointerRef.current = null;
-          try {
-            canvas.releasePointerCapture(opPtr.pointerId);
-          } catch {
-            /* ignore */
-          }
-          lastOpeningClickRef.current = null;
-          if (opPtr.dragActive) {
-            const proj = useAppStore.getState().currentProject;
-            const o = proj.openings.find((x) => x.id === opPtr.openingId);
-            const wall = proj.walls.find((w) => w.id === opPtr.wallId);
-            if ((opPtr.kind === "window" || opPtr.kind === "door") && o && wall && o.offsetFromStartMm != null) {
-              const snapped = snapOpeningLeftEdgeMm(
-                wall,
-                o.widthMm,
-                o.offsetFromStartMm,
-                proj.settings.gridStepMm,
-                proj.settings.editor2d.snapToGrid,
-                proj,
-              );
-              if (Math.abs(snapped - o.offsetFromStartMm) > 0.5) {
-                useAppStore.getState().applyOpeningRepositionLeftEdge(opPtr.openingId, snapped);
+          if (useAppStore.getState().openingAlongMoveNumericModalOpen) {
+            opPtr.pointerReleasedWhileModalOpen = true;
+            try {
+              canvas.releasePointerCapture(opPtr.pointerId);
+            } catch {
+              /* ignore */
+            }
+            setOpeningMoveDragHud(null);
+            paint();
+          } else {
+            openingPointerRef.current = null;
+            try {
+              canvas.releasePointerCapture(opPtr.pointerId);
+            } catch {
+              /* ignore */
+            }
+            lastOpeningClickRef.current = null;
+            setOpeningMoveDragHud(null);
+            if (opPtr.dragActive) {
+              const dragBaseLeave = openingDragHistoryBaselineRef.current;
+              openingDragHistoryBaselineRef.current = null;
+              if (dragBaseLeave) {
+                useAppStore.getState().recordUndoIfModelChangedSince(dragBaseLeave);
               }
             }
+            paint();
           }
-          paint();
         }
         endPan();
         cursorCbRef.current(null);
@@ -3015,6 +3110,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
     return () => {
       disposed = true;
+      canvasForOpeningDragRef.current = null;
+      paintWorkspaceRef.current = null;
       setWallHintRef.current(null);
       setCoordHudRef.current(null);
       detachListeners?.();
@@ -3025,6 +3122,68 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       appRef.current = null;
     };
   }, []);
+
+  const closeOpeningAlongMoveModal = () => {
+    const st = useAppStore.getState();
+    st.setOpeningAlongMoveNumericModalOpen(false);
+    setOpeningAlongMoveModal(null);
+    const sess = openingPointerRef.current;
+    if (sess) {
+      sess.suspendedForModal = false;
+      if (sess.pointerReleasedWhileModalOpen) {
+        openingPointerRef.current = null;
+        const dragBase = openingDragHistoryBaselineRef.current;
+        openingDragHistoryBaselineRef.current = null;
+        if (dragBase) {
+          st.recordUndoIfModelChangedSince(dragBase);
+        }
+      }
+    }
+    setOpeningMoveDragHud(null);
+    paintWorkspaceRef.current?.();
+  };
+
+  const applyOpeningAlongMoveModal = () => {
+    const modal = openingAlongMoveModal;
+    if (!modal) {
+      return;
+    }
+    const sess = openingPointerRef.current;
+    if (!sess?.moveToolSession || sess.startLeftEdgeMm == null) {
+      closeOpeningAlongMoveModal();
+      return;
+    }
+    const raw = modal.valueStr.trim().replace(/,/g, ".");
+    if (raw === "" || raw === "-" || raw === "+") {
+      setOpeningAlongMoveModal({ ...modal, error: "Введите число в миллиметрах" });
+      return;
+    }
+    const delta = Number(raw);
+    if (!Number.isFinite(delta)) {
+      setOpeningAlongMoveModal({ ...modal, error: "Некорректное число" });
+      return;
+    }
+    const st = useAppStore.getState();
+    const p = st.currentProject;
+    const wall = p.walls.find((w) => w.id === sess.wallId);
+    const opn = p.openings.find((o) => o.id === sess.openingId);
+    if (!wall || !opn || (opn.kind !== "window" && opn.kind !== "door")) {
+      closeOpeningAlongMoveModal();
+      return;
+    }
+    const targetLeftRaw = sess.startLeftEdgeMm + delta;
+    const placeKind = opn.kind === "door" ? "door" : "window";
+    const left = clampPlacedOpeningLeftEdgeMm(wall, opn.widthMm, targetLeftRaw, p, placeKind);
+    const v = validateWindowPlacementOnWall(wall, left, opn.widthMm, p, sess.openingId, {
+      openingKind: opn.kind,
+    });
+    if (!v.ok) {
+      setOpeningAlongMoveModal({ ...modal, error: v.reason });
+      return;
+    }
+    st.applyOpeningRepositionLeftEdge(sess.openingId, left, { skipHistory: true });
+    closeOpeningAlongMoveModal();
+  };
 
   return (
     <div
@@ -3115,6 +3274,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           {coordHud.axisHint ? ` · ${coordHud.axisHint}` : null}
         </div>
       ) : null}
+      {openingMoveDragHud ? (
+        <div
+          className="ed2d-wall-hint"
+          style={{
+            position: "fixed",
+            left: openingMoveDragHud.left,
+            top: openingMoveDragHud.top,
+            zIndex: 24,
+            pointerEvents: "none",
+          }}
+        >
+          Смещение: {openingMoveDragHud.deltaMm >= 0 ? "+" : ""}
+          {openingMoveDragHud.deltaMm} мм
+        </div>
+      ) : null}
       {moveEdit ? (
         <div
           style={{
@@ -3192,6 +3366,92 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           />
           <span style={{ fontSize: 12, opacity: 0.8 }}>мм</span>
           {moveEdit.error ? <span style={{ color: "#ef4444", fontSize: 12 }}>{moveEdit.error}</span> : null}
+        </div>
+      ) : null}
+      {openingAlongMoveModal ? (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 50,
+            background: "rgba(0,0,0,0.28)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div
+            role="dialog"
+            aria-modal
+            aria-label="Смещение вдоль стены"
+            style={{
+              background: "var(--color-surface-raised)",
+              color: "var(--color-text-primary)",
+              border: "1px solid var(--color-border-subtle)",
+              borderRadius: 8,
+              padding: "14px 16px",
+              minWidth: 300,
+              boxShadow: "0 10px 40px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Смещение от начала перемещения</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                ref={openingAlongMoveInputRef}
+                value={openingAlongMoveModal.valueStr}
+                inputMode="decimal"
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => {
+                  const t = e.target.value.replace(/,/g, ".");
+                  if (t === "" || t === "-" || t === "+") {
+                    setOpeningAlongMoveModal({ valueStr: t, error: null });
+                    return;
+                  }
+                  if (/^-?\d*\.?\d*$/.test(t)) {
+                    setOpeningAlongMoveModal({ valueStr: t, error: null });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    closeOpeningAlongMoveModal();
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyOpeningAlongMoveModal();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  height: 32,
+                  padding: "0 8px",
+                  borderRadius: 4,
+                  border: "1px solid var(--color-border-subtle)",
+                  background: "var(--color-surface-default)",
+                  color: "var(--color-text-primary)",
+                }}
+              />
+              <span style={{ fontSize: 12, opacity: 0.75 }}>мм</span>
+            </div>
+            {openingAlongMoveModal.error ? (
+              <div style={{ color: "#ef4444", fontSize: 12, marginBottom: 10 }}>{openingAlongMoveModal.error}</div>
+            ) : (
+              <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 10 }}>
+                Отрицательное значение — в сторону начала стены; без привязки к сетке.
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="e2dpt-btn" onClick={() => closeOpeningAlongMoveModal()}>
+                Отмена
+              </button>
+              <button type="button" className="e2dpt-btn" onClick={() => applyOpeningAlongMoveModal()}>
+                Применить
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

@@ -62,12 +62,38 @@ function IconKeyboard() {
   );
 }
 
+function IconUndo() {
+  return (
+    <svg className="tb-keys-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 5v3.5l-4-4 4-4V4a8 8 0 11-8 8h2a6 6 0 106-6V5z"
+      />
+    </svg>
+  );
+}
+
+function IconRedo() {
+  return (
+    <svg className="tb-keys-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 5v3.5l4-4-4-4V4a8 8 0 108 8h-2a6 6 0 10-6-6V5z"
+      />
+    </svg>
+  );
+}
+
 export function TopBar() {
   const name = useAppStore((s) => s.currentProject.meta.name);
   const dirty = useAppStore((s) => s.dirty);
   const activeTab = useAppStore((s) => s.activeTab);
   const openProfiles = useAppStore((s) => s.openProfilesModal);
   const openHotkeys = useEditorShortcutsStore((s) => s.openShortcutsSettings);
+  const canUndo = useAppStore((s) => s.history.past.length > 0);
+  const canRedo = useAppStore((s) => s.history.future.length > 0);
+  const undo = useAppStore((s) => s.undo);
+  const redo = useAppStore((s) => s.redo);
   const [mode, setMode] = useState<TopBarMode>(() =>
     typeof window === "undefined" ? "wide" : getTopBarMode(window.innerWidth),
   );
@@ -162,6 +188,26 @@ export function TopBar() {
         ) : null}
       </div>
       <div className="shell-top-right row tb-group tb-group--right">
+        <button
+          type="button"
+          className="tb-prof-btn"
+          title="Отменить (Cmd+Z / Ctrl+Z)"
+          aria-label="Отменить"
+          disabled={!canUndo}
+          onClick={() => undo()}
+        >
+          <IconUndo />
+        </button>
+        <button
+          type="button"
+          className="tb-prof-btn"
+          title="Повторить (Cmd+Shift+Z / Ctrl+Y / Ctrl+Shift+Z)"
+          aria-label="Повторить"
+          disabled={!canRedo}
+          onClick={() => redo()}
+        >
+          <IconRedo />
+        </button>
         <button
           type="button"
           className="tb-prof-btn"

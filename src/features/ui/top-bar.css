@@ -105,6 +105,18 @@
   box-shadow: var(--shadow-focus-glow);
 }
 
+.tb-prof-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.tb-prof-btn:disabled:hover {
+  border-color: var(--color-border-subtle);
+  background: var(--color-surface-raised);
+  box-shadow: none;
+}
+
 .tb-prof-icon,
 .tb-keys-icon {
   width: 18px;

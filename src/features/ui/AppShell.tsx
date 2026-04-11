@@ -4,6 +4,7 @@ import "./shell.css";
 
 import { useEditorToolShortcuts } from "@/features/editor2d/useEditorToolShortcuts";
 import { useOpeningPropertiesKeyboard } from "@/features/project/useOpeningPropertiesKeyboard";
+import { useProjectUndoRedoHotkeys } from "@/features/project/useProjectUndoRedoHotkeys";
 import { AddWallModal } from "@/features/ui/AddWallModal";
 import { WallJointParamsModal } from "@/features/ui/WallJointParamsModal";
 import { WallCalculationModal } from "@/features/ui/WallCalculationModal";
@@ -51,6 +52,7 @@ function EditorHotkeysHost() {
 
 export function AppShell() {
   useEditorToolShortcuts();
+  useProjectUndoRedoHotkeys();
   useOpeningPropertiesKeyboard(true);
   const [cursorWorldMm, setCursorWorldMm] = useState<{ x: number; y: number } | null>(null);
   const onWorldCursorMm = useCallback((p: { x: number; y: number } | null) => {

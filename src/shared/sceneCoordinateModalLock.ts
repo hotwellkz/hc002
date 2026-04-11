@@ -8,12 +8,14 @@ export function isSceneCoordinateModalBlocking(store: {
   readonly wallMoveCopyCoordinateModalOpen: boolean;
   readonly lengthChangeCoordinateModalOpen: boolean;
   readonly projectOriginCoordinateModalOpen: boolean;
+  readonly openingAlongMoveNumericModalOpen: boolean;
 }): boolean {
   return (
     store.wallCoordinateModalOpen ||
     store.wallAnchorCoordinateModalOpen ||
     store.wallMoveCopyCoordinateModalOpen ||
     store.lengthChangeCoordinateModalOpen ||
-    store.projectOriginCoordinateModalOpen
+    store.projectOriginCoordinateModalOpen ||
+    store.openingAlongMoveNumericModalOpen
   );
 }
