@@ -5,8 +5,13 @@ import { useAppStore } from "@/store/useAppStore";
 
 import "./left-nav-rail.css";
 
-/** Вертикальная навигация по режимам рабочей области. */
-export function LeftNavRail() {
+type LeftNavRailContentProps = {
+  readonly className?: string;
+  readonly onNavigate?: () => void;
+};
+
+/** Кнопки режима плана — общие для рейки и мобильного bottom sheet. */
+export function LeftNavRailContent({ className, onNavigate }: LeftNavRailContentProps) {
   const activeTab = useAppStore((s) => s.activeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const planScope = useAppStore((s) => s.currentProject.viewState.editor2dPlanScope);
@@ -20,8 +25,10 @@ export function LeftNavRail() {
   const floorStructureActive = activeTab === "2d" && planScope === "floorStructure";
   const wallDetailActive = activeTab === "wall";
 
+  const wrapCls = ["lnr", className].filter(Boolean).join(" ");
+
   return (
-    <nav className="lnr" aria-label="Режим работы">
+    <nav className={wrapCls} aria-label="Режим работы">
       <button
         type="button"
         className="lnr-btn"
@@ -32,9 +39,11 @@ export function LeftNavRail() {
         onClick={() => {
           setActiveTab("2d");
           setEditor2dPlanScope("main");
+          onNavigate?.();
         }}
       >
         <LucideToolIcon icon={LayoutGrid} className="lnr-icon" />
+        <span className="lnr-label">План этажа</span>
       </button>
       <button
         type="button"
@@ -46,9 +55,11 @@ export function LeftNavRail() {
         onClick={() => {
           setActiveTab("2d");
           setEditor2dPlanScope("floorStructure");
+          onNavigate?.();
         }}
       >
         <LucideToolIcon icon={Layers} className="lnr-icon" />
+        <span className="lnr-label">Перекрытие</span>
       </button>
       <button
         type="button"
@@ -59,11 +70,20 @@ export function LeftNavRail() {
         data-active={wallDetailActive}
         disabled={!selectedWallId}
         onClick={() => {
-          if (selectedWallId) openWallDetail(selectedWallId);
+          if (selectedWallId) {
+            openWallDetail(selectedWallId);
+            onNavigate?.();
+          }
         }}
       >
         <LucideToolIcon icon={BrickWall} className="lnr-icon" />
+        <span className="lnr-label">Вид стены</span>
       </button>
     </nav>
   );
+}
+
+/** Вертикальная навигация по режимам рабочей области (desktop). */
+export function LeftNavRail() {
+  return <LeftNavRailContent />;
 }

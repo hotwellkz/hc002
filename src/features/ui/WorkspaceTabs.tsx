@@ -6,6 +6,7 @@ import { SlabPlacementRail } from "@/features/ui/SlabPlacementRail";
 import { Editor3DWorkspace } from "@/features/editor3d/Editor3DWorkspace";
 import { SpecificationWorkspace } from "@/features/ui/SpecificationWorkspace";
 import { WallDetailWorkspace } from "@/features/ui/WallDetailWorkspace";
+import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { useAppStore } from "@/store/useAppStore";
 
 interface WorkspaceTabsProps {
@@ -13,13 +14,15 @@ interface WorkspaceTabsProps {
 }
 
 export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
+  const isMobile = useMobileLayout();
   const tab = useAppStore((s) => s.activeTab);
   const setTab = useAppStore((s) => s.setActiveTab);
 
   return (
     <div className="shell-center">
-      <div className="workspace-subbar">
-        <div className="tabs" role="tablist" aria-label="Режим редактора">
+      {!isMobile ? (
+        <div className="workspace-subbar">
+          <div className="tabs" role="tablist" aria-label="Режим редактора">
           <button
             type="button"
             role="tab"
@@ -57,7 +60,8 @@ export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
             Вид стены
           </button>
         </div>
-      </div>
+        </div>
+      ) : null}
       <div
         style={{
           flex: 1,
@@ -79,10 +83,12 @@ export function WorkspaceTabs({ onWorldCursorMm }: WorkspaceTabsProps) {
                 <ActiveLayerBadge />
                 <Editor2DWorkspace onWorldCursorMm={onWorldCursorMm} />
               </div>
-              <div style={{ display: "flex", flexDirection: "row", flexShrink: 0, minHeight: 0 }}>
-                <SlabPlacementRail />
-                <LinearPlacementRail />
-              </div>
+              {!isMobile ? (
+                <div style={{ display: "flex", flexDirection: "row", flexShrink: 0, minHeight: 0 }}>
+                  <SlabPlacementRail />
+                  <LinearPlacementRail />
+                </div>
+              ) : null}
             </div>
           </>
         ) : tab === "3d" ? (

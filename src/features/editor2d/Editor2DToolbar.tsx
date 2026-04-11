@@ -9,7 +9,9 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { Editor2DToolbarMobile } from "@/features/editor2d/Editor2DToolbarMobile";
 import { projectCommands } from "@/features/project/commands";
+import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { formatShortcutCodesList } from "@/shared/editorToolShortcuts/formatShortcutLabel";
 import { getResolvedShortcutCodes } from "@/shared/editorToolShortcuts/resolveEditorShortcutCodes";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
@@ -34,6 +36,11 @@ function Kbd({ codes }: { readonly codes: readonly string[] }): ReactNode {
 }
 
 export function Editor2DToolbar() {
+  const isMobile = useMobileLayout();
+  if (isMobile) {
+    return <Editor2DToolbarMobile />;
+  }
+
   const activeTool = useAppStore((s) => s.activeTool);
   const selectedCount = useAppStore((s) => s.selectedEntityIds.length);
   const setActiveTool = useAppStore((s) => s.setActiveTool);

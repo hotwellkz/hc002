@@ -304,3 +304,84 @@ html[data-theme="dark"] .tb-overflow-trigger:hover {
 .tb-overflow-item:hover {
   background: var(--color-surface-hover);
 }
+
+/* Мобильная шапка */
+.shell-top.shell-top--mobile {
+  display: block;
+  min-height: 46px;
+  padding: 0 8px;
+  overflow: visible;
+}
+
+.shell-top-mobile-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+}
+
+.tb-mobile-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1.15;
+}
+
+.tb-mobile-brand {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tb-mobile-project {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-mobile-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tb-mobile-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+}
+
+.tb-mobile-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tb-mobile-icon-btn--accent {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-subtle));
+  color: var(--color-accent);
+}
+
+.tb-mobile-icon-btn:active:not(:disabled) {
+  background: var(--color-surface-hover);
+}

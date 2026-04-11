@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import "./shell.css";
 
@@ -26,11 +26,13 @@ import { LayerParamsModal } from "@/features/ui/LayerParamsModal";
 import { ProfilesModal } from "@/features/ui/ProfilesModal";
 import { EditorHotkeysModal } from "@/features/ui/EditorHotkeysModal";
 
+import { MobileChrome } from "./MobileChrome";
 import { LeftNavRail } from "./LeftNavRail";
 import { RightPropertiesPanel } from "./RightPropertiesPanel";
 import { StatusBar } from "./StatusBar";
 import { TopBar } from "./TopBar";
 import { WorkspaceTabs } from "./WorkspaceTabs";
+import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { useAppStore } from "@/store/useAppStore";
 import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
@@ -59,6 +61,7 @@ function EditorHotkeysHost() {
 }
 
 export function AppShell() {
+  const isMobile = useMobileLayout();
   useEditorToolShortcuts();
   useProjectUndoRedoHotkeys();
   useOpeningPropertiesKeyboard(true);
@@ -71,14 +74,27 @@ export function AppShell() {
   const rightPropsCollapsed = useAppStore((s) => s.currentProject.viewState.rightPropertiesCollapsed);
   const dataRightProps = !rightPropsOpen ? "hidden" : rightPropsCollapsed ? "collapsed" : "expanded";
 
+  useEffect(() => {
+    const el = document.documentElement;
+    if (isMobile) {
+      el.setAttribute("data-mobile-shell", "true");
+    } else {
+      el.removeAttribute("data-mobile-shell");
+    }
+    return () => el.removeAttribute("data-mobile-shell");
+  }, [isMobile]);
+
   return (
-    <div className="shell" data-right-props={dataRightProps}>
+    <div className="shell" data-layout={isMobile ? "mobile" : "desktop"} data-right-props={dataRightProps}>
       <TopBar />
-      <div className="shell-nav-rail">
-        <LeftNavRail />
-      </div>
+      {!isMobile ? (
+        <div className="shell-nav-rail">
+          <LeftNavRail />
+        </div>
+      ) : null}
       <WorkspaceTabs onWorldCursorMm={onWorldCursorMm} />
       <RightPropertiesPanel />
+      {isMobile ? <MobileChrome /> : null}
       <StatusBar cursorWorldMm={cursorWorldMm} />
       <LayerManagerHost />
       <LayerParamsHost />

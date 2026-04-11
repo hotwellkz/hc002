@@ -7,10 +7,12 @@ import { Editor2DFloorStructureToolbar } from "@/features/ui/Editor2DFloorStruct
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
 import { ThemeMenu } from "@/features/ui/ThemeMenu";
+import { TopBarMobile } from "@/features/ui/TopBarMobile";
 import { projectCommands } from "@/features/project/commands";
 import { APP_NAME } from "@/shared/constants";
 import { computeAnchoredPopoverPosition } from "@/shared/ui/computeAnchoredPopoverPosition";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
+import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { useAppStore } from "@/store/useAppStore";
 import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 
@@ -166,6 +168,11 @@ function TopBarOverflowMenu({
 }
 
 export function TopBar() {
+  const isMobile = useMobileLayout();
+  if (isMobile) {
+    return <TopBarMobile />;
+  }
+
   const name = useAppStore((s) => s.currentProject.meta.name);
   const dirty = useAppStore((s) => s.dirty);
   const activeTab = useAppStore((s) => s.activeTab);

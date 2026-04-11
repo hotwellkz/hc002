@@ -143,3 +143,37 @@ html[data-theme="dark"] .rpp-action-btn {
   background: rgba(45, 85, 140, 0.35);
   border-color: rgba(94, 169, 255, 0.35);
 }
+
+.rpp-intro {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.rpp-block {
+  margin-bottom: 14px;
+}
+
+.rpp-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.rpp-dl {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rpp-dl dd {
+  margin: 0 0 8px 0;
+}
+
+.rpp-dd-last {
+  margin-bottom: 0 !important;
+}
+
+.mobile-sheet-panel .rpp-action-btn {
+  min-height: 48px;
+  font-size: var(--text-body-sm);
+}

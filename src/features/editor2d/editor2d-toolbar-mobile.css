@@ -1,0 +1,85 @@
+.ed2d-toolbar--mobile-quick {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--shell-chrome-bg, var(--color-chrome));
+}
+
+.ed2d-toolbtn-mobile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 56px;
+  min-height: 48px;
+  padding: 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex: 1 1 0;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+
+.ed2d-toolbtn-mobile__label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed2d-toolbtn-mobile[data-active="true"] {
+  border-color: var(--color-accent-outline);
+  background: var(--color-surface-selected);
+  color: var(--color-accent);
+}
+
+.ed2d-toolbtn-mobile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ed2d-toolbtn-mobile--danger:not(:disabled) {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border-subtle));
+}
+
+.ed2d-toolbtn-mobile--more {
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.ed2d-toolbar-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0 max(var(--space-md), env(safe-area-inset-bottom));
+}
+
+.ed2d-toolbar-sheet .ed2d-toolbtn-mobile {
+  flex: none;
+  width: 100%;
+  min-height: 52px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
+}
+
+.ed2d-toolbar-sheet .ed2d-toolbtn-mobile__label {
+  font-size: var(--text-body);
+  text-align: left;
+  white-space: normal;
+}

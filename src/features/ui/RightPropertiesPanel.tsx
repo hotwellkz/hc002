@@ -1,15 +1,13 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { projectCommands } from "@/features/project/commands";
+import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./right-properties-panel.css";
 
-export function RightPropertiesPanel() {
-  const open = useAppStore((s) => s.uiPanels.rightPropertiesOpen);
-  const collapsed = useAppStore((s) => s.currentProject.viewState.rightPropertiesCollapsed);
-  const setCollapsed = useAppStore((s) => s.setRightPropertiesCollapsed);
+export function RightPropertiesPanelContent() {
   const project = useAppStore((s) => s.currentProject);
   const selected = useAppStore((s) => s.selectedEntityIds);
   const activeId = project.activeLayerId;
@@ -20,6 +18,45 @@ export function RightPropertiesPanel() {
     selected.length === 1
       ? project.openings.find((o) => o.id === selected[0] && o.kind === "window" && o.wallId != null)
       : undefined;
+
+  return (
+    <>
+      <p className="muted rpp-intro">
+        Выбрано элементов: {selected.length}.
+      </p>
+      {selectedPlacedWindow ? (
+        <div className="rpp-block">
+          <button type="button" className="rpp-action-btn" onClick={() => projectCommands.openSelectedWindowProperties()}>
+            Параметры окна…
+          </button>
+          <p className="muted rpp-hint">
+            Двойной клик по окну на плане или клавиша Enter — то же окно свойств. Перетаскивание — вдоль стены.
+          </p>
+        </div>
+      ) : null}
+      <dl className="rpp-dl">
+        <dt className="muted">Стен (активный слой)</dt>
+        <dd>{wallsOnLayer}</dd>
+        <dt className="muted">Проёмов (активный слой)</dt>
+        <dd>{openingsOnLayer}</dd>
+        <dt className="muted">Шаг сетки (мм)</dt>
+        <dd>{project.settings.gridStepMm}</dd>
+        <dt className="muted">Единицы</dt>
+        <dd className="rpp-dd-last">{project.meta.units}</dd>
+      </dl>
+    </>
+  );
+}
+
+export function RightPropertiesPanel() {
+  const isMobile = useMobileLayout();
+  const open = useAppStore((s) => s.uiPanels.rightPropertiesOpen);
+  const collapsed = useAppStore((s) => s.currentProject.viewState.rightPropertiesCollapsed);
+  const setCollapsed = useAppStore((s) => s.setRightPropertiesCollapsed);
+
+  if (isMobile) {
+    return null;
+  }
 
   if (!open) {
     return null;
@@ -56,33 +93,7 @@ export function RightPropertiesPanel() {
         </button>
       </header>
       <div className="rpp-body">
-        <p className="muted" style={{ margin: "0 0 12px", lineHeight: 1.45 }}>
-          Выбрано элементов: {selected.length}.
-        </p>
-        {selectedPlacedWindow ? (
-          <div style={{ marginBottom: 14 }}>
-            <button
-              type="button"
-              className="rpp-action-btn"
-              onClick={() => projectCommands.openSelectedWindowProperties()}
-            >
-              Параметры окна…
-            </button>
-            <p className="muted" style={{ margin: "8px 0 0", fontSize: 11, lineHeight: 1.4 }}>
-              Двойной клик по окну на плане или клавиша Enter — то же окно свойств. Перетаскивание — вдоль стены.
-            </p>
-          </div>
-        ) : null}
-        <dl style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
-          <dt className="muted">Стен (активный слой)</dt>
-          <dd style={{ margin: "0 0 8px 0" }}>{wallsOnLayer}</dd>
-          <dt className="muted">Проёмов (активный слой)</dt>
-          <dd style={{ margin: "0 0 8px 0" }}>{openingsOnLayer}</dd>
-          <dt className="muted">Шаг сетки (мм)</dt>
-          <dd style={{ margin: "0 0 8px 0" }}>{project.settings.gridStepMm}</dd>
-          <dt className="muted">Единицы</dt>
-          <dd style={{ margin: 0 }}>{project.meta.units}</dd>
-        </dl>
+        <RightPropertiesPanelContent />
       </div>
     </aside>
   );

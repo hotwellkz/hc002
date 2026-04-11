@@ -1,0 +1,139 @@
+/* Плавающие подсказки 2D: инструкция (фикс. угол) + live-HUD у курсора */
+
+.ed2d-instruction-overlay {
+  position: fixed;
+  z-index: var(--z-ui-editor-hud, 50);
+  pointer-events: none;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-editor-hud-instruction-border);
+  background: var(--color-editor-hud-instruction-bg);
+  color: var(--color-editor-hud-instruction-primary);
+  box-shadow: var(--shadow-editor-hud);
+  line-height: var(--lh-body-sm);
+}
+
+.ed2d-instruction-overlay__line--primary {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  letter-spacing: var(--letter-tight);
+  color: var(--color-editor-hud-instruction-primary);
+  margin: 0 0 var(--space-xs) 0;
+}
+
+.ed2d-instruction-overlay__line--primary:last-child {
+  margin-bottom: 0;
+}
+
+.ed2d-instruction-overlay__line--secondary {
+  font-size: var(--text-label);
+  font-weight: 500;
+  color: var(--color-editor-hud-instruction-secondary);
+  margin: 0 0 2px 0;
+}
+
+.ed2d-instruction-overlay__line--muted {
+  font-size: var(--text-label);
+  font-weight: 500;
+  color: var(--color-editor-hud-instruction-muted);
+  margin: var(--space-xs) 0 0 0;
+}
+
+.ed2d-snap-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: var(--space-xs) 0 var(--space-sm) 0;
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--color-accent) 88%, var(--color-editor-hud-instruction-primary));
+  background: color-mix(in srgb, var(--color-accent-soft) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+.ed2d-live-hud-badge {
+  position: fixed;
+  z-index: calc(var(--z-ui-editor-hud, 50) + 1);
+  pointer-events: none;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-editor-hud-live-border);
+  background: var(--color-editor-hud-live-bg);
+  color: var(--color-editor-hud-live-fg);
+  box-shadow: var(--shadow-editor-hud);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.ed2d-live-hud-badge--angle-snap {
+  border-color: color-mix(in srgb, var(--color-success, #5cd49a) 42%, var(--color-editor-hud-live-border));
+  box-shadow: var(--shadow-editor-hud), 0 0 0 1px color-mix(in srgb, var(--color-success) 18%, transparent);
+}
+
+.ed2d-live-hud-badge__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+}
+
+.ed2d-live-hud-badge__pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.ed2d-live-hud-badge__k {
+  color: var(--color-editor-hud-live-muted);
+  font-weight: 500;
+}
+
+.ed2d-live-hud-badge__v {
+  color: var(--color-editor-hud-live-fg);
+  font-weight: 600;
+}
+
+.ed2d-live-hud-badge__sep {
+  color: var(--color-editor-hud-live-muted);
+  opacity: 0.65;
+  user-select: none;
+}
+
+.ed2d-live-hud-badge__sub {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--color-editor-hud-live-border) 70%, transparent);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-editor-hud-live-muted);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* Мини-HUD перетаскивания (проёмы и т.п.) */
+.ed2d-mini-hud-badge {
+  position: fixed;
+  z-index: var(--z-ui-editor-hud, 50);
+  pointer-events: none;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-editor-hud-live-border);
+  background: var(--color-editor-hud-live-bg);
+  color: var(--color-editor-hud-live-fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-editor-hud);
+}

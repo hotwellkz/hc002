@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { computePlacementHudScreenPosition } from "./placementHudPosition";
+import {
+  computeEditorInstructionScreenPosition,
+  computeEditorLiveHudScreenPosition,
+  computeEditorOverlayLayout,
+  getEditorInstructionAvoidanceRect,
+} from "./placementHudPosition";
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {
   return {
@@ -18,73 +23,109 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
   };
 }
 
-describe("computePlacementHudScreenPosition", () => {
-  it("при открытой модалке паркует hint внизу слева и скрывает coord HUD", () => {
+describe("computeEditorInstructionScreenPosition", () => {
+  it("фиксирует инструкцию в верхнем левом углу canvas", () => {
     const canvasRect = rect(100, 80, 800, 600);
-    const r = computePlacementHudScreenPosition({
+    const r = computeEditorInstructionScreenPosition({
       canvasRect,
-      cursorCanvasX: 400,
-      cursorCanvasY: 300,
+      wallCoordinateModalOpen: false,
+    });
+    expect(r.left).toBe(100 + 12);
+    expect(r.top).toBe(80 + 12);
+  });
+
+  it("при открытой модалке координат паркует подсказку внизу слева", () => {
+    const canvasRect = rect(100, 80, 800, 600);
+    const r = computeEditorInstructionScreenPosition({
+      canvasRect,
       wallCoordinateModalOpen: true,
-      showCoordHud: true,
     });
-    expect(r.hintLeft).toBe(100 + 12);
-    expect(r.coordHudLeft).toBeNull();
-    expect(r.coordHudTop).toBeNull();
+    expect(r.left).toBe(100 + 12);
+    expect(r.top).toBeGreaterThanOrEqual(80 + 12);
+    expect(r.top).toBeLessThanOrEqual(canvasRect.bottom - 12);
   });
+});
 
-  it("wallAnchorCoordinateModalOpen тоже скрывает coord HUD", () => {
+describe("computeEditorLiveHudScreenPosition", () => {
+  it("возвращает null при модалке координат", () => {
     const canvasRect = rect(100, 80, 800, 600);
-    const r = computePlacementHudScreenPosition({
+    const avoid = getEditorInstructionAvoidanceRect(canvasRect, true);
+    const r = computeEditorLiveHudScreenPosition({
       canvasRect,
       cursorCanvasX: 400,
       cursorCanvasY: 300,
-      wallCoordinateModalOpen: false,
-      wallAnchorCoordinateModalOpen: true,
+      viewportWidth: 1200,
+      viewportHeight: 800,
       showCoordHud: true,
+      anyCoordModalOpen: true,
+      instructionAvoidRect: avoid,
     });
-    expect(r.coordHudLeft).toBeNull();
-    expect(r.coordHudTop).toBeNull();
+    expect(r).toBeNull();
   });
 
-  it("wallMoveCopyCoordinateModalOpen скрывает coord HUD", () => {
-    const canvasRect = rect(100, 80, 800, 600);
-    const r = computePlacementHudScreenPosition({
+  it("возвращает позицию рядом с курсором, вне зоны инструкции", () => {
+    const canvasRect = rect(0, 0, 900, 700);
+    const avoid = getEditorInstructionAvoidanceRect(canvasRect, false);
+    const r = computeEditorLiveHudScreenPosition({
       canvasRect,
-      cursorCanvasX: 400,
-      cursorCanvasY: 300,
-      wallCoordinateModalOpen: false,
-      wallMoveCopyCoordinateModalOpen: true,
+      cursorCanvasX: 40,
+      cursorCanvasY: 40,
+      viewportWidth: 1200,
+      viewportHeight: 900,
       showCoordHud: true,
+      anyCoordModalOpen: false,
+      instructionAvoidRect: avoid,
     });
-    expect(r.coordHudLeft).toBeNull();
-    expect(r.coordHudTop).toBeNull();
+    expect(r).not.toBeNull();
+    if (!r) {
+      return;
+    }
+    const hudRight = r.left + 300;
+    const hudBottom = r.top + 56;
+    const overlaps =
+      hudRight > avoid.left && r.left < avoid.right && hudBottom > avoid.top && r.top < avoid.bottom;
+    expect(overlaps).toBe(false);
   });
 
-  it("lengthChangeCoordinateModalOpen скрывает coord HUD", () => {
-    const canvasRect = rect(100, 80, 800, 600);
-    const r = computePlacementHudScreenPosition({
-      canvasRect,
-      cursorCanvasX: 400,
-      cursorCanvasY: 300,
-      wallCoordinateModalOpen: false,
-      lengthChangeCoordinateModalOpen: true,
-      showCoordHud: true,
-    });
-    expect(r.coordHudLeft).toBeNull();
-    expect(r.coordHudTop).toBeNull();
-  });
-
-  it("держит hint внутри canvas при курсоре у правого края", () => {
+  it("удерживает HUD внутри viewport", () => {
     const canvasRect = rect(0, 0, 400, 300);
-    const r = computePlacementHudScreenPosition({
+    const avoid = getEditorInstructionAvoidanceRect(canvasRect, false);
+    const r = computeEditorLiveHudScreenPosition({
       canvasRect,
       cursorCanvasX: 390,
-      cursorCanvasY: 150,
-      wallCoordinateModalOpen: false,
-      showCoordHud: false,
+      cursorCanvasY: 290,
+      viewportWidth: 420,
+      viewportHeight: 320,
+      showCoordHud: true,
+      anyCoordModalOpen: false,
+      instructionAvoidRect: avoid,
     });
-    expect(r.hintLeft).toBeLessThanOrEqual(400 - 300 - 12);
-    expect(r.hintLeft).toBeGreaterThanOrEqual(12);
+    expect(r).not.toBeNull();
+    if (!r) {
+      return;
+    }
+    expect(r.left).toBeGreaterThanOrEqual(8);
+    expect(r.top).toBeGreaterThanOrEqual(8);
+    expect(r.left + 300).toBeLessThanOrEqual(420 - 8);
+    expect(r.top + 56).toBeLessThanOrEqual(320 - 8);
+  });
+});
+
+describe("computeEditorOverlayLayout", () => {
+  it("агрегирует instruction и liveHud", () => {
+    const canvasRect = rect(50, 60, 700, 500);
+    const lay = computeEditorOverlayLayout({
+      canvasRect,
+      cursorCanvasX: 200,
+      cursorCanvasY: 220,
+      viewportWidth: 1100,
+      viewportHeight: 720,
+      wallCoordinateModalOpen: false,
+      showCoordHud: true,
+    });
+    expect(lay.instruction.left).toBe(62);
+    expect(lay.instruction.top).toBe(72);
+    expect(lay.liveHud).not.toBeNull();
+    expect(lay.anyCoordModalOpen).toBe(false);
   });
 });

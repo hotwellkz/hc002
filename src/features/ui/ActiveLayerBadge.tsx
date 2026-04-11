@@ -7,9 +7,10 @@ import "./active-layer-badge.css";
 export function ActiveLayerBadge() {
   const project = useAppStore((s) => s.currentProject);
   const openLayerManager = useAppStore((s) => s.openLayerManager);
+  const suppressed = useAppStore((s) => s.editor2dSuppressActiveLayerBadge);
   const layer = getLayerById(project, project.activeLayerId);
 
-  if (!layer) {
+  if (suppressed || !layer) {
     return null;
   }
 

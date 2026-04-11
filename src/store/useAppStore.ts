@@ -283,8 +283,19 @@ export interface DoorEditModalState {
   readonly initialTab: WindowEditModalTab;
 }
 
+/** Одна мобильная шторка за раз (bottom sheet). */
+export type MobileSheetId =
+  | "mainMenu"
+  | "planView"
+  | "planTopTools"
+  | "editorTools"
+  | "properties"
+  | "placementRails";
+
 export interface UiPanelsState {
   readonly rightPropertiesOpen: boolean;
+  /** Bottom sheet на телефоне; null — закрыто. */
+  readonly mobileSheet: MobileSheetId | null;
 }
 
 export type UndoRedoSkeleton = ProjectHistoryStacks;
@@ -407,6 +418,11 @@ interface AppState {
   readonly projectOriginCoordinateModalOpen: boolean;
   /** Пробел во время перетаскивания проёма: точный ввод смещения вдоль стены (мм). */
   readonly openingAlongMoveNumericModalOpen: boolean;
+  /**
+   * 2D: временно скрыть бейдж активного слоя, пока видна карточка подсказки инструмента
+   * (исключение наложения в левом верхнем углу canvas).
+   */
+  readonly editor2dSuppressActiveLayerBadge: boolean;
   /** 3D: назначение текстур по raycast. */
   readonly textureApply3dToolActive: boolean;
   readonly textureApply3dParamsModal: TextureApply3dParamsModalState | null;
@@ -437,6 +453,8 @@ interface AppActions {
   setViewport3d: (v: Project["viewState"]["viewport3d"]) => void;
   setActiveTab: (tab: EditorTab) => void;
   toggleRightPanel: () => void;
+  openMobileSheet: (id: MobileSheetId) => void;
+  closeMobileSheet: () => void;
   setRightPropertiesCollapsed: (collapsed: boolean) => void;
   setShow3dProfileLayers: (show: boolean) => void;
   setShow2dProfileLayers: (show: boolean) => void;
@@ -477,6 +495,7 @@ interface AppActions {
   moveLayerToStackIndex: (layerId: string, targetSortedIndex: number) => void;
   deleteLayerById: (layerId: string) => void;
   openLayerManager: () => void;
+  setEditor2dSuppressActiveLayerBadge: (suppress: boolean) => void;
   closeLayerManager: () => void;
   openLayerParamsModal: () => void;
   closeLayerParamsModal: () => void;
@@ -921,6 +940,7 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     textureApply3dParamsModal: null,
     editor3dContextMenu: null,
     editor3dContextDeleteEpoch: 0,
+    editor2dSuppressActiveLayerBadge: false,
   };
 }
 
@@ -1156,7 +1176,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     viewport2d: empty.viewState.viewport2d,
     viewport3d: empty.viewState.viewport3d,
     activeTab: empty.viewState.activeTab,
-    uiPanels: { rightPropertiesOpen: true },
+    uiPanels: { rightPropertiesOpen: true, mobileSheet: null },
     layerManagerOpen: false,
     layerParamsModalOpen: false,
     profilesModalOpen: false,
@@ -1233,6 +1253,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     textureApply3dParamsModal: null,
     editor3dContextMenu: null,
     editor3dContextDeleteEpoch: 0,
+    editor2dSuppressActiveLayerBadge: false,
 
     setViewportCanvas2dPx: (width, height) =>
       set({
@@ -1241,6 +1262,8 @@ export const useAppStore = create<AppStore>((set, get) => {
             ? { width, height }
             : null,
       }),
+
+    setEditor2dSuppressActiveLayerBadge: (suppress) => set({ editor2dSuppressActiveLayerBadge: suppress }),
 
     setSelectedEntityIds: (ids) => set({ selectedEntityIds: ids }),
 
@@ -1475,6 +1498,7 @@ export const useAppStore = create<AppStore>((set, get) => {
               : s.foundationPileMoveCopyHistoryBaseline,
         };
         const staticPart: Partial<AppStore> = {
+          uiPanels: { ...s.uiPanels, mobileSheet: null },
           activeTab: tab,
           activeTool:
             tab === "2d"
@@ -1544,6 +1568,16 @@ export const useAppStore = create<AppStore>((set, get) => {
     toggleRightPanel: () =>
       set((s) => ({
         uiPanels: { ...s.uiPanels, rightPropertiesOpen: !s.uiPanels.rightPropertiesOpen },
+      })),
+
+    openMobileSheet: (id) =>
+      set((s) => ({
+        uiPanels: { ...s.uiPanels, mobileSheet: id },
+      })),
+
+    closeMobileSheet: () =>
+      set((s) => ({
+        uiPanels: { ...s.uiPanels, mobileSheet: null },
       })),
 
     setRightPropertiesCollapsed: (collapsed) =>

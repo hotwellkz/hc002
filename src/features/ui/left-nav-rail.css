@@ -93,3 +93,30 @@ html[data-theme="light"] .lnr-btn[data-active="true"] {
   height: 18px;
   display: block;
 }
+
+.lnr-label {
+  display: none;
+}
+
+/* Мобильный bottom sheet: крупные строки с подписью */
+.lnr--mobile-sheet {
+  align-items: stretch;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.lnr--mobile-sheet .lnr-btn {
+  width: 100%;
+  min-height: 48px;
+  justify-content: flex-start;
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
+}
+
+.lnr--mobile-sheet .lnr-label {
+  display: inline;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}

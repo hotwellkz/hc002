@@ -1,92 +1,207 @@
-/** Оценочные размеры overlay (px) для clamp без измерения DOM. */
-const HINT_MAX_W = 300;
-const HINT_MAX_H = 140;
-/** Примерная высота многострочного hint для стыковки coord HUD под/над пузырьком. */
-const HINT_CONTENT_APPROX_H = 68;
-const COORD_HUD_H = 44;
-const PAD = 12;
-const CURSOR_GAP = 20;
+/** Оценочные размеры overlay (px) без измерения DOM. */
+const INSTR_MAX_W = 360;
+const INSTR_SAFE_H = 200;
+const INSTR_PAD = 12;
+const INSTR_PARK_H = 150;
 
-export interface PlacementHudScreenPosition {
-  readonly hintLeft: number;
-  readonly hintTop: number;
-  /** Дублирующий HUD X/Y/D — только если не открыта модалка координат. */
-  readonly coordHudLeft: number | null;
-  readonly coordHudTop: number | null;
+const LIVE_W = 300;
+const LIVE_H = 56;
+const CURSOR_GAP = 18;
+const VIEWPORT_PAD = 8;
+
+export interface EditorOverlayScreenLayout {
+  readonly instruction: { readonly left: number; readonly top: number };
+  /** null, если HUD отключён (модалка координат и т.п.). */
+  readonly liveHud: { readonly left: number; readonly top: number } | null;
+  readonly anyCoordModalOpen: boolean;
 }
 
 /**
- * Позиция floating-подсказки и coord HUD относительно курсора на canvas:
- * квадрантная стратегия (не накрывать курсор и рабочую зону по возможности),
- * clamp в границах canvas, при открытой модалке координат — «парковка» внизу слева и скрытие coord HUD.
+ * Прямоугольник подсказки-инструкции (экранные координаты), чтобы live-HUD не наезжал на карточку.
  */
-export function computePlacementHudScreenPosition(opts: {
+export function getEditorInstructionAvoidanceRect(
+  canvasRect: DOMRect,
+  anyCoordModalOpen: boolean,
+): { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number } {
+  if (anyCoordModalOpen) {
+    const h = INSTR_PARK_H;
+    return {
+      left: canvasRect.left + INSTR_PAD,
+      top: canvasRect.bottom - h - INSTR_PAD,
+      right: canvasRect.left + INSTR_PAD + INSTR_MAX_W,
+      bottom: canvasRect.bottom - INSTR_PAD,
+    };
+  }
+  return {
+    left: canvasRect.left + INSTR_PAD,
+    top: canvasRect.top + INSTR_PAD,
+    right: canvasRect.left + INSTR_PAD + INSTR_MAX_W,
+    bottom: canvasRect.top + INSTR_PAD + INSTR_SAFE_H,
+  };
+}
+
+/**
+ * Основная инструкция: фиксированный угол canvas (верхний левый), не следует за курсором.
+ * При открытой модалке координат — «парковка» внизу слева внутри canvas.
+ */
+export function computeEditorInstructionScreenPosition(opts: {
   readonly canvasRect: DOMRect;
-  readonly cursorCanvasX: number;
-  readonly cursorCanvasY: number;
   readonly wallCoordinateModalOpen: boolean;
-  /** Модалка смещения от опорной точки — та же «парковка» подсказки, что и у координат стены. */
   readonly wallAnchorCoordinateModalOpen?: boolean;
-  /** Модалка координат переноса/копии стены. */
   readonly wallMoveCopyCoordinateModalOpen?: boolean;
-  /** Модалка точного ввода Δ длины (инструмент «Изменение длины»). */
   readonly lengthChangeCoordinateModalOpen?: boolean;
-  readonly showCoordHud: boolean;
-}): PlacementHudScreenPosition {
-  const { canvasRect, cursorCanvasX, cursorCanvasY, wallCoordinateModalOpen, showCoordHud } = opts;
+}): { readonly left: number; readonly top: number } {
   const anyCoordModalOpen =
-    wallCoordinateModalOpen ||
+    opts.wallCoordinateModalOpen ||
     Boolean(opts.wallAnchorCoordinateModalOpen) ||
     Boolean(opts.wallMoveCopyCoordinateModalOpen) ||
     Boolean(opts.lengthChangeCoordinateModalOpen);
 
-  const screenX = canvasRect.left + cursorCanvasX;
-  const screenY = canvasRect.top + cursorCanvasY;
-
+  const r = opts.canvasRect;
   if (anyCoordModalOpen) {
-    const hintLeft = canvasRect.left + PAD;
-    const hintTop = Math.max(canvasRect.top + PAD, canvasRect.bottom - HINT_MAX_H - PAD);
     return {
-      hintLeft,
-      hintTop,
-      coordHudLeft: null,
-      coordHudTop: null,
+      left: r.left + INSTR_PAD,
+      top: Math.max(r.top + INSTR_PAD, r.bottom - INSTR_PARK_H - INSTR_PAD),
     };
   }
-
-  const w = canvasRect.width;
-  const h = canvasRect.height;
-  const preferRight = cursorCanvasX < w * 0.5;
-  const preferBelow = cursorCanvasY < h * 0.5;
-
-  let hintLeft = preferRight ? screenX + CURSOR_GAP : screenX - HINT_MAX_W - CURSOR_GAP;
-  let hintTop = preferBelow ? screenY + CURSOR_GAP : screenY - HINT_MAX_H - CURSOR_GAP;
-
-  hintLeft = clamp(hintLeft, canvasRect.left + PAD, canvasRect.right - HINT_MAX_W - PAD);
-  hintTop = clamp(hintTop, canvasRect.top + PAD, canvasRect.bottom - HINT_MAX_H - PAD);
-
-  let coordHudLeft: number | null = null;
-  let coordHudTop: number | null = null;
-
-  if (showCoordHud) {
-    coordHudLeft = hintLeft;
-    const gap = 6;
-    if (preferBelow) {
-      coordHudTop = hintTop + HINT_CONTENT_APPROX_H + gap;
-    } else {
-      coordHudTop = hintTop - COORD_HUD_H - gap;
-    }
-    coordHudTop = clamp(coordHudTop, canvasRect.top + PAD, canvasRect.bottom - COORD_HUD_H - PAD);
-  }
-
   return {
-    hintLeft,
-    hintTop,
-    coordHudLeft,
-    coordHudTop,
+    left: r.left + INSTR_PAD,
+    top: r.top + INSTR_PAD,
   };
+}
+
+function rectsOverlap(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): boolean {
+  return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
 }
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), max);
+}
+
+/**
+ * Живой числовой HUD: рядом с курсором, с flip по краям viewport и без пересечения с зоной инструкции.
+ */
+export function computeEditorLiveHudScreenPosition(opts: {
+  readonly canvasRect: DOMRect;
+  readonly cursorCanvasX: number;
+  readonly cursorCanvasY: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly showCoordHud: boolean;
+  readonly anyCoordModalOpen: boolean;
+  readonly instructionAvoidRect: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+}): { readonly left: number; readonly top: number } | null {
+  if (!opts.showCoordHud || opts.anyCoordModalOpen) {
+    return null;
+  }
+
+  const { canvasRect, cursorCanvasX, cursorCanvasY, viewportWidth, viewportHeight, instructionAvoidRect } = opts;
+  const cx = canvasRect.left + cursorCanvasX;
+  const cy = canvasRect.top + cursorCanvasY;
+
+  const hudBox = (left: number, top: number) => ({
+    left,
+    top,
+    right: left + LIVE_W,
+    bottom: top + LIVE_H,
+  });
+
+  const candidates: ReadonlyArray<{ readonly left: number; readonly top: number }> = [
+    { left: cx + CURSOR_GAP, top: cy + CURSOR_GAP },
+    { left: cx + CURSOR_GAP, top: cy - LIVE_H - CURSOR_GAP },
+    { left: cx - LIVE_W - CURSOR_GAP, top: cy + CURSOR_GAP },
+    { left: cx - LIVE_W - CURSOR_GAP, top: cy - LIVE_H - CURSOR_GAP },
+    { left: cx + CURSOR_GAP, top: cy - LIVE_H * 0.5 },
+    { left: cx - LIVE_W - CURSOR_GAP, top: cy - LIVE_H * 0.5 },
+  ];
+
+  const viewL = VIEWPORT_PAD;
+  const viewT = VIEWPORT_PAD;
+  const viewR = viewportWidth - VIEWPORT_PAD;
+  const viewB = viewportHeight - VIEWPORT_PAD;
+
+  const fitsViewport = (left: number, top: number) => {
+    const b = hudBox(left, top);
+    return b.left >= viewL && b.top >= viewT && b.right <= viewR && b.bottom <= viewB;
+  };
+
+  const clearInstruction = (left: number, top: number) =>
+    !rectsOverlap(hudBox(left, top), instructionAvoidRect);
+
+  for (const c of candidates) {
+    if (fitsViewport(c.left, c.top) && clearInstruction(c.left, c.top)) {
+      return {
+        left: clamp(c.left, viewL, viewR - LIVE_W),
+        top: clamp(c.top, viewT, viewB - LIVE_H),
+      };
+    }
+  }
+
+  let left = cx + CURSOR_GAP;
+  let top = cy + CURSOR_GAP;
+  left = clamp(left, viewL, viewR - LIVE_W);
+  top = clamp(top, viewT, viewB - LIVE_H);
+
+  if (!clearInstruction(left, top)) {
+    left = instructionAvoidRect.right + 8;
+    top = instructionAvoidRect.top;
+    if (!fitsViewport(left, top)) {
+      left = instructionAvoidRect.left;
+      top = instructionAvoidRect.bottom + 8;
+    }
+    left = clamp(left, viewL, viewR - LIVE_W);
+    top = clamp(top, viewT, viewB - LIVE_H);
+  }
+
+  if (!fitsViewport(left, top)) {
+    left = clamp(cx - LIVE_W * 0.5, viewL, viewR - LIVE_W);
+    top = clamp(cy - LIVE_H - CURSOR_GAP, viewT, viewB - LIVE_H);
+  }
+
+  return { left, top };
+}
+
+export function computeEditorOverlayLayout(opts: {
+  readonly canvasRect: DOMRect;
+  readonly cursorCanvasX: number;
+  readonly cursorCanvasY: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly wallCoordinateModalOpen: boolean;
+  readonly wallAnchorCoordinateModalOpen?: boolean;
+  readonly wallMoveCopyCoordinateModalOpen?: boolean;
+  readonly lengthChangeCoordinateModalOpen?: boolean;
+  readonly showCoordHud: boolean;
+}): EditorOverlayScreenLayout {
+  const anyCoordModalOpen =
+    opts.wallCoordinateModalOpen ||
+    Boolean(opts.wallAnchorCoordinateModalOpen) ||
+    Boolean(opts.wallMoveCopyCoordinateModalOpen) ||
+    Boolean(opts.lengthChangeCoordinateModalOpen);
+
+  const instruction = computeEditorInstructionScreenPosition({
+    canvasRect: opts.canvasRect,
+    wallCoordinateModalOpen: opts.wallCoordinateModalOpen,
+    wallAnchorCoordinateModalOpen: opts.wallAnchorCoordinateModalOpen,
+    wallMoveCopyCoordinateModalOpen: opts.wallMoveCopyCoordinateModalOpen,
+    lengthChangeCoordinateModalOpen: opts.lengthChangeCoordinateModalOpen,
+  });
+
+  const instructionAvoidRect = getEditorInstructionAvoidanceRect(opts.canvasRect, anyCoordModalOpen);
+
+  const liveHud = computeEditorLiveHudScreenPosition({
+    canvasRect: opts.canvasRect,
+    cursorCanvasX: opts.cursorCanvasX,
+    cursorCanvasY: opts.cursorCanvasY,
+    viewportWidth: opts.viewportWidth,
+    viewportHeight: opts.viewportHeight,
+    showCoordHud: opts.showCoordHud,
+    anyCoordModalOpen,
+    instructionAvoidRect,
+  });
+
+  return { instruction, liveHud, anyCoordModalOpen };
 }

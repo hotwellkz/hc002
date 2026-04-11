@@ -37,7 +37,11 @@ import {
 } from "@/shared/editorToolShortcuts/shouldIgnoreEditorToolHotkeys";
 import { isSceneCoordinateModalBlocking } from "@/shared/sceneCoordinateModalLock";
 import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
-import { computePlacementHudScreenPosition } from "./placementHudPosition";
+import { computeEditorOverlayLayout } from "./placementHudPosition";
+import type { EditorInstructionLine } from "./overlays/instructionHintModel";
+import { hintLines } from "./overlays/instructionHintModel";
+import { InstructionOverlay } from "./overlays/InstructionOverlay";
+import { LiveHudBadge } from "./overlays/LiveHudBadge";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { entityIdsForSelectAll2d } from "./editor2dSelectAll";
 import { pickClosestPlanLineAlongPoint } from "./planLinePick2d";
@@ -95,6 +99,7 @@ import {
 } from "./lengthChange2dPixi";
 
 import "./wall-placement-hint.css";
+import "./overlays/editor-overlays.css";
 import "./wall-context-menu.css";
 
 import type { OpeningKind } from "@/core/domain/opening";
@@ -416,11 +421,22 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const cursorCbRef = useRef(onWorldCursorMm);
   cursorCbRef.current = onWorldCursorMm;
 
-  const [wallHint, setWallHint] = useState<{ readonly left: number; readonly top: number; readonly text: string } | null>(
-    null,
-  );
+  const [wallHint, setWallHint] = useState<{
+    readonly left: number;
+    readonly top: number;
+    readonly lines: readonly EditorInstructionLine[];
+    readonly snapLabel?: string | null;
+  } | null>(null);
   const setWallHintRef = useRef(setWallHint);
   setWallHintRef.current = setWallHint;
+
+  const toolInstructionCardVisible = wallHint != null;
+  useEffect(() => {
+    useAppStore.getState().setEditor2dSuppressActiveLayerBadge(toolInstructionCardVisible);
+    return () => {
+      useAppStore.getState().setEditor2dSuppressActiveLayerBadge(false);
+    };
+  }, [toolInstructionCardVisible]);
 
   const [coordHud, setCoordHud] = useState<{
     readonly left: number;
@@ -431,7 +447,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     readonly angleDeg?: number;
     /** Защёлкнутый угол шага 45° — показываем как точное ∠ без дробной части. */
     readonly angleSnapLockedDeg?: number | null;
-    readonly axisHint?: string | null;
+    /** Вторая строка HUD: ось / Δ и длина / прочее. */
+    readonly secondLine?: string | null;
   } | null>(null);
   const setCoordHudRef = useRef(setCoordHud);
   setCoordHudRef.current = setCoordHud;
@@ -998,7 +1015,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     setWallHint({
       left: 12,
       top: 56,
-      text: "База плана (0,0): клик — новая точка · Пробел — ввод XY (мир) · Esc — выход",
+      lines: hintLines("База плана (0,0)", [
+        { text: "Клик — новая точка · Пробел — ввод XY (мир) · Esc — выход", variant: "muted" },
+      ]),
     });
     return () => setWallHint(null);
   }, [projectOriginMoveToolActive]);
@@ -3098,6 +3117,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           setCoordHudRef.current(null);
         } else {
           const rect = canvas.getBoundingClientRect();
+          const viewportW = typeof window !== "undefined" ? window.innerWidth : 1280;
+          const viewportH = typeof window !== "undefined" ? window.innerHeight : 720;
           if (useAppStore.getState().openingMoveModeActive) {
             const hit = moveDimHitsRef.current.find(
               (h0) =>
@@ -3119,10 +3140,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const tol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
             const openingId = pendWinMv?.openingId ?? pendDoorMv!.openingId;
             const op = currentProject.openings.find((o) => o.id === openingId);
-            const hudWin = computePlacementHudScreenPosition({
+            const layWin = computeEditorOverlayLayout({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
               wallCoordinateModalOpen: false,
               showCoordHud: false,
             });
@@ -3133,9 +3156,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             ) {
               useAppStore.getState().updatePendingDoorSwingAtWorld(p);
               setWallHintRef.current({
-                left: hudWin.hintLeft,
-                top: hudWin.hintTop,
-                text: "Установка двери\nНаправление открывания — положение курсора относительно стены\nЛКМ — зафиксировать · Esc / ПКМ — отмена",
+                left: layWin.instruction.left,
+                top: layWin.instruction.top,
+                lines: hintLines("Установка двери", [
+                  { text: "Направление открывания — положение курсора относительно стены" },
+                  { text: "ЛКМ — зафиксировать · Esc / ПКМ — отмена", variant: "muted" },
+                ]),
               });
             } else if (op) {
               const hit = pickClosestWallAlongPoint(p, walls, tol);
@@ -3166,16 +3192,20 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                         : "ЛКМ — установить · Esc / ПКМ — отмена"
                       : v.reason;
                   setWallHintRef.current({
-                    left: hudWin.hintLeft,
-                    top: hudWin.hintTop,
-                    text: `${op.kind === "door" ? "Установка двери" : "Установка окна"}\n${hintExtra}`,
+                    left: layWin.instruction.left,
+                    top: layWin.instruction.top,
+                    lines: hintLines(op.kind === "door" ? "Установка двери" : "Установка окна", [
+                      { text: hintExtra, variant: v.ok ? "secondary" : "secondary" },
+                    ]),
                   });
                 }
               } else {
                 setWallHintRef.current({
-                  left: hudWin.hintLeft,
-                  top: hudWin.hintTop,
-                  text: "Установка проёма\nНаведите курсор на стену активного слоя",
+                  left: layWin.instruction.left,
+                  top: layWin.instruction.top,
+                  lines: hintLines("Установка проёма", [
+                    { text: "Наведите курсор на стену активного слоя" },
+                  ]),
                 });
               }
             }
@@ -3185,14 +3215,6 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const storeLc = useAppStore.getState();
             const lenSess = storeLc.lengthChange2dSession;
             const lenModal = storeLc.lengthChangeCoordinateModalOpen;
-            const hudLc = computePlacementHudScreenPosition({
-              canvasRect: rect,
-              cursorCanvasX: ev.global.x,
-              cursorCanvasY: ev.global.y,
-              wallCoordinateModalOpen: false,
-              lengthChangeCoordinateModalOpen: lenModal,
-              showCoordHud: false,
-            });
             const layerLc = narrowProjectToActiveLayer(currentProject);
             const endTol = Math.max(14, 22 / viewport2d.zoomPixelsPerMm);
             if (lenSess && !lenModal) {
@@ -3204,7 +3226,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const Lnow = dx * s2.axisUx + dy * s2.axisUy;
               const dMm = Math.round(Lnow - s2.initialLengthMm);
               const Lround = Math.round(Lnow);
-              let snapLine = "";
+              let snapLine: string | null = null;
               if (s2.lastSnapKind && s2.lastSnapKind !== "none") {
                 snapLine =
                   s2.lastSnapKind === "vertex"
@@ -3213,17 +3235,63 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: линия"
                       : "Привязка: сетка";
               }
-              const errLine = useAppStore.getState().lastError ? `\n${useAppStore.getState().lastError}` : "";
-              const shiftLen = s2.shiftDirectionLockUnit
-                ? `${s2.shiftLockReferenceMm ? "\nShift: длина по опорной точке (проекция на ось)" : "\nНаправление зафиксировано (Shift)"}\nAlt — временно без усиленной привязки`
-                : "\nShift — зафиксировать ось и дотянуть по привязке";
-              setWallHintRef.current({
-                left: hudLc.hintLeft,
-                top: hudLc.hintTop,
-                text: `Изменение длины\nΔ = ${dMm >= 0 ? "+" : ""}${dMm} мм\nНовая длина = ${Lround} мм\nЛКМ — применить · Esc — отмена · Пробел — Δ (мм)${snapLine ? `\n${snapLine}` : ""}${shiftLen}${errLine}`,
+              const errText = useAppStore.getState().lastError;
+              const shiftLines: { text: string; variant: "muted" }[] = [];
+              if (s2.shiftDirectionLockUnit) {
+                shiftLines.push({
+                  text: s2.shiftLockReferenceMm
+                    ? "Shift: длина по опорной точке (проекция на ось)"
+                    : "Направление зафиксировано (Shift)",
+                  variant: "muted",
+                });
+                shiftLines.push({ text: "Alt — временно без усиленной привязки", variant: "muted" });
+              } else {
+                shiftLines.push({ text: "Shift — зафиксировать ось и дотянуть по привязке", variant: "muted" });
+              }
+              const layLc = computeEditorOverlayLayout({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
+                wallCoordinateModalOpen: false,
+                lengthChangeCoordinateModalOpen: lenModal,
+                showCoordHud: true,
               });
+              setWallHintRef.current({
+                left: layLc.instruction.left,
+                top: layLc.instruction.top,
+                snapLabel: snapLine,
+                lines: hintLines("Изменение длины", [
+                  { text: "ЛКМ — применить · Esc — отмена · Пробел — Δ (мм)" },
+                  ...(errText ? [{ text: errText, variant: "muted" as const }] : []),
+                  ...shiftLines,
+                ]),
+              });
+              if (layLc.liveHud) {
+                setCoordHudRef.current({
+                  left: layLc.liveHud.left,
+                  top: layLc.liveHud.top,
+                  dx,
+                  dy,
+                  d: Math.round(Math.hypot(dx, dy)),
+                  secondLine: `Δ ${dMm >= 0 ? "+" : ""}${dMm} мм · L ${Lround} мм`,
+                });
+              } else {
+                setCoordHudRef.current(null);
+              }
               lengthChangeHoverRef.current = null;
             } else if (!lenModal) {
+              const layLcPick = computeEditorOverlayLayout({
+                canvasRect: rect,
+                cursorCanvasX: ev.global.x,
+                cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
+                wallCoordinateModalOpen: false,
+                lengthChangeCoordinateModalOpen: lenModal,
+                showCoordHud: false,
+              });
               const hitEnd = pickNearestLinearProfileLengthEnd(
                 p,
                 currentProject,
@@ -3242,21 +3310,26 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                   }
                 : null;
               setWallHintRef.current({
-                left: hudLc.hintLeft,
-                top: hudLc.hintTop,
-                text: "Выберите сторону",
+                left: layLcPick.instruction.left,
+                top: layLcPick.instruction.top,
+                lines: hintLines("Выберите сторону", []),
               });
+              setCoordHudRef.current(null);
+            } else {
+              setWallHintRef.current(null);
+              setCoordHudRef.current(null);
             }
-            setCoordHudRef.current(null);
             paint();
           } else if (activeTool === "ruler" && ruler2dSession) {
             const rs = ruler2dSession;
-            const hudRm = computePlacementHudScreenPosition({
+            const layRm = computeEditorOverlayLayout({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
               wallCoordinateModalOpen: false,
-              showCoordHud: false,
+              showCoordHud: rs.phase === "stretching" && rs.firstMm != null,
             });
             if (rs.phase === "stretching" && rs.firstMm) {
               const altKey = Boolean((ev as { altKey?: boolean }).altKey);
@@ -3265,46 +3338,77 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const end = rs2?.previewEndMm;
               const first = rs2?.firstMm;
               if (end && first) {
-                const dx = Math.round(end.x - first.x);
-                const dy = Math.round(end.y - first.y);
-                const d = Math.round(Math.hypot(dx, dy));
-                const sh = rs2?.shiftDirectionLockUnit
-                  ? rs2.shiftLockReferenceMm
-                    ? "\nУгол по Shift · длина по опорной точке"
-                    : "\nУгол зафиксирован (Shift)"
-                  : "\nShift — зафиксировать направление";
+                const dx = end.x - first.x;
+                const dy = end.y - first.y;
+                const d = Math.hypot(dx, dy);
+                const relR = computeAnchorRelativeHud(first.x, first.y, end.x, end.y);
+                const lockedR = rs2?.angleSnapLockedDeg ?? null;
+                const shiftUR = rs2?.shiftDirectionLockUnit;
+                const angleShiftDegR =
+                  shiftUR != null
+                    ? normalizeAngleDeg360((Math.atan2(shiftUR.y, shiftUR.x) * 180) / Math.PI)
+                    : null;
+                const sh =
+                  rs2?.shiftDirectionLockUnit != null
+                    ? rs2.shiftLockReferenceMm
+                      ? "Угол по Shift · длина по опорной точке"
+                      : "Угол зафиксирован (Shift)"
+                    : "Shift — зафиксировать направление";
                 setWallHintRef.current({
-                  left: hudRm.hintLeft,
-                  top: hudRm.hintTop,
-                  text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nAlt — без угловой привязки${sh}`,
+                  left: layRm.instruction.left,
+                  top: layRm.instruction.top,
+                  lines: hintLines("Линейка", [
+                    { text: sh, variant: "muted" },
+                    { text: "Alt — без угловой привязки", variant: "muted" },
+                  ]),
                 });
+                if (layRm.liveHud) {
+                  setCoordHudRef.current({
+                    left: layRm.liveHud.left,
+                    top: layRm.liveHud.top,
+                    dx,
+                    dy,
+                    d,
+                    angleDeg: angleShiftDegR != null ? angleShiftDegR : lockedR != null ? lockedR : relR.angleDeg,
+                    angleSnapLockedDeg: lockedR,
+                    secondLine: relR.axisHint,
+                  });
+                } else {
+                  setCoordHudRef.current(null);
+                }
               }
             } else if (rs.phase === "pickFirst") {
               setWallHintRef.current({
-                left: hudRm.hintLeft,
-                top: hudRm.hintTop,
-                text: "Линейка\nВыберите первую точку",
+                left: layRm.instruction.left,
+                top: layRm.instruction.top,
+                lines: hintLines("Линейка", [{ text: "Выберите первую точку" }]),
               });
+              setCoordHudRef.current(null);
             } else if (rs.phase === "done" && rs.firstMm && rs.secondMm) {
               const dx = Math.round(rs.secondMm.x - rs.firstMm.x);
               const dy = Math.round(rs.secondMm.y - rs.firstMm.y);
               const d = Math.round(Math.hypot(dx, dy));
               setWallHintRef.current({
-                left: hudRm.hintLeft,
-                top: hudRm.hintTop,
-                text: `Линейка\nX = ${dx}, Y = ${dy}, D = ${d}\nЛКМ — новый замер · Esc — сброс`,
+                left: layRm.instruction.left,
+                top: layRm.instruction.top,
+                lines: hintLines("Линейка", [
+                  { text: `X = ${dx} · Y = ${dy} · D = ${d}` },
+                  { text: "ЛКМ — новый замер · Esc — сброс", variant: "muted" },
+                ]),
               });
+              setCoordHudRef.current(null);
             }
-            setCoordHudRef.current(null);
             paint();
           } else if (activeTool === "line" && line2dSession) {
             const ls = line2dSession;
-            const hudLn = computePlacementHudScreenPosition({
+            const layLn = computeEditorOverlayLayout({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
               wallCoordinateModalOpen: false,
-              showCoordHud: false,
+              showCoordHud: ls.phase === "stretching" && ls.firstMm != null,
             });
             if (ls.phase === "stretching" && ls.firstMm) {
               const altKeyLn = Boolean((ev as { altKey?: boolean }).altKey);
@@ -3313,38 +3417,66 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const endLn = ls2?.previewEndMm;
               const firstLn = ls2?.firstMm;
               if (endLn && firstLn) {
-                const dx = Math.round(endLn.x - firstLn.x);
-                const dy = Math.round(endLn.y - firstLn.y);
-                const d = Math.round(Math.hypot(dx, dy));
-                let snapLineLn = "";
+                const dx = endLn.x - firstLn.x;
+                const dy = endLn.y - firstLn.y;
+                const d = Math.hypot(dx, dy);
+                let snapLineLn: string | null = null;
                 if (ls2?.lastSnapKind && ls2.lastSnapKind !== "none") {
                   snapLineLn =
                     ls2.lastSnapKind === "vertex"
-                      ? "\nПривязка: угол"
+                      ? "Привязка: угол"
                       : ls2.lastSnapKind === "edge"
-                        ? "\nПривязка: линия"
-                        : "\nПривязка: сетка";
+                        ? "Привязка: линия"
+                        : "Привязка: сетка";
                 }
-                const shLn = ls2?.shiftDirectionLockUnit
-                  ? ls2.shiftLockReferenceMm
-                    ? "\nShift: проекция на зафиксированное направление"
-                    : "\nНаправление зафиксировано (Shift)"
-                  : "\nShift — зафиксировать направление";
-                const errLn = useAppStore.getState().lastError ? `\n${useAppStore.getState().lastError}` : "";
+                const shLn =
+                  ls2?.shiftDirectionLockUnit != null
+                    ? ls2.shiftLockReferenceMm
+                      ? "Shift: проекция на зафиксированное направление"
+                      : "Направление зафиксировано (Shift)"
+                    : "Shift — зафиксировать направление";
+                const errLn = useAppStore.getState().lastError;
+                const relLn = computeAnchorRelativeHud(firstLn.x, firstLn.y, endLn.x, endLn.y);
+                const lockedLn = ls2?.angleSnapLockedDeg ?? null;
+                const shiftULn = ls2?.shiftDirectionLockUnit;
+                const angleShiftDegLn =
+                  shiftULn != null
+                    ? normalizeAngleDeg360((Math.atan2(shiftULn.y, shiftULn.x) * 180) / Math.PI)
+                    : null;
                 setWallHintRef.current({
-                  left: hudLn.hintLeft,
-                  top: hudLn.hintTop,
-                  text: `Линия\nX = ${dx}, Y = ${dy}, D = ${d} мм\nЛКМ — зафиксировать конец · Esc — отмена${snapLineLn}\nAlt — без угловой привязки${shLn}${errLn}`,
+                  left: layLn.instruction.left,
+                  top: layLn.instruction.top,
+                  snapLabel: snapLineLn,
+                  lines: hintLines("Линия", [
+                    { text: "ЛКМ — зафиксировать конец · Esc — отмена" },
+                    ...(errLn ? [{ text: errLn, variant: "muted" as const }] : []),
+                    { text: "Alt — без угловой привязки", variant: "muted" },
+                    { text: shLn, variant: "muted" },
+                  ]),
                 });
+                if (layLn.liveHud) {
+                  setCoordHudRef.current({
+                    left: layLn.liveHud.left,
+                    top: layLn.liveHud.top,
+                    dx,
+                    dy,
+                    d,
+                    angleDeg: angleShiftDegLn != null ? angleShiftDegLn : lockedLn != null ? lockedLn : relLn.angleDeg,
+                    angleSnapLockedDeg: lockedLn,
+                    secondLine: relLn.axisHint,
+                  });
+                } else {
+                  setCoordHudRef.current(null);
+                }
               }
             } else if (ls.phase === "pickFirst") {
               setWallHintRef.current({
-                left: hudLn.hintLeft,
-                top: hudLn.hintTop,
-                text: "Линия\nПервая точка — ЛКМ",
+                left: layLn.instruction.left,
+                top: layLn.instruction.top,
+                lines: hintLines("Линия", [{ text: "Первая точка — ЛКМ" }]),
               });
+              setCoordHudRef.current(null);
             }
-            setCoordHudRef.current(null);
             paint();
           } else if (wallPlacementSession) {
             const stWall = useAppStore.getState();
@@ -3361,7 +3493,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const altKey = Boolean((ev as { altKey?: boolean }).altKey);
               useAppStore.getState().wallPlacementPreviewMove(p, t, { altKey });
               const ws = useAppStore.getState().wallPlacementSession;
-              let snapLine = "";
+              let snapLine: string | null = null;
               if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
                 snapLine =
                   ws.lastSnapKind === "vertex"
@@ -3370,25 +3502,32 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: линия"
                       : "Привязка: сетка";
               }
-              const hud = computePlacementHudScreenPosition({
+              const layWall = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen,
                 wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
                 showCoordHud: !coordModalAny,
               });
               const shiftHint = ws?.shiftDirectionLockUnit
                 ? ws.shiftLockReferenceMm
-                  ? "\nУгол по Shift · длина по опорной точке (проекция)"
-                  : "\nУгол зафиксирован (Shift) — отпустите для свободного режима"
-                : "\nShift — зафиксировать направление";
+                  ? "Угол по Shift · длина по опорной точке (проекция)"
+                  : "Угол зафиксирован (Shift) — отпустите для свободного режима"
+                : "Shift — зафиксировать направление";
               setWallHintRef.current({
-                left: hud.hintLeft,
-                top: hud.hintTop,
-                text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки${shiftHint}`,
+                left: layWall.instruction.left,
+                top: layWall.instruction.top,
+                snapLabel: snapLine,
+                lines: hintLines(wallPlacementHintMessage(wallPlacementSession.phase), [
+                  { text: modeLabel },
+                  { text: "Alt — без угловой привязки", variant: "muted" },
+                  { text: shiftHint, variant: "muted" },
+                ]),
               });
-              if (ws?.firstPointMm && ws.previewEndMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
+              if (ws?.firstPointMm && ws.previewEndMm && layWall.liveHud) {
                 const dx = ws.previewEndMm.x - ws.firstPointMm.x;
                 const dy = ws.previewEndMm.y - ws.firstPointMm.y;
                 const d = Math.hypot(dx, dy);
@@ -3405,14 +3544,14 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                     ? normalizeAngleDeg360((Math.atan2(shiftU.y, shiftU.x) * 180) / Math.PI)
                     : null;
                 setCoordHudRef.current({
-                  left: hud.coordHudLeft,
-                  top: hud.coordHudTop,
+                  left: layWall.liveHud.left,
+                  top: layWall.liveHud.top,
                   dx,
                   dy,
                   d,
                   angleDeg: angleShiftDeg != null ? angleShiftDeg : locked != null ? locked : rel2.angleDeg,
                   angleSnapLockedDeg: locked,
-                  axisHint: rel2.axisHint,
+                  secondLine: rel2.axisHint,
                 });
               } else {
                 setCoordHudRef.current(null);
@@ -3428,10 +3567,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const stA = useAppStore.getState();
               const am = stA.wallPlacementAnchorMm;
               const ap = stA.wallPlacementAnchorPreviewEndMm;
-              const hudA = computePlacementHudScreenPosition({
+              const layA = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen,
                 wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
                 showCoordHud: !coordModalAny && Boolean(am && ap),
@@ -3457,25 +3598,29 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const hintTitle = am
                 ? "Укажите начало стены (ЛКМ) или Пробел — координаты"
                 : "Выберите первую точку";
-              const altHint = am ? "\nAlt — без угловой привязки" : "";
               const snapLineAnchor = snapA || snapPickAnchor;
               setWallHintRef.current({
-                left: hudA.hintLeft,
-                top: hudA.hintTop,
-                text: `Точка привязки\n${hintTitle}\n${modeLabel}${snapLineAnchor ? `\n${snapLineAnchor}` : ""}${altHint}`,
+                left: layA.instruction.left,
+                top: layA.instruction.top,
+                snapLabel: snapLineAnchor || null,
+                lines: hintLines("Точка привязки", [
+                  { text: hintTitle },
+                  { text: modeLabel },
+                  ...(am ? [{ text: "Alt — без угловой привязки", variant: "muted" as const }] : []),
+                ]),
               });
-              if (am && ap && hudA.coordHudLeft != null && hudA.coordHudTop != null) {
+              if (am && ap && layA.liveHud) {
                 const rel = computeAnchorRelativeHud(am.x, am.y, ap.x, ap.y);
                 const lockedA = stA.wallPlacementAnchorAngleSnapLockedDeg ?? null;
                 setCoordHudRef.current({
-                  left: hudA.coordHudLeft,
-                  top: hudA.coordHudTop,
+                  left: layA.liveHud.left,
+                  top: layA.liveHud.top,
                   dx: rel.dx,
                   dy: rel.dy,
                   d: rel.d,
                   angleDeg: lockedA != null ? lockedA : rel.angleDeg,
                   angleSnapLockedDeg: lockedA,
-                  axisHint: rel.axisHint,
+                  secondLine: rel.axisHint,
                 });
               } else {
                 setCoordHudRef.current(null);
@@ -3494,18 +3639,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: линия"
                       : "Привязка: сетка";
               }
-              const hud = computePlacementHudScreenPosition({
+              const layWall0 = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen,
                 wallAnchorCoordinateModalOpen: wallAnchorCoordOpen,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hud.hintLeft,
-                top: hud.hintTop,
-                text: `${wallPlacementHintMessage(wallPlacementSession.phase)}\n${modeLabel}${snapLineFirst ? `\n${snapLineFirst}` : ""}`,
+                left: layWall0.instruction.left,
+                top: layWall0.instruction.top,
+                snapLabel: snapLineFirst || null,
+                lines: hintLines(wallPlacementHintMessage(wallPlacementSession.phase), [{ text: modeLabel }]),
               });
               setCoordHudRef.current(null);
             }
@@ -3515,7 +3663,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const altKeyFb = Boolean((ev as { altKey?: boolean }).altKey);
               useAppStore.getState().floorBeamPlacementPreviewMove(p, t, { altKey: altKeyFb });
               const fbsM = useAppStore.getState().floorBeamPlacementSession;
-              let snapLineFb = "";
+              let snapLineFb: string | null = null;
               if (fbsM?.lastSnapKind && fbsM.lastSnapKind !== "none") {
                 snapLineFb =
                   fbsM.lastSnapKind === "vertex"
@@ -3524,24 +3672,31 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: линия"
                       : "Привязка: сетка";
               }
-              const hudFb = computePlacementHudScreenPosition({
+              const layFb = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: true,
               });
               const shiftHintFb = fbsM?.shiftDirectionLockUnit
                 ? fbsM.shiftLockReferenceMm
-                  ? "\nУгол по Shift · длина по опорной точке (проекция)"
-                  : "\nУгол зафиксирован (Shift) — отпустите для свободного режима"
-                : "\nShift — зафиксировать направление";
+                  ? "Угол по Shift · длина по опорной точке (проекция)"
+                  : "Угол зафиксирован (Shift) — отпустите для свободного режима"
+                : "Shift — зафиксировать направление";
               setWallHintRef.current({
-                left: hudFb.hintLeft,
-                top: hudFb.hintTop,
-                text: `Балка перекрытия · ${floorBeamPlacementHintMessage(floorBeamPlacementSession.phase)}\n${modeLabelFb}${snapLineFb ? `\n${snapLineFb}` : ""}\nAlt — без угловой привязки${shiftHintFb}`,
+                left: layFb.instruction.left,
+                top: layFb.instruction.top,
+                snapLabel: snapLineFb,
+                lines: hintLines(`Балка перекрытия · ${floorBeamPlacementHintMessage(floorBeamPlacementSession.phase)}`, [
+                  { text: modeLabelFb },
+                  { text: "Alt — без угловой привязки", variant: "muted" },
+                  { text: shiftHintFb, variant: "muted" },
+                ]),
               });
-              if (fbsM?.firstPointMm && fbsM.previewEndMm && hudFb.coordHudLeft != null && hudFb.coordHudTop != null) {
+              if (fbsM?.firstPointMm && fbsM.previewEndMm && layFb.liveHud) {
                 const dxFb = fbsM.previewEndMm.x - fbsM.firstPointMm.x;
                 const dyFb = fbsM.previewEndMm.y - fbsM.firstPointMm.y;
                 const dFb = Math.hypot(dxFb, dyFb);
@@ -3558,15 +3713,15 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                     ? normalizeAngleDeg360((Math.atan2(shiftUFb.y, shiftUFb.x) * 180) / Math.PI)
                     : null;
                 setCoordHudRef.current({
-                  left: hudFb.coordHudLeft,
-                  top: hudFb.coordHudTop,
+                  left: layFb.liveHud.left,
+                  top: layFb.liveHud.top,
                   dx: dxFb,
                   dy: dyFb,
                   d: dFb,
                   angleDeg:
                     angleShiftDegFb != null ? angleShiftDegFb : lockedFb != null ? lockedFb : relFb.angleDeg,
                   angleSnapLockedDeg: lockedFb,
-                  axisHint: relFb.axisHint,
+                  secondLine: relFb.axisHint,
                 });
               } else {
                 setCoordHudRef.current(null);
@@ -3574,7 +3729,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             } else {
               useAppStore.getState().floorBeamPlacementFirstPointHoverMove(p, t);
               const fbsH = useAppStore.getState().floorBeamPlacementSession;
-              let snapLineFirstFb = "";
+              let snapLineFirstFb: string | null = null;
               if (fbsH?.lastSnapKind && fbsH.lastSnapKind !== "none") {
                 snapLineFirstFb =
                   fbsH.lastSnapKind === "vertex"
@@ -3583,17 +3738,22 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: линия"
                       : "Привязка: сетка";
               }
-              const hudFb0 = computePlacementHudScreenPosition({
+              const layFb0 = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudFb0.hintLeft,
-                top: hudFb0.hintTop,
-                text: `Балка перекрытия · ${floorBeamPlacementHintMessage(floorBeamPlacementSession.phase)}\n${modeLabelFb}${snapLineFirstFb ? `\n${snapLineFirstFb}` : ""}`,
+                left: layFb0.instruction.left,
+                top: layFb0.instruction.top,
+                snapLabel: snapLineFirstFb,
+                lines: hintLines(`Балка перекрытия · ${floorBeamPlacementHintMessage(floorBeamPlacementSession.phase)}`, [
+                  { text: modeLabelFb },
+                ]),
               });
               setCoordHudRef.current(null);
             }
@@ -3602,14 +3762,14 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             if (fsS) {
               useAppStore.getState().foundationStripPlacementPreviewMove(p, t);
               const fs2 = useAppStore.getState().foundationStripPlacementSession;
-              let snapFs = "";
+              let snapFs: string | null = null;
               if (fs2?.lastSnapKind && fs2.lastSnapKind !== "none") {
                 snapFs =
                   fs2.lastSnapKind === "vertex"
-                    ? "\nПривязка: угол"
+                    ? "Привязка: угол"
                     : fs2.lastSnapKind === "edge"
-                      ? "\nПривязка: линия стены"
-                      : "\nПривязка: сетка";
+                      ? "Привязка: линия стены"
+                      : "Привязка: сетка";
               }
               const titleFs =
                 fs2?.draft.buildMode === "rectangle"
@@ -3619,17 +3779,23 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                 fs2?.phase === "waitingSecondPoint"
                   ? "Вторая точка — ЛКМ · ПКМ / Esc — шаг назад"
                   : "Первая точка — ЛКМ";
-              const hudFs = computePlacementHudScreenPosition({
+              const layFs = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudFs.hintLeft,
-                top: hudFs.hintTop,
-                text: `${titleFs}\n${phaseFs}${snapFs}\nПКМ / Esc — отмена или выход`,
+                left: layFs.instruction.left,
+                top: layFs.instruction.top,
+                snapLabel: snapFs,
+                lines: hintLines(titleFs, [
+                  { text: phaseFs },
+                  { text: "ПКМ / Esc — отмена или выход", variant: "muted" },
+                ]),
               });
             }
             setCoordHudRef.current(null);
@@ -3639,26 +3805,32 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             if (fpS) {
               useAppStore.getState().foundationPilePlacementPreviewMove(p, t);
               const fp2 = useAppStore.getState().foundationPilePlacementSession;
-              let snapPile = "";
+              let snapPile: string | null = null;
               if (fp2?.lastSnapKind && fp2.lastSnapKind !== "none") {
                 snapPile =
                   fp2.lastSnapKind === "vertex"
-                    ? "\nПривязка: угол"
+                    ? "Привязка: угол"
                     : fp2.lastSnapKind === "edge"
-                      ? "\nПривязка: линия"
-                      : "\nПривязка: сетка";
+                      ? "Привязка: линия"
+                      : "Привязка: сетка";
               }
-              const hudPile = computePlacementHudScreenPosition({
+              const layPilePl = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudPile.hintLeft,
-                top: hudPile.hintTop,
-                text: `Установка сваи\nВыберите место · ЛКМ — поставить${snapPile}\nПКМ / Esc — выход`,
+                left: layPilePl.instruction.left,
+                top: layPilePl.instruction.top,
+                snapLabel: snapPile,
+                lines: hintLines("Установка сваи", [
+                  { text: "Выберите место · ЛКМ — поставить" },
+                  { text: "ПКМ / Esc — выход", variant: "muted" },
+                ]),
               });
             }
             setCoordHudRef.current(null);
@@ -3669,14 +3841,14 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               useAppStore.getState().slabPlacementPreviewMove(p, t);
             }
             const slab2 = useAppStore.getState().slabPlacementSession;
-            let snapSlab = "";
+            let snapSlab: string | null = null;
             if (slab2?.lastSnapKind && slab2.lastSnapKind !== "none") {
               snapSlab =
                 slab2.lastSnapKind === "vertex"
-                  ? "\nПривязка: угол"
+                  ? "Привязка: угол"
                   : slab2.lastSnapKind === "edge"
-                    ? "\nПривязка: линия"
-                    : "\nПривязка: сетка";
+                    ? "Привязка: линия"
+                    : "Привязка: сетка";
             }
             const titleSlab =
               slab2?.buildMode === "rectangle" ? "Плита · прямоугольник" : "Плита · полилиния";
@@ -3689,17 +3861,23 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                   : polyLen >= 3
                     ? "ЛКМ — вершина · клик по первой точке / двойной клик / Enter — замкнуть · Пробел — координаты"
                     : "ЛКМ — следующая вершина · Пробел — координаты · ПКМ / Esc — шаг назад";
-            const hudSlab = computePlacementHudScreenPosition({
+            const laySlab = computeEditorOverlayLayout({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
               wallCoordinateModalOpen: false,
               showCoordHud: false,
             });
             setWallHintRef.current({
-              left: hudSlab.hintLeft,
-              top: hudSlab.hintTop,
-              text: `${titleSlab}\n${phaseSlab}${snapSlab}\nПКМ / Esc — отмена или выход`,
+              left: laySlab.instruction.left,
+              top: laySlab.instruction.top,
+              snapLabel: snapSlab,
+              lines: hintLines(titleSlab, [
+                { text: phaseSlab },
+                { text: "ПКМ / Esc — отмена или выход", variant: "muted" },
+              ]),
             });
             setCoordHudRef.current(null);
             paint();
@@ -3713,7 +3891,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             }
             const ec2 = useAppStore.getState().entityCopySession;
             if (ec2?.phase === "pickTarget" && ec2.worldAnchorStart) {
-              let snapEc = "";
+              let snapEc: string | null = null;
               if (ec2?.lastSnapKind && ec2.lastSnapKind !== "none") {
                 snapEc =
                   ec2.lastSnapKind === "vertex"
@@ -3722,30 +3900,35 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       ? "Привязка: середина ребра"
                       : "Привязка: сетка";
               }
-              const hudEc = computePlacementHudScreenPosition({
+              const layEc = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: true,
               });
               const shiftEc =
                 ec2?.shiftDirectionLockUnit != null
                   ? ec2.shiftLockReferenceMm
-                    ? "\nУгол по Shift · длина по опорной точке"
-                    : "\nУгол зафиксирован (Shift)"
-                  : "\nShift — зафиксировать направление";
+                    ? "Угол по Shift · длина по опорной точке"
+                    : "Угол зафиксирован (Shift)"
+                  : "Shift — зафиксировать направление";
               setWallHintRef.current({
-                left: hudEc.hintLeft,
-                top: hudEc.hintTop,
-                text: `${titleEc}\nУкажите точку вставки\nЛКМ — вставить (затем параметры копий)\nAlt — без привязки${snapEc ? `\n${snapEc}` : ""}\n${modeLabelEc}${shiftEc}\nEsc / ПКМ — отмена`,
+                left: layEc.instruction.left,
+                top: layEc.instruction.top,
+                snapLabel: snapEc,
+                lines: hintLines(titleEc, [
+                  { text: "Укажите точку вставки" },
+                  { text: "ЛКМ — вставить (затем параметры копий)" },
+                  { text: modeLabelEc },
+                  { text: "Alt — без привязки", variant: "muted" },
+                  { text: shiftEc, variant: "muted" },
+                  { text: "Esc / ПКМ — отмена", variant: "muted" },
+                ]),
               });
-              if (
-                ec2?.worldAnchorStart &&
-                ec2.previewTargetWorldMm &&
-                hudEc.coordHudLeft != null &&
-                hudEc.coordHudTop != null
-              ) {
+              if (ec2?.worldAnchorStart && ec2.previewTargetWorldMm && layEc.liveHud) {
                 const dxEc = ec2.previewTargetWorldMm.x - ec2.worldAnchorStart.x;
                 const dyEc = ec2.previewTargetWorldMm.y - ec2.worldAnchorStart.y;
                 const dEc = Math.hypot(dxEc, dyEc);
@@ -3762,30 +3945,37 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                     ? normalizeAngleDeg360((Math.atan2(sUEc.y, sUEc.x) * 180) / Math.PI)
                     : null;
                 setCoordHudRef.current({
-                  left: hudEc.coordHudLeft,
-                  top: hudEc.coordHudTop,
+                  left: layEc.liveHud.left,
+                  top: layEc.liveHud.top,
                   dx: dxEc,
                   dy: dyEc,
                   d: dEc,
                   angleDeg: angEc != null ? angEc : lockedEc != null ? lockedEc : relEc.angleDeg,
                   angleSnapLockedDeg: lockedEc,
-                  axisHint: relEc.axisHint,
+                  secondLine: relEc.axisHint,
                 });
               } else {
                 setCoordHudRef.current(null);
               }
             } else {
-              const hudEcB = computePlacementHudScreenPosition({
+              const layEcB = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudEcB.hintLeft,
-                top: hudEcB.hintTop,
-                text: `${titleEc}\nВыберите точку привязки на объекте\nЛКМ — выбрать\nAlt — без привязки\nEsc / ПКМ — отмена`,
+                left: layEcB.instruction.left,
+                top: layEcB.instruction.top,
+                lines: hintLines(titleEc, [
+                  { text: "Выберите точку привязки на объекте" },
+                  { text: "ЛКМ — выбрать" },
+                  { text: "Alt — без привязки", variant: "muted" },
+                  { text: "Esc / ПКМ — отмена", variant: "muted" },
+                ]),
               });
               setCoordHudRef.current(null);
             }
@@ -3796,57 +3986,68 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             if (fpM0?.phase === "pickTarget") {
               useAppStore.getState().foundationPileMoveCopyPreviewMove(p, t);
               const fpM2 = useAppStore.getState().foundationPileMoveCopySession;
-              let snapP = "";
+              let snapP: string | null = null;
               if (fpM2?.lastSnapKind && fpM2.lastSnapKind !== "none") {
                 snapP =
                   fpM2.lastSnapKind === "vertex"
-                    ? "\nПривязка: угол / узел"
+                    ? "Привязка: угол / узел"
                     : fpM2.lastSnapKind === "edge"
-                      ? "\nПривязка: кромка"
-                      : "\nПривязка: сетка";
+                      ? "Привязка: кромка"
+                      : "Привязка: сетка";
               }
-              const hudP = computePlacementHudScreenPosition({
+              const layPileMv = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
-                showCoordHud: false,
+                showCoordHud: true,
               });
               setWallHintRef.current({
-                left: hudP.hintLeft,
-                top: hudP.hintTop,
-                text: `${titleP}\nУкажите новое положение\nЛКМ — зафиксировать · ПКМ / Esc — отмена${snapP}`,
+                left: layPileMv.instruction.left,
+                top: layPileMv.instruction.top,
+                snapLabel: snapP,
+                lines: hintLines(titleP, [
+                  { text: "Укажите новое положение" },
+                  { text: "ЛКМ — зафиксировать · ПКМ / Esc — отмена", variant: "muted" },
+                ]),
               });
               const pileRef = currentProject.foundationPiles.find((p0) => p0.id === fpM2?.workingPileId);
-              if (fpM2?.previewCenterMm && pileRef && hudP.coordHudLeft != null && hudP.coordHudTop != null) {
+              if (fpM2?.previewCenterMm && pileRef && layPileMv.liveHud) {
                 const dx = fpM2.previewCenterMm.x - pileRef.centerX;
                 const dy = fpM2.previewCenterMm.y - pileRef.centerY;
                 const d = Math.hypot(dx, dy);
                 setCoordHudRef.current({
-                  left: hudP.coordHudLeft,
-                  top: hudP.coordHudTop,
+                  left: layPileMv.liveHud.left,
+                  top: layPileMv.liveHud.top,
                   dx,
                   dy,
                   d,
                   angleDeg: undefined,
                   angleSnapLockedDeg: null,
-                  axisHint: null,
+                  secondLine: null,
                 });
               } else {
                 setCoordHudRef.current(null);
               }
             } else {
-              const hudPb = computePlacementHudScreenPosition({
+              const layPb = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudPb.hintLeft,
-                top: hudPb.hintTop,
-                text: `${titleP}\nВыберите базовую точку сваи (центр или угол) · ЛКМ\nПКМ / Esc — отмена`,
+                left: layPb.instruction.left,
+                top: layPb.instruction.top,
+                lines: hintLines(titleP, [
+                  { text: "Выберите базовую точку сваи (центр или угол) · ЛКМ" },
+                  { text: "ПКМ / Esc — отмена", variant: "muted" },
+                ]),
               });
               setCoordHudRef.current(null);
             }
@@ -3857,57 +4058,68 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             if (fbM0?.phase === "pickTarget") {
               useAppStore.getState().floorBeamMoveCopyPreviewMove(p, t);
               const fbM2 = useAppStore.getState().floorBeamMoveCopySession;
-              let snapFb = "";
+              let snapFb: string | null = null;
               if (fbM2?.lastSnapKind && fbM2.lastSnapKind !== "none") {
                 snapFb =
                   fbM2.lastSnapKind === "vertex"
-                    ? "\nПривязка: угол / узел"
+                    ? "Привязка: угол / узел"
                     : fbM2.lastSnapKind === "edge"
-                      ? "\nПривязка: кромка / ребро"
-                      : "\nПривязка: сетка";
+                      ? "Привязка: кромка / ребро"
+                      : "Привязка: сетка";
               }
-              const hudFb = computePlacementHudScreenPosition({
+              const layFbMv = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
-                showCoordHud: false,
+                showCoordHud: true,
               });
               setWallHintRef.current({
-                left: hudFb.hintLeft,
-                top: hudFb.hintTop,
-                text: `${titleFb}\nУкажите новое положение\nЛКМ — зафиксировать · ПКМ / Esc — отмена${snapFb}`,
+                left: layFbMv.instruction.left,
+                top: layFbMv.instruction.top,
+                snapLabel: snapFb,
+                lines: hintLines(titleFb, [
+                  { text: "Укажите новое положение" },
+                  { text: "ЛКМ — зафиксировать · ПКМ / Esc — отмена", variant: "muted" },
+                ]),
               });
               const beamRef = currentProject.floorBeams.find((b) => b.id === fbM2?.workingBeamId);
-              if (fbM2?.baseAnchorWorldMm && fbM2.dragDeltaMm != null && beamRef && hudFb.coordHudLeft != null && hudFb.coordHudTop != null) {
+              if (fbM2?.baseAnchorWorldMm && fbM2.dragDeltaMm != null && beamRef && layFbMv.liveHud) {
                 const dx = fbM2.dragDeltaMm.x;
                 const dy = fbM2.dragDeltaMm.y;
                 const d = Math.hypot(dx, dy);
                 setCoordHudRef.current({
-                  left: hudFb.coordHudLeft,
-                  top: hudFb.coordHudTop,
+                  left: layFbMv.liveHud.left,
+                  top: layFbMv.liveHud.top,
                   dx,
                   dy,
                   d,
                   angleDeg: undefined,
                   angleSnapLockedDeg: null,
-                  axisHint: null,
+                  secondLine: null,
                 });
               } else {
                 setCoordHudRef.current(null);
               }
             } else {
-              const hudFbb = computePlacementHudScreenPosition({
+              const layFbb = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hudFbb.hintLeft,
-                top: hudFbb.hintTop,
-                text: `${titleFb}\nВыберите точку на балке (угол, ребро, торец) · ЛКМ\nПКМ / Esc — отмена`,
+                left: layFbb.instruction.left,
+                top: layFbb.instruction.top,
+                lines: hintLines(titleFb, [
+                  { text: "Выберите точку на балке (угол, ребро, торец) · ЛКМ" },
+                  { text: "ПКМ / Esc — отмена", variant: "muted" },
+                ]),
               });
               setCoordHudRef.current(null);
             }
@@ -3922,7 +4134,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const altKey = Boolean((ev as { altKey?: boolean }).altKey);
               useAppStore.getState().wallMoveCopyPreviewMove(p, t, { altKey });
               const ws = useAppStore.getState().wallMoveCopySession;
-              let snapLine = "";
+              let snapLine: string | null = null;
               if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
                 snapLine =
                   ws.lastSnapKind === "vertex"
@@ -3932,10 +4144,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       : "Привязка: сетка";
               }
               const coordModalAny = wallCoordinateModalOpen || moveCopyCoordOpen;
-              const hud = computePlacementHudScreenPosition({
+              const layMc = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen,
                 wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
                 showCoordHud: !coordModalAny,
@@ -3943,15 +4157,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               const shiftMc =
                 ws?.shiftDirectionLockUnit != null
                   ? ws.shiftLockReferenceMm
-                    ? "\nУгол по Shift · длина по опорной точке"
-                    : "\nУгол зафиксирован (Shift)"
-                  : "\nShift — зафиксировать направление";
+                    ? "Угол по Shift · длина по опорной точке"
+                    : "Угол зафиксирован (Shift)"
+                  : "Shift — зафиксировать направление";
               setWallHintRef.current({
-                left: hud.hintLeft,
-                top: hud.hintTop,
-                text: `${title}\nУкажите новое положение (ЛКМ) или Пробел — координаты\n${modeLabel}${snapLine ? `\n${snapLine}` : ""}\nAlt — без угловой привязки${shiftMc}`,
+                left: layMc.instruction.left,
+                top: layMc.instruction.top,
+                snapLabel: snapLine,
+                lines: hintLines(title, [
+                  { text: "Укажите новое положение (ЛКМ) или Пробел — координаты" },
+                  { text: modeLabel },
+                  { text: "Alt — без угловой привязки", variant: "muted" },
+                  { text: shiftMc, variant: "muted" },
+                ]),
               });
-              if (ws?.anchorWorldMm && ws.previewTargetMm && hud.coordHudLeft != null && hud.coordHudTop != null) {
+              if (ws?.anchorWorldMm && ws.previewTargetMm && layMc.liveHud) {
                 const dx = ws.previewTargetMm.x - ws.anchorWorldMm.x;
                 const dy = ws.previewTargetMm.y - ws.anchorWorldMm.y;
                 const d = Math.hypot(dx, dy);
@@ -3968,31 +4188,36 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                     ? normalizeAngleDeg360((Math.atan2(sU.y, sU.x) * 180) / Math.PI)
                     : null;
                 setCoordHudRef.current({
-                  left: hud.coordHudLeft,
-                  top: hud.coordHudTop,
+                  left: layMc.liveHud.left,
+                  top: layMc.liveHud.top,
                   dx,
                   dy,
                   d,
                   angleDeg: angS != null ? angS : locked != null ? locked : rel2.angleDeg,
                   angleSnapLockedDeg: locked,
-                  axisHint: rel2.axisHint,
+                  secondLine: rel2.axisHint,
                 });
               } else {
                 setCoordHudRef.current(null);
               }
             } else {
-              const hud = computePlacementHudScreenPosition({
+              const layMcB = computeEditorOverlayLayout({
                 canvasRect: rect,
                 cursorCanvasX: ev.global.x,
                 cursorCanvasY: ev.global.y,
+                viewportWidth: viewportW,
+                viewportHeight: viewportH,
                 wallCoordinateModalOpen,
                 wallMoveCopyCoordinateModalOpen: moveCopyCoordOpen,
                 showCoordHud: false,
               });
               setWallHintRef.current({
-                left: hud.hintLeft,
-                top: hud.hintTop,
-                text: `${title}\nВыберите точку привязки на стене (ЛКМ)\n${modeLabel}`,
+                left: layMcB.instruction.left,
+                top: layMcB.instruction.top,
+                lines: hintLines(title, [
+                  { text: "Выберите точку привязки на стене (ЛКМ)" },
+                  { text: modeLabel },
+                ]),
               });
               setCoordHudRef.current(null);
             }
@@ -4019,17 +4244,19 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               nextHover = hit ? { kind: "end", wallId: hit.wallId, end: hit.end } : null;
             }
             jointHoverRef.current = nextHover;
-            const hudJoint = computePlacementHudScreenPosition({
+            const layJoint = computeEditorOverlayLayout({
               canvasRect: rect,
               cursorCanvasX: ev.global.x,
               cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
               wallCoordinateModalOpen: false,
               showCoordHud: false,
             });
             setWallHintRef.current({
-              left: hudJoint.hintLeft,
-              top: hudJoint.hintTop,
-              text: wallJointHintRu(wallJointSession.kind, wallJointSession.phase),
+              left: layJoint.instruction.left,
+              top: layJoint.instruction.top,
+              lines: hintLines(wallJointHintRu(wallJointSession.kind, wallJointSession.phase), []),
             });
             setCoordHudRef.current(null);
             paint();
@@ -5124,6 +5351,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
   return (
     <div
+      className="ed2d-workspace-root"
       style={{
         position: "relative",
         width: "100%",
@@ -5302,34 +5530,29 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         </div>
       ) : null}
       {wallHint ? (
-        <div className="ed2d-wall-hint" style={{ left: wallHint.left, top: wallHint.top }}>
-          {wallHint.text}
-        </div>
+        <InstructionOverlay
+          left={wallHint.left}
+          top={wallHint.top}
+          lines={wallHint.lines}
+          snapLabel={wallHint.snapLabel ?? undefined}
+        />
       ) : null}
       {coordHud ? (
-        <div
-          className={
-            coordHud.angleSnapLockedDeg != null
-              ? "ed2d-wall-coord-hud ed2d-wall-coord-hud--angle-snap"
-              : "ed2d-wall-coord-hud"
-          }
-          style={{ left: coordHud.left, top: coordHud.top }}
-        >
-          X={Math.round(coordHud.dx)} · Y={Math.round(coordHud.dy)} · D={Math.round(coordHud.d)}
-          {coordHud.angleDeg != null ? ` · ∠${Math.round(coordHud.angleDeg)}°` : null}
-          {coordHud.axisHint ? ` · ${coordHud.axisHint}` : null}
-        </div>
+        <LiveHudBadge
+          left={coordHud.left}
+          top={coordHud.top}
+          dx={coordHud.dx}
+          dy={coordHud.dy}
+          d={coordHud.d}
+          angleDeg={coordHud.angleDeg}
+          angleSnapLockedDeg={coordHud.angleSnapLockedDeg}
+          secondLine={coordHud.secondLine}
+        />
       ) : null}
       {openingMoveDragHud ? (
         <div
-          className="ed2d-wall-hint"
-          style={{
-            position: "fixed",
-            left: openingMoveDragHud.left,
-            top: openingMoveDragHud.top,
-            zIndex: 24,
-            pointerEvents: "none",
-          }}
+          className="ed2d-mini-hud-badge"
+          style={{ left: openingMoveDragHud.left, top: openingMoveDragHud.top }}
         >
           Смещение: {openingMoveDragHud.deltaMm >= 0 ? "+" : ""}
           {openingMoveDragHud.deltaMm} мм
