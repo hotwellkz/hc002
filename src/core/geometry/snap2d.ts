@@ -1,3 +1,4 @@
+import { snapWorldToGridAlignedToOrigin } from "../domain/projectOriginPlan";
 import type { Project } from "../domain/project";
 import { getProfileById } from "../domain/profileOps";
 import { resolveWallProfileLayerStripsMm } from "../domain/wallProfileLayers";
@@ -200,9 +201,7 @@ export function resolveSnap2d(input: {
   }
 
   if (snapSettings.snapToGrid && Number.isFinite(gridStepMm) && gridStepMm > 0) {
-    const gx = Math.round(raw.x / gridStepMm) * gridStepMm;
-    const gy = Math.round(raw.y / gridStepMm) * gridStepMm;
-    const g: Point2D = { x: gx, y: gy };
+    const g = snapWorldToGridAlignedToOrigin(raw, gridStepMm, project.projectOrigin);
     const d = screenDistancePx(raw, g, viewport);
     if (d <= SNAP_GRID_PX) {
       return { point: g, kind: "grid" };

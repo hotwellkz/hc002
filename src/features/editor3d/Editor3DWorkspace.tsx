@@ -1,6 +1,6 @@
-import { OrbitControls, Grid } from "@react-three/drei";
+import { Grid } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import type { Opening3dMeshSpec } from "@/core/domain/opening3dAssemblySpecs";
 import { formatLumberDisplayMark, lumberDisplayIndexByPieceId } from "@/core/domain/pieceDisplayMark";
@@ -8,7 +8,9 @@ import { buildCalculationSolidSpecsForProject } from "@/core/domain/wallCalculat
 import { lumberRoleLabelRu } from "@/core/domain/wallSpecification";
 import { useAppStore } from "@/store/useAppStore";
 
+import { Editor3dOrbitControls } from "./Editor3dOrbitControls";
 import { Editor3dVisibilityPanel } from "./Editor3dVisibilityPanel";
+import { initialCameraPositionFromViewport3d } from "./viewport3dThreeSync";
 import { ProjectCalculationMeshes } from "./ProjectCalculationMeshes";
 import { ProjectOpeningMeshes } from "./ProjectOpeningMeshes";
 import { ProjectSipSeamLines } from "./ProjectSipSeamLines";
@@ -68,7 +70,13 @@ export function Editor3DWorkspace() {
   const setShow3dCalculation = useAppStore((s) => s.setShow3dCalculation);
   const theme3d = useEditor3dThemeColors();
   const project = useAppStore((s) => s.currentProject);
+  const originXM = (project.projectOrigin?.x ?? 0) * 0.001;
+  const originZM = -(project.projectOrigin?.y ?? 0) * 0.001;
   const [selected3d, setSelected3d] = useState<Selected3d>(null);
+  const initialCameraPosRef = useRef<[number, number, number] | null>(null);
+  if (initialCameraPosRef.current == null) {
+    initialCameraPosRef.current = initialCameraPositionFromViewport3d(project.viewState.viewport3d);
+  }
 
   const selectedInfo = useMemo(() => {
     if (!selected3d) {
@@ -189,7 +197,12 @@ export function Editor3DWorkspace() {
       </label>
       <Canvas
         shadows
-        camera={{ position: [12, 9, 12], fov: 45, near: 0.1, far: 500 }}
+        camera={{
+          position: initialCameraPosRef.current,
+          fov: 45,
+          near: 0.1,
+          far: 500,
+        }}
         style={{ width: "100%", height: "100%", minHeight: 0 }}
         onPointerMissed={() => setSelected3d(null)}
       >
@@ -210,23 +223,25 @@ export function Editor3DWorkspace() {
           shadow-bias={-0.00015}
         />
         <directionalLight position={[-10, 8, -6]} intensity={0.22} />
-        <Grid
-          infiniteGrid
-          fadeDistance={120}
-          sectionSize={1}
-          cellSize={0.2}
-          sectionColor={theme3d.section}
-          cellColor={theme3d.cell}
-          position={[0, 0, 0]}
-        />
-        <axesHelper args={[4]} />
+        <group position={[originXM, 0, originZM]}>
+          <Grid
+            infiniteGrid
+            fadeDistance={120}
+            sectionSize={1}
+            cellSize={0.2}
+            sectionColor={theme3d.section}
+            cellColor={theme3d.cell}
+            position={[0, 0, 0]}
+          />
+          <axesHelper args={[2.5]} />
+        </group>
         <SceneFromProject
           selected={selected3d}
           onSelectCalculation={(s) => setSelected3d({ kind: "calc", reactKey: s.reactKey, spec: s })}
           onSelectOpening={(s) => setSelected3d({ kind: "opening", reactKey: s.reactKey, spec: s })}
           onSelectWall={(s) => setSelected3d({ kind: "wall", reactKey: s.reactKey, spec: s })}
         />
-        <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
+        <Editor3dOrbitControls />
       </Canvas>
       {selectedInfo ? (
         <div

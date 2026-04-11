@@ -32,6 +32,7 @@ import { useEditorShortcutsStore } from "@/store/useEditorShortcutsStore";
 import { computePlacementHudScreenPosition } from "./placementHudPosition";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
+import { drawProjectOriginMarker2d } from "./drawProjectOrigin2dPixi";
 import { buildScreenGridLines } from "./gridGeometry";
 import { appendWallMarkLabels2d, clearWallMarkLabelContainer } from "./wallMarks2dPixi";
 import { pruneWallLabelStickyState } from "./wallLabelLayout2d";
@@ -348,6 +349,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             wallAnchorCoordinateModalOpen: st0.wallAnchorCoordinateModalOpen,
             wallMoveCopyCoordinateModalOpen: st0.wallMoveCopyCoordinateModalOpen,
             lengthChangeCoordinateModalOpen: st0.lengthChangeCoordinateModalOpen,
+            projectOriginCoordinateModalOpen: st0.projectOriginCoordinateModalOpen,
           })
         ) {
           return;
@@ -431,6 +433,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           setCoordHudRef.current(null);
           return;
         }
+        if (stEsc.projectOriginMoveToolActive) {
+          e.preventDefault();
+          stEsc.toggleProjectOriginMoveTool();
+          setWallHintRef.current(null);
+          return;
+        }
         if (stEsc.openingMoveModeActive) {
           e.preventDefault();
           stEsc.setOpeningMoveModeActive(false);
@@ -454,6 +462,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (st.wallMoveCopySession?.phase === "pickTarget") {
           e.preventDefault();
           st.openWallMoveCopyCoordinateModal();
+          return;
+        }
+        if (st.projectOriginMoveToolActive && !st.projectOriginCoordinateModalOpen) {
+          e.preventDefault();
+          st.openProjectOriginCoordinateModal();
           return;
         }
         if (st.activeTool === "changeLength" && st.lengthChange2dSession && !st.lengthChangeCoordinateModalOpen) {
@@ -485,6 +498,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
   const pendingWindowPlacement = useAppStore((s) => s.pendingWindowPlacement);
   const pendingDoorPlacement = useAppStore((s) => s.pendingDoorPlacement);
+  const projectOriginMoveToolActive = useAppStore((s) => s.projectOriginMoveToolActive);
   const openingMoveModeActive = useAppStore((s) => s.openingMoveModeActive);
   const selectedIds = useAppStore((s) => s.selectedEntityIds);
   useEffect(() => {
@@ -492,18 +506,30 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     if (!el) {
       return;
     }
-    if (pendingWindowPlacement || pendingDoorPlacement) {
+    if (pendingWindowPlacement || pendingDoorPlacement || projectOriginMoveToolActive) {
       el.style.cursor = "crosshair";
     } else {
       el.style.cursor = "";
     }
-  }, [pendingWindowPlacement, pendingDoorPlacement]);
+  }, [pendingWindowPlacement, pendingDoorPlacement, projectOriginMoveToolActive]);
 
   useEffect(() => {
     if (!openingMoveModeActive || selectedIds.length !== 1) {
       setMoveEdit(null);
     }
   }, [openingMoveModeActive, selectedIds]);
+
+  useEffect(() => {
+    if (!projectOriginMoveToolActive) {
+      return;
+    }
+    setWallHint({
+      left: 12,
+      top: 56,
+      text: "База плана (0,0): клик — новая точка · Пробел — ввод XY (мир) · Esc — выход",
+    });
+    return () => setWallHint(null);
+  }, [projectOriginMoveToolActive]);
 
   useEffect(() => {
     if (!moveEdit) return;
@@ -554,6 +580,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     const rulerG = new Graphics();
     rulerG.eventMode = "none";
     const marqueeG = new Graphics();
+    const originMarkerC = new Container();
+    originMarkerC.eventMode = "none";
     const worldRoot = new Container();
     worldRoot.eventMode = "static";
 
@@ -588,12 +616,15 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         Boolean(firstPh) &&
         !st.wallCoordinateModalOpen &&
         !st.wallAnchorCoordinateModalOpen &&
-        !st.openingMoveModeActive;
-      const rulerShow = st.activeTool === "ruler" && st.ruler2dSession != null && !st.openingMoveModeActive;
+        !st.openingMoveModeActive &&
+        !st.projectOriginMoveToolActive;
+      const rulerShow =
+        st.activeTool === "ruler" && st.ruler2dSession != null && !st.openingMoveModeActive && !st.projectOriginMoveToolActive;
       const lengthChangeShow =
         st.activeTool === "changeLength" &&
         !st.openingMoveModeActive &&
-        !st.lengthChangeCoordinateModalOpen;
+        !st.lengthChangeCoordinateModalOpen &&
+        !st.projectOriginMoveToolActive;
       const show =
         (anchorShow || rulerShow || lengthChangeShow) &&
         !panning.active &&
@@ -726,7 +757,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
 
       gridG.clear();
       if (currentProject.settings.showGrid) {
-        const lines = buildScreenGridLines(w, h, t, currentProject.settings.gridStepMm);
+        const lines = buildScreenGridLines(
+          w,
+          h,
+          t,
+          currentProject.settings.gridStepMm,
+          currentProject.projectOrigin,
+        );
         for (const ln of lines) {
           gridG.moveTo(ln.x0, ln.y0);
           gridG.lineTo(ln.x1, ln.y1);
@@ -1235,6 +1272,19 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         marqueeG.stroke({ width: 1, color: 0x5aa7ff, alpha: 0.9 });
       }
 
+      const stOrigin = useAppStore.getState();
+      const oMark = currentProject.projectOrigin;
+      if (oMark) {
+        drawProjectOriginMarker2d(originMarkerC, oMark, t, {
+          toolActive: stOrigin.projectOriginMoveToolActive,
+        });
+      } else {
+        for (const ch of [...originMarkerC.children]) {
+          ch.destroy({ children: true });
+        }
+        originMarkerC.removeChildren();
+      }
+
       syncAnchorCrosshairOverlay(app.canvas as HTMLCanvasElement);
     };
 
@@ -1279,6 +1329,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(snapMarkerG);
       worldRoot.addChild(rulerG);
       worldRoot.addChild(marqueeG);
+      worldRoot.addChild(originMarkerC);
       app.stage.addChild(worldRoot);
       useAppStore.getState().setViewportCanvas2dPx(app.renderer.width, app.renderer.height);
 
@@ -1918,6 +1969,27 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
 
         if (isSceneCoordinateModalBlocking(useAppStore.getState())) {
+          return;
+        }
+
+        if (useAppStore.getState().projectOriginMoveToolActive && ev.button === 0) {
+          const stOr = useAppStore.getState();
+          const projOr = stOr.currentProject;
+          const e2Or = projOr.settings.editor2d;
+          const snapOr = resolveSnap2d({
+            rawWorldMm: worldMm,
+            viewport: t,
+            project: projOr,
+            snapSettings: {
+              snapToVertex: e2Or.snapToVertex,
+              snapToEdge: e2Or.snapToEdge,
+              snapToGrid: e2Or.snapToGrid,
+            },
+            gridStepMm: projOr.settings.gridStepMm,
+          });
+          stOr.applyProjectOriginAtWorldMm(snapOr.point);
+          setWallHintRef.current(null);
+          paint();
           return;
         }
 

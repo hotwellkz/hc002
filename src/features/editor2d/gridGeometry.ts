@@ -1,3 +1,5 @@
+import type { Point2D } from "@/core/geometry/types";
+
 import type { ViewportTransform } from "./viewportTransforms";
 import { screenToWorld, worldToScreen } from "./viewportTransforms";
 
@@ -16,10 +18,14 @@ export function buildScreenGridLines(
   heightPx: number,
   t: ViewportTransform,
   stepMm: number,
+  /** База плана: линии сетки проходят через эту точку в мировых мм (null → ось 0). */
+  originMm: Point2D | null = null,
 ): GridLine[] {
   if (stepMm <= 0) {
     return [];
   }
+  const ox = originMm?.x ?? 0;
+  const oy = originMm?.y ?? 0;
   const corners = [
     screenToWorld(0, 0, t),
     screenToWorld(widthPx, 0, t),
@@ -31,10 +37,10 @@ export function buildScreenGridLines(
   const minY = Math.min(...corners.map((c) => c.y));
   const maxY = Math.max(...corners.map((c) => c.y));
   const pad = stepMm * 4;
-  const gx0 = Math.floor((minX - pad) / stepMm) * stepMm;
-  const gx1 = Math.ceil((maxX + pad) / stepMm) * stepMm;
-  const gy0 = Math.floor((minY - pad) / stepMm) * stepMm;
-  const gy1 = Math.ceil((maxY + pad) / stepMm) * stepMm;
+  const gx0 = Math.floor((minX - pad - ox) / stepMm) * stepMm + ox;
+  const gx1 = Math.ceil((maxX + pad - ox) / stepMm) * stepMm + ox;
+  const gy0 = Math.floor((minY - pad - oy) / stepMm) * stepMm + oy;
+  const gy1 = Math.ceil((maxY + pad - oy) / stepMm) * stepMm + oy;
 
   const lines: GridLine[] = [];
   for (let x = gx0; x <= gx1; x += stepMm) {

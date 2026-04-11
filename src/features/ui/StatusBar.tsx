@@ -1,3 +1,4 @@
+import { worldMmToPlanMm } from "@/core/domain/projectOriginPlan";
 import { useAppStore } from "@/store/useAppStore";
 
 interface StatusBarProps {
@@ -28,10 +29,16 @@ function persistenceHint(
 }
 
 export function StatusBar({ cursorWorldMm }: StatusBarProps) {
+  const project = useAppStore((s) => s.currentProject);
   const cursor =
     cursorWorldMm === null
       ? "—"
-      : `X: ${cursorWorldMm.x.toFixed(0)} мм · Y: ${cursorWorldMm.y.toFixed(0)} мм`;
+      : project.projectOrigin
+        ? (() => {
+            const p = worldMmToPlanMm(cursorWorldMm, project);
+            return `ΔX: ${p.x.toFixed(0)} мм · ΔY: ${p.y.toFixed(0)} мм (от базы)`;
+          })()
+        : `X: ${cursorWorldMm.x.toFixed(0)} мм · Y: ${cursorWorldMm.y.toFixed(0)} мм (мир)`;
 
   const persistenceReady = useAppStore((s) => s.persistenceReady);
   const firestoreEnabled = useAppStore((s) => s.firestoreEnabled);
@@ -40,7 +47,7 @@ export function StatusBar({ cursorWorldMm }: StatusBarProps) {
 
   return (
     <footer className="shell-status">
-      <span>Курсор (мир, мм): {cursor}</span>
+      <span>Курсор: {cursor}</span>
       {pendingWindow ? (
         <span className="muted" title="Наведите на стену активного слоя и нажмите ЛКМ; Esc или ПКМ — отмена">
           Режим: установка окна на стену

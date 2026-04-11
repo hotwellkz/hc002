@@ -1,3 +1,7 @@
+import type { Point2D } from "../geometry/types";
+
+import type { Project } from "./project";
+
 export type EditorTab = "2d" | "3d" | "spec" | "wall";
 
 export interface ViewportState2D {
@@ -14,6 +18,42 @@ export interface ViewportState3D {
   readonly targetXMm: number;
   readonly targetYMm: number;
   readonly targetZMm: number;
+}
+
+/** Центр орбиты в мировых мм плана (X,Y); углы и дистанция не трогаются. */
+export function viewport3dWithPlanOrbitTargetMm(v: ViewportState3D, planXYMm: Point2D): ViewportState3D {
+  return {
+    ...v,
+    targetXMm: planXYMm.x,
+    targetYMm: planXYMm.y,
+  };
+}
+
+/** Как у нового проекта: 3D-вид ещё не настраивали (для миграции target → projectOrigin). */
+export function viewport3dMatchesFreshDefault(v: ViewportState3D): boolean {
+  return (
+    v.polarAngle === Math.PI / 4 &&
+    v.azimuthalAngle === Math.PI / 4 &&
+    v.distance === 12_000 &&
+    v.targetXMm === 0 &&
+    v.targetYMm === 0 &&
+    v.targetZMm === 1500
+  );
+}
+
+/**
+ * Старые файлы: база плана задана, а target 3D-орбиты остался (0,0) — при открытии подставляем координаты базы.
+ */
+export function projectWithViewport3dTargetAlignedToOriginIfDefault(project: Project): Project {
+  const o = project.projectOrigin;
+  if (o == null || !viewport3dMatchesFreshDefault(project.viewState.viewport3d)) {
+    return project;
+  }
+  const v3 = viewport3dWithPlanOrbitTargetMm(project.viewState.viewport3d, o);
+  return {
+    ...project,
+    viewState: { ...project.viewState, viewport3d: v3 },
+  };
 }
 
 export interface ViewState {

@@ -20,6 +20,7 @@ const baseApp = {
   wallAnchorCoordinateModalOpen: false,
   wallMoveCopyCoordinateModalOpen: false,
   lengthChangeCoordinateModalOpen: false,
+  projectOriginCoordinateModalOpen: false,
 } as const;
 
 describe("getResolvedShortcutCodes", () => {

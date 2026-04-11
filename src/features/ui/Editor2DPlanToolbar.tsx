@@ -66,6 +66,15 @@ function IconMoveOpening() {
   );
 }
 
+function IconProjectOrigin() {
+  return (
+    <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M11 3h2v8h8v2h-8v8h-2v-8H3v-2h8V3z" opacity="0.35" />
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+    </svg>
+  );
+}
+
 function IconWallJoint() {
   return (
     <svg className="e2dpt-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -99,6 +108,8 @@ export function Editor2DPlanToolbar() {
   });
   const openingMoveModeActive = useAppStore((s) => s.openingMoveModeActive);
   const toggleOpeningMoveMode = useAppStore((s) => s.toggleOpeningMoveMode);
+  const projectOriginMoveToolActive = useAppStore((s) => s.projectOriginMoveToolActive);
+  const toggleProjectOriginMoveTool = useAppStore((s) => s.toggleProjectOriginMoveTool);
 
   return (
     <div className="e2dpt" role="toolbar" aria-label="Построение плана">
@@ -171,6 +182,17 @@ export function Editor2DPlanToolbar() {
         onClick={() => toggleOpeningMoveMode()}
       >
         <IconMoveOpening />
+      </button>
+      <button
+        type="button"
+        className="e2dpt-btn"
+        title="Перенести базу плана (0,0) — клик на плане или Пробел для ввода координат"
+        aria-label="Базовая точка плана"
+        aria-pressed={projectOriginMoveToolActive}
+        data-active={projectOriginMoveToolActive}
+        onClick={() => toggleProjectOriginMoveTool()}
+      >
+        <IconProjectOrigin />
       </button>
       <button
         type="button"

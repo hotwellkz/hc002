@@ -84,7 +84,7 @@ import { pickNearestWallEnd, pickWallSegmentInterior } from "@/core/domain/wallJ
 import { narrowProjectToActiveLayer } from "@/core/domain/projectLayerSlice";
 import { buildWallCalculationForWall, SipWallLayoutError } from "@/core/domain/sipWallLayout";
 import type { WallShapeMode } from "@/core/domain/wallShapeMode";
-import type { EditorTab } from "@/core/domain/viewState";
+import { type EditorTab, viewport3dWithPlanOrbitTargetMm } from "@/core/domain/viewState";
 import { setLastOpenedProjectId } from "@/data/lastOpenedProjectId";
 import { createProjectInDb, updateProjectSnapshot } from "@/data/projectFirestoreRepository";
 import { syncProjectToFirestore } from "@/data/projectFirestoreSync";
@@ -184,6 +184,9 @@ interface AppState {
   readonly lengthChange2dSession: LengthChange2dSession | null;
   /** Пробел: точный ввод Δ длины (мм) в режиме изменения длины. */
   readonly lengthChangeCoordinateModalOpen: boolean;
+  /** Перенос базовой точки плана (0,0) без сдвига геометрии. */
+  readonly projectOriginMoveToolActive: boolean;
+  readonly projectOriginCoordinateModalOpen: boolean;
 }
 
 interface AppActions {
@@ -269,6 +272,11 @@ interface AppActions {
   commitWallDetailProjectUpdate: (nextProject: Project) => void;
   setOpeningMoveModeActive: (active: boolean) => void;
   toggleOpeningMoveMode: () => void;
+  toggleProjectOriginMoveTool: () => void;
+  openProjectOriginCoordinateModal: () => void;
+  closeProjectOriginCoordinateModal: () => void;
+  applyProjectOriginCoordinateModalWorldMm: (pt: Point2D) => void;
+  applyProjectOriginAtWorldMm: (pt: Point2D) => void;
   openWallDetail: (wallId: string) => void;
   closeWallDetail: () => void;
   openWallJointParamsModal: () => void;
@@ -461,6 +469,8 @@ export const useAppStore = create<AppStore>((set, get) => {
     ruler2dSession: null,
     lengthChange2dSession: null,
     lengthChangeCoordinateModalOpen: false,
+    projectOriginMoveToolActive: false,
+    projectOriginCoordinateModalOpen: false,
 
     setViewportCanvas2dPx: (width, height) =>
       set({
@@ -516,6 +526,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallPlacementAnchorAngleSnapLockedDeg: null,
           addWallModalOpen: false,
           addWindowModalOpen: false,
+          projectOriginMoveToolActive: false,
+          projectOriginCoordinateModalOpen: false,
         };
         if (tool === "select") {
           return {
@@ -609,6 +621,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           lengthChange2dSession: tab === "2d" ? s.lengthChange2dSession : null,
           lengthChangeCoordinateModalOpen: tab === "2d" ? s.lengthChangeCoordinateModalOpen : false,
           openingMoveModeActive: tab === "2d" ? s.openingMoveModeActive : false,
+          projectOriginMoveToolActive: tab === "2d" ? s.projectOriginMoveToolActive : false,
+          projectOriginCoordinateModalOpen: tab === "2d" ? s.projectOriginCoordinateModalOpen : false,
           wallDetailWallId:
             tab === "wall"
               ? s.wallDetailWallId ?? s.currentProject.walls.find((w) => s.selectedEntityIds.includes(w.id))?.id ?? null
@@ -1043,8 +1057,48 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
     commitWallDetailProjectUpdate: (nextProject) =>
       set({ currentProject: touchProjectMeta(nextProject), dirty: true, lastError: null }),
-    setOpeningMoveModeActive: (active) => set({ openingMoveModeActive: active }),
-    toggleOpeningMoveMode: () => set((s) => ({ openingMoveModeActive: !s.openingMoveModeActive })),
+    setOpeningMoveModeActive: (active) =>
+      set((s) => ({
+        openingMoveModeActive: active,
+        projectOriginMoveToolActive: active ? false : s.projectOriginMoveToolActive,
+      })),
+    toggleOpeningMoveMode: () =>
+      set((s) => {
+        const next = !s.openingMoveModeActive;
+        return {
+          openingMoveModeActive: next,
+          projectOriginMoveToolActive: next ? false : s.projectOriginMoveToolActive,
+        };
+      }),
+    toggleProjectOriginMoveTool: () =>
+      set((s) => {
+        const next = !s.projectOriginMoveToolActive;
+        return {
+          projectOriginMoveToolActive: next,
+          openingMoveModeActive: next ? false : s.openingMoveModeActive,
+          projectOriginCoordinateModalOpen: next ? s.projectOriginCoordinateModalOpen : false,
+          lastError: null,
+        };
+      }),
+    openProjectOriginCoordinateModal: () => set({ projectOriginCoordinateModalOpen: true, lastError: null }),
+    closeProjectOriginCoordinateModal: () => set({ projectOriginCoordinateModalOpen: false }),
+    applyProjectOriginAtWorldMm: (pt) => {
+      const p0 = get().currentProject;
+      const nextOrigin = setProjectOrigin(p0, pt);
+      const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
+      const merged = mergeViewState(nextOrigin, { viewport3d: v3 });
+      set({
+        currentProject: merged,
+        viewport3d: v3,
+        dirty: true,
+        lastError: null,
+        projectOriginMoveToolActive: false,
+        projectOriginCoordinateModalOpen: false,
+      });
+    },
+    applyProjectOriginCoordinateModalWorldMm: (pt) => {
+      get().applyProjectOriginAtWorldMm(pt);
+    },
     openWallDetail: (wallId) =>
       set((s) => {
         const wall = s.currentProject.walls.find((w) => w.id === wallId);
@@ -1389,9 +1443,12 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
 
       if (session.phase === "waitingOriginAndFirst") {
-        const nextProject = setProjectOrigin(p0, pt);
+        const nextOrigin = setProjectOrigin(p0, pt);
+        const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
+        const nextProject = mergeViewState(nextOrigin, { viewport3d: v3 });
         set({
           currentProject: nextProject,
+          viewport3d: v3,
           wallPlacementSession: {
             ...session,
             phase: "waitingSecondPoint",
@@ -1577,9 +1634,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallAnchorCoordinateModalOpen: false,
       };
       if (session.phase === "waitingOriginAndFirst") {
-        const nextProject = setProjectOrigin(p0, pt);
+        const nextOrigin = setProjectOrigin(p0, pt);
+        const v3 = viewport3dWithPlanOrbitTargetMm(p0.viewState.viewport3d, pt);
+        const nextProject = mergeViewState(nextOrigin, { viewport3d: v3 });
         set({
           currentProject: nextProject,
+          viewport3d: v3,
           wallPlacementSession: {
             ...session,
             phase: "waitingSecondPoint",

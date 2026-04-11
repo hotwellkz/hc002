@@ -7,11 +7,13 @@ export function isSceneCoordinateModalBlocking(store: {
   readonly wallAnchorCoordinateModalOpen: boolean;
   readonly wallMoveCopyCoordinateModalOpen: boolean;
   readonly lengthChangeCoordinateModalOpen: boolean;
+  readonly projectOriginCoordinateModalOpen: boolean;
 }): boolean {
   return (
     store.wallCoordinateModalOpen ||
     store.wallAnchorCoordinateModalOpen ||
     store.wallMoveCopyCoordinateModalOpen ||
-    store.lengthChangeCoordinateModalOpen
+    store.lengthChangeCoordinateModalOpen ||
+    store.projectOriginCoordinateModalOpen
   );
 }

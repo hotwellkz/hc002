@@ -6,7 +6,7 @@ import type { WallJoint } from "../domain/wallJoint";
 import type { ProjectMeta } from "../domain/projectMeta";
 import { normalizeProjectSettings, type ProjectSettingsWire } from "../domain/settings";
 
-import { normalizeViewState } from "../domain/viewState";
+import { normalizeViewState, projectWithViewport3dTargetAlignedToOriginIfDefault } from "../domain/viewState";
 
 import { normalizeWallCalculationsInProject } from "../domain/wallCalculationNormalize";
 import { migrateWireV0ToProject } from "./migrateWireV0";
@@ -119,7 +119,8 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     ...base,
     visibleLayerIds: [...normalizeVisibleLayerIds(base)],
   };
-  return normalizeWallCalculationsInProject(withVis);
+  const withOriginTarget = projectWithViewport3dTargetAlignedToOriginIfDefault(withVis);
+  return normalizeWallCalculationsInProject(withOriginTarget);
 }
 
 export function projectFromWire(wire: ProjectFileV1 | Record<string, unknown>): Project {

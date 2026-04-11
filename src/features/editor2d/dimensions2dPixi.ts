@@ -17,17 +17,20 @@ import {
   planDimensionLabelScreenPosition,
   planDimensionMidWorldMm,
 } from "./dimensionLines2dPixi";
+import { computeRectangleOuterDimensionMinEffectiveOffsetMm } from "./rectangleOuterDimensionClearanceMm";
 import type { ViewportTransform } from "./viewportTransforms";
 
 const PLAN_DIM_BASE_OFFSET_MM = 420;
 
-function effectivePlan2dDimensionOffsetMm(d: Dimension): number {
-  return (d.offsetMm ?? PLAN_DIM_BASE_OFFSET_MM) + PLAN_2D_DIMENSION_OFFSET_EXTRA_MM;
+function effectivePlan2dDimensionOffsetMm(d: Dimension, project: Project): number {
+  const base = (d.offsetMm ?? PLAN_DIM_BASE_OFFSET_MM) + PLAN_2D_DIMENSION_OFFSET_EXTRA_MM;
+  const auto = computeRectangleOuterDimensionMinEffectiveOffsetMm(project, d);
+  return auto != null ? Math.max(base, auto) : base;
 }
 
 /** Центр размерной линии в мировых мм (геометрия без учёта смещения подписи). */
-export function dimensionLabelCenterWorldMm(d: Dimension): { readonly mx: number; readonly my: number } | null {
-  const offsetMm = effectivePlan2dDimensionOffsetMm(d);
+export function dimensionLabelCenterWorldMm(d: Dimension, project: Project): { readonly mx: number; readonly my: number } | null {
+  const offsetMm = effectivePlan2dDimensionOffsetMm(d, project);
   const { nx, ny } = outwardNormalForDimLine(d);
   return planDimensionMidWorldMm(d.a, d.b, nx, ny, offsetMm);
 }
@@ -35,8 +38,12 @@ export function dimensionLabelCenterWorldMm(d: Dimension): { readonly mx: number
 /**
  * Экранная позиция подписи размера (центр текста), с тем же смещением от оси линии, что и при отрисовке.
  */
-export function dimensionLabelScreenPosition(d: Dimension, t: ViewportTransform): { readonly x: number; readonly y: number } | null {
-  const offsetMm = effectivePlan2dDimensionOffsetMm(d);
+export function dimensionLabelScreenPosition(
+  d: Dimension,
+  t: ViewportTransform,
+  project: Project,
+): { readonly x: number; readonly y: number } | null {
+  const offsetMm = effectivePlan2dDimensionOffsetMm(d, project);
   const { nx, ny } = outwardNormalForDimLine(d);
   const c = planDimensionMidWorldMm(d.a, d.b, nx, ny, offsetMm);
   if (!c) {
@@ -55,7 +62,7 @@ export function collectDimensionLabelCentersWorldMmForPlan(
   const dims = project.dimensions.filter((d) => !d.layerId || d.layerId === layerId);
   const out: { x: number; y: number }[] = [];
   for (const d of dims) {
-    const c = dimensionLabelCenterWorldMm(d);
+    const c = dimensionLabelCenterWorldMm(d, project);
     if (c) {
       out.push({ x: c.mx, y: c.my });
     }
@@ -72,7 +79,7 @@ export function collectDimensionLabelScreenPositions(
   const dims = project.dimensions.filter((d) => !d.layerId || d.layerId === layerId);
   const out: { x: number; y: number }[] = [];
   for (const d of dims) {
-    const s = dimensionLabelScreenPosition(d, t);
+    const s = dimensionLabelScreenPosition(d, t, project);
     if (s) {
       out.push(s);
     }
@@ -139,7 +146,7 @@ export function drawDimensions2d(
     const ux = dx / len;
     const uy = dy / len;
 
-    const offsetMm = effectivePlan2dDimensionOffsetMm(d);
+    const offsetMm = effectivePlan2dDimensionOffsetMm(d, project);
     const label = String(d.textValueMm ?? Math.round(len));
     const tw = (measureDimensionLabelTextWidthPx(label) + DIMENSION_LABEL_H_PAD_PX) / 2;
 

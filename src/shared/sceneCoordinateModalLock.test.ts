@@ -10,6 +10,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         lengthChangeCoordinateModalOpen: false,
+        projectOriginCoordinateModalOpen: false,
       }),
     ).toBe(false);
   });
@@ -21,6 +22,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         lengthChangeCoordinateModalOpen: false,
+        projectOriginCoordinateModalOpen: false,
       }),
     ).toBe(true);
   });
