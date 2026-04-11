@@ -19,6 +19,10 @@ import { worldToScreen } from "./viewportTransforms";
 const WALL_NORMAL = 0x5aa7ff;
 const WALL_CONTEXT = 0x4a6a8a;
 const WALL_SELECTED = 0xe7b65c;
+/** Подсветка выбранной стены в послойном 2D: тонирование тела + тонкий контур по реальному периметру (без внешнего «ореола»). */
+const WALL_SELECTED_BODY_OVERLAY_ALPHA = 0.22;
+const WALL_SELECTED_EDGE_STROKE_PX = 1.2;
+const WALL_SELECTED_EDGE_ALPHA = 0.9;
 const OPENING_SLOT_FILL = 0x5aa7ff;
 const OPENING_SLOT_EMPTY = 0x8b939e;
 const OPENING_SLOT_STROKE = 0x2563eb;
@@ -152,6 +156,21 @@ function strokeQuadMm(
   g.stroke({ width, color, alpha, join: "miter" });
 }
 
+/** Маркеры концов оси стены: компактные, без визуального «раздувания» узла относительно толщины на экране. */
+function drawWallAxisEndpointHandles(
+  openingsG: Graphics,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  wallThicknessScreenPx: number,
+): void {
+  const r = Math.max(2.6, Math.min(5.2, wallThicknessScreenPx * 0.3));
+  for (const p of [a, b]) {
+    openingsG.circle(p.x, p.y, r);
+    openingsG.fill({ color: WALL_SELECTED, alpha: 0.92 });
+    openingsG.stroke({ width: 1, color: 0xffffff, alpha: 0.55 });
+  }
+}
+
 function drawWallStrokeSimple(
   wallsG: Graphics,
   openingsG: Graphics,
@@ -168,23 +187,12 @@ function drawWallStrokeSimple(
   const color = showSel ? WALL_SELECTED : ctx ? WALL_CONTEXT : profileColor.stroke;
   const alpha = ctx ? 0.35 : showSel ? 1 : 0.95;
 
-  if (showSel) {
-    const outline = strokePx + 4;
-    wallsG.moveTo(a.x, a.y);
-    wallsG.lineTo(b.x, b.y);
-    wallsG.stroke({ width: outline, color: 0x000000, alpha: 0.35, cap: "butt" });
-  }
   wallsG.moveTo(a.x, a.y);
   wallsG.lineTo(b.x, b.y);
   wallsG.stroke({ width: strokePx, color, alpha, cap: "butt" });
 
   if (showSel) {
-    const r = Math.max(4, strokePx * 0.55);
-    for (const p of [a, b]) {
-      openingsG.circle(p.x, p.y, r * 0.45);
-      openingsG.fill({ color: WALL_SELECTED, alpha: 0.9 });
-      openingsG.stroke({ width: 1, color: 0xffffff, alpha: 0.5 });
-    }
+    drawWallAxisEndpointHandles(openingsG, a, b, strokePx);
   }
 }
 
@@ -212,16 +220,9 @@ function drawWallLayeredPlan(
   const T = w.thicknessMm;
   const wallThicknessScreenPx = Math.max(2, T * t.zoomPixelsPerMm);
 
-  const fillAlpha = ctx ? 0.38 : showSel ? 0.98 : 0.92;
+  const fillAlpha = ctx ? 0.38 : 0.92;
   const edgeAlpha = ctx ? 0.1 : 0.18;
   const seamAlpha = ctx ? 0.12 : 0.26;
-
-  if (showSel && !ctx) {
-    const outer = quadCornersAlongWallMm(sx, sy, ex, ey, -T / 2, T / 2);
-    if (outer) {
-      strokeQuadMm(wallsG, outer, t, 0x000000, 0.4, Math.max(2, wallThicknessScreenPx * 0.06 + 2));
-    }
-  }
 
   let acc = -T / 2;
   for (const strip of strips) {
@@ -234,6 +235,21 @@ function drawWallLayeredPlan(
     }
     fillQuadMm(wallsG, corners, t, fillColor2dForMaterialType(strip.materialType), fillAlpha);
     strokeQuadMm(wallsG, corners, t, 0x0f1218, edgeAlpha, MIN_WALL_2D_LAYER_LINE_STROKE_PX);
+  }
+
+  if (showSel && !ctx) {
+    const outer = quadCornersAlongWallMm(sx, sy, ex, ey, -T / 2, T / 2);
+    if (outer) {
+      fillQuadMm(wallsG, outer, t, WALL_SELECTED, WALL_SELECTED_BODY_OVERLAY_ALPHA);
+      strokeQuadMm(
+        wallsG,
+        outer,
+        t,
+        WALL_SELECTED,
+        WALL_SELECTED_EDGE_ALPHA,
+        WALL_SELECTED_EDGE_STROKE_PX,
+      );
+    }
   }
 
   acc = -T / 2;
@@ -250,12 +266,7 @@ function drawWallLayeredPlan(
   if (showSel && !ctx) {
     const a = worldToScreen(sx, sy, t);
     const b = worldToScreen(ex, ey, t);
-    const r = Math.max(4, wallThicknessScreenPx * 0.55);
-    for (const p of [a, b]) {
-      openingsG.circle(p.x, p.y, r * 0.45);
-      openingsG.fill({ color: WALL_SELECTED, alpha: 0.9 });
-      openingsG.stroke({ width: 1, color: 0xffffff, alpha: 0.5 });
-    }
+    drawWallAxisEndpointHandles(openingsG, a, b, wallThicknessScreenPx);
   }
 }
 
