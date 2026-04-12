@@ -7,6 +7,7 @@ import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
 import { ThemeMenu } from "@/features/ui/ThemeMenu";
 import { TopBarMobile } from "@/features/ui/TopBarMobile";
+import { WorkspaceModeTabs } from "@/features/ui/WorkspaceModeTabs";
 import { projectCommands } from "@/features/project/commands";
 import { APP_NAME } from "@/shared/constants";
 import { computeAnchoredPopoverPosition } from "@/shared/ui/computeAnchoredPopoverPosition";
@@ -241,7 +242,8 @@ export function TopBar() {
   const showHotkeysAndProfiles = mode !== "compact";
 
   return (
-    <header className="shell-top" data-topbar-mode={mode}>
+    <header className="shell-top shell-top--with-mode-tabs" data-topbar-mode={mode}>
+      <div className="shell-top-main">
       <div className="shell-top-left row tb-group tb-group--left">
         <strong>{APP_NAME}</strong>
         <span className="muted">·</span>
@@ -338,6 +340,8 @@ export function TopBar() {
           <TopBarOverflowMenu open={overflowOpen} onOpenChange={setOverflowOpen} actions={overflowActions} />
         ) : null}
       </div>
+      </div>
+      <WorkspaceModeTabs />
     </header>
   );
 }

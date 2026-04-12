@@ -3,7 +3,7 @@
 .shell {
   --shell-right-col: var(--layout-right-panel);
   display: grid;
-  grid-template-rows: var(--layout-top-toolbar) 1fr var(--layout-status);
+  grid-template-rows: auto 1fr var(--layout-status);
   /* Центр — гибкий minmax(0,1fr), справа — фиксированная ширина rail/панели (без minmax max=300, чтобы трек совпадал с --shell-right-col). */
   grid-template-columns: var(--layout-left-rail) minmax(0, 1fr) var(--shell-right-col);
   grid-template-areas:
@@ -25,17 +25,42 @@
 
 .shell-top {
   grid-area: top;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 clamp(var(--space-xs), 1.2vw, var(--space-md)) 4px;
+  min-height: var(--layout-top-toolbar);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--shell-chrome-bg, var(--color-chrome));
+  box-shadow: var(--shadow-chrome-bar, var(--shadow-chrome));
+  overflow: visible;
+}
+
+.shell-top-main {
   display: grid;
   grid-template-columns: minmax(0, min(260px, 28vw)) minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--content-gap, var(--space-md));
   row-gap: var(--space-xs);
-  padding: 0 clamp(var(--space-xs), 1.2vw, var(--space-md));
-  min-height: var(--layout-top-toolbar);
-  border-bottom: 1px solid var(--color-border-subtle);
-  background: var(--shell-chrome-bg, var(--color-chrome));
-  box-shadow: var(--shadow-chrome-bar, var(--shadow-chrome));
-  overflow: hidden;
+  min-height: calc(var(--layout-top-toolbar) - 2px);
+}
+
+.shell-top-workspace-tabs {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0 2px;
+}
+
+.shell-top-workspace-tabs .tabs.tabs--workspace {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 38px;
+  max-width: min(100%, 1200px);
+  overflow-x: visible;
+  overflow-y: visible;
 }
 
 .shell-top-left {
@@ -328,7 +353,8 @@ html[data-theme="light"] .btn:hover {
   html[data-theme="dark"] .shell-nav-rail,
   html[data-theme="dark"] .shell-right,
   html[data-theme="dark"] .shell-status,
-  html[data-theme="dark"] .workspace-subbar {
+  html[data-theme="dark"] .workspace-subbar,
+  html[data-theme="dark"] .shell-top-workspace-tabs {
     backdrop-filter: blur(var(--blur-chrome, 14px)) saturate(var(--saturation-glass, 1.15));
     -webkit-backdrop-filter: blur(var(--blur-chrome, 14px)) saturate(var(--saturation-glass, 1.15));
   }
@@ -337,7 +363,8 @@ html[data-theme="light"] .btn:hover {
   html[data-theme="light"] .shell-nav-rail,
   html[data-theme="light"] .shell-right,
   html[data-theme="light"] .shell-status,
-  html[data-theme="light"] .workspace-subbar {
+  html[data-theme="light"] .workspace-subbar,
+  html[data-theme="light"] .shell-top-workspace-tabs {
     backdrop-filter: blur(var(--blur-chrome, 18px)) saturate(var(--saturation-glass, 1.08));
     -webkit-backdrop-filter: blur(var(--blur-chrome, 18px)) saturate(var(--saturation-glass, 1.08));
   }

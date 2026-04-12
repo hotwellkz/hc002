@@ -2,7 +2,7 @@ import type { Point2D } from "../geometry/types";
 
 import type { Project } from "./project";
 
-export type EditorTab = "2d" | "3d" | "spec" | "wall";
+export type EditorTab = "2d" | "3d" | "spec" | "wall" | "reports";
 
 /**
  * Подрежим 2D: план этажа, перекрытие (балки и плиты перекрытия) или фундамент (лента, сваи, плита).
@@ -139,7 +139,7 @@ export interface ViewState {
 }
 
 /** Нормализация viewState из файла (старые проекты без поля). */
-const VALID_TABS: readonly EditorTab[] = ["2d", "3d", "spec", "wall"];
+const VALID_TABS: readonly EditorTab[] = ["2d", "3d", "spec", "wall", "reports"];
 
 export function normalizeViewState(
   input: Pick<ViewState, "activeTab" | "viewport2d" | "viewport3d"> & {

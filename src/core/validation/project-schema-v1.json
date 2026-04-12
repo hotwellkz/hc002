@@ -1469,7 +1469,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "editor3dVisibilityCollapsePrimed": { "type": "boolean" },
-        "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall"] },
+        "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall", "reports"] },
         "editor2dPlanScope": {
           "type": "string",
           "enum": ["main", "floorStructure", "foundation", "roof"]

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Box, BrickWall, ClipboardList, DraftingCompass, Info, LayoutGrid, Layers, Menu, Spline } from "lucide-react";
+import { Box, BrickWall, ClipboardList, DraftingCompass, FileText, Info, LayoutGrid, Layers, Menu, Spline } from "lucide-react";
 
 import { Editor2DToolbarMobileSheet } from "@/features/editor2d/Editor2DToolbarMobile";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
@@ -272,6 +272,16 @@ export function MobileBottomNav() {
       >
         <LucideToolIcon icon={BrickWall} className="mobile-tab-icon" />
         <span>Стена</span>
+      </button>
+      <button
+        type="button"
+        className="mobile-tab-btn"
+        data-active={tab === "reports"}
+        aria-current={tab === "reports" ? "page" : undefined}
+        onClick={() => setTab("reports")}
+      >
+        <LucideToolIcon icon={FileText} className="mobile-tab-icon" />
+        <span>Отч.</span>
       </button>
     </nav>
   );

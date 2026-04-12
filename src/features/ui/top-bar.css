@@ -87,7 +87,7 @@
 }
 
 @media (max-width: 780px) {
-  .shell-top {
+  .shell-top-main {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: auto auto;
   }
