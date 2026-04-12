@@ -55,7 +55,7 @@ function unit2(v: Point2D): Point2D | null {
 }
 
 /** Удвоенная площадь (знак = обход). */
-function signedDoubleArea(poly: readonly Point2D[]): number {
+export function roofPlanContourSignedDoubleAreaMm(poly: readonly Point2D[]): number {
   const n = poly.length;
   if (n < 3) {
     return 0;
@@ -68,11 +68,20 @@ function signedDoubleArea(poly: readonly Point2D[]): number {
   return s;
 }
 
-function ensurePolygonCcWMm(poly: Point2D[]): Point2D[] {
-  if (signedDoubleArea(poly) < 0) {
+/** CCW в координатах плана (y вверх). После замены ребра обход мог инвертироваться. */
+export function ensureRoofPlanContourPolygonCcWMm(poly: Point2D[]): Point2D[] {
+  if (roofPlanContourSignedDoubleAreaMm(poly) < 0) {
     return [...poly].reverse();
   }
   return poly;
+}
+
+function signedDoubleArea(poly: readonly Point2D[]): number {
+  return roofPlanContourSignedDoubleAreaMm(poly);
+}
+
+function ensurePolygonCcWMm(poly: Point2D[]): Point2D[] {
+  return ensureRoofPlanContourPolygonCcWMm(poly);
 }
 
 function lineValue(L: PlanLine2d, p: Point2D): number {

@@ -1,5 +1,6 @@
 import { closestPointOnSegment } from "@/core/domain/wallJointGeometry";
 import {
+  ensureRoofPlanContourPolygonCcWMm,
   tryJoinTwoRoofPlaneContoursMm,
   updateRoofPlaneEntityAfterContourEdit,
 } from "@/core/domain/roofContourJoin";
@@ -470,11 +471,13 @@ export function joinParallelRoofPlaneEdgesToMidlineMm(
   const qLo = { x: pOnJoin.x + eU.x * merged.lo, y: pOnJoin.y + eU.y * merged.lo };
   const qHi = { x: pOnJoin.x + eU.x * merged.hi, y: pOnJoin.y + eU.y * merged.hi };
 
-  const nextA = replacePolygonEdgeWithJoinEndpointsMm(polyA, edgeA, qLo, qHi);
-  const nextB = replacePolygonEdgeWithJoinEndpointsMm(polyB, edgeB, qLo, qHi);
-  if (!nextA || !nextB) {
+  const rawA = replacePolygonEdgeWithJoinEndpointsMm(polyA, edgeA, qLo, qHi);
+  const rawB = replacePolygonEdgeWithJoinEndpointsMm(polyB, edgeB, qLo, qHi);
+  if (!rawA || !rawB) {
     return { error: "Соединение невозможно: не удалось построить линию стыка." };
   }
+  const nextA = ensureRoofPlanContourPolygonCcWMm(rawA);
+  const nextB = ensureRoofPlanContourPolygonCcWMm(rawB);
   if (
     Math.abs(polygonAreaSignedMm(nextA)) <= MM_EPS ||
     Math.abs(polygonAreaSignedMm(nextB)) <= MM_EPS

@@ -67,6 +67,7 @@ import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
 import {
   applyRoofCalculationToProject,
   refreshAllCalculatedRoofPlaneOverhangsInProject,
+  refreshRoofOverhangForJoinPairInProject,
 } from "@/core/domain/roofCalculationPipeline";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
@@ -176,6 +177,9 @@ import {
   updateSlabInProject,
 } from "@/core/domain/slabOps";
 import { rectangleCornersFromDiagonalMm } from "@/core/domain/slabPolygon";
+import type { RoofSystemKind } from "@/core/domain/roofSystem";
+import { addRectangleRoofSystemToProject } from "@/core/domain/roofSystemToProject";
+import type { MonoCardinalDrain } from "@/core/domain/roofSystemRectangleGeometry";
 import type { SlabStructuralPurpose } from "@/core/domain/slab";
 import type { FoundationPileEntity, FoundationPileKind } from "@/core/domain/foundationPile";
 import type { FoundationPileMoveCopySession } from "@/core/domain/foundationPileMoveCopySession";
@@ -307,6 +311,27 @@ export interface RoofPlanePlacementSession {
   readonly previewSlopeNormal: Point2D | null;
 }
 
+export interface RoofSystemPlacementDraftPersisted {
+  readonly roofKind: RoofSystemKind;
+  readonly pitchDeg: number;
+  readonly baseLevelMm: number;
+  readonly profileId: string;
+  readonly eaveOverhangMm: number;
+  readonly sideOverhangMm: number;
+  readonly ridgeAlong: "short" | "long";
+  readonly monoDrainCardinal: MonoCardinalDrain;
+}
+
+export type RoofSystemPlacementPhase = "waitingFirstCorner" | "waitingSecondCorner";
+
+export interface RoofSystemPlacementSession {
+  readonly draft: RoofSystemPlacementDraftPersisted;
+  readonly phase: RoofSystemPlacementPhase;
+  readonly firstPointMm: Point2D | null;
+  readonly previewEndMm: Point2D | null;
+  readonly lastSnapKind: SnapKind | null;
+}
+
 export interface FoundationPilePlacementDraft {
   readonly pileKind: FoundationPileKind;
   readonly sizeMm: number;
@@ -421,6 +446,9 @@ interface AppState {
   readonly lastRoofPlanePlacementParams: RoofPlanePlacementDraftPersisted | null;
   readonly roofPlanePlacementSession: RoofPlanePlacementSession | null;
   readonly roofPlanePlacementHistoryBaseline: Project | null;
+  readonly lastRoofSystemPlacementParams: RoofSystemPlacementDraftPersisted | null;
+  readonly roofSystemPlacementSession: RoofSystemPlacementSession | null;
+  readonly roofSystemPlacementHistoryBaseline: Project | null;
   /** Стыковка контуров скатов (режим «Крыша»). */
   readonly roofContourJoinSession: RoofContourJoinSession | null;
   readonly roofContourJoinHistoryBaseline: Project | null;
@@ -806,6 +834,24 @@ interface AppActions {
     readonly levelMm: number;
     readonly profileId: string;
   }) => void;
+  applyAddRoofSystemModal: (input: {
+    readonly roofKind: RoofSystemKind;
+    readonly pitchDeg: number;
+    readonly baseLevelMm: number;
+    readonly profileId: string;
+    readonly eaveOverhangMm: number;
+    readonly sideOverhangMm: number;
+    readonly ridgeAlong: "short" | "long";
+    readonly monoDrainCardinal: MonoCardinalDrain;
+  }) => void;
+  cancelRoofSystemPlacement: () => void;
+  roofSystemPlacementBackOrExit: () => void;
+  roofSystemPlacementPreviewMove: (worldMm: Point2D, viewport: ViewportTransform) => void;
+  roofSystemPlacementPrimaryClick: (
+    worldMm: Point2D,
+    viewport: ViewportTransform,
+    opts?: { readonly clickDetail?: number },
+  ) => void;
   cancelRoofPlanePlacement: () => void;
   roofPlanePlacementBackOrExit: () => void;
   roofPlanePlacementFirstPointHoverMove: (worldMm: Point2D, viewport: ViewportTransform) => void;
@@ -1136,6 +1182,9 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     lastRoofPlanePlacementParams: null,
     roofPlanePlacementSession: null,
     roofPlanePlacementHistoryBaseline: null,
+    lastRoofSystemPlacementParams: null,
+    roofSystemPlacementSession: null,
+    roofSystemPlacementHistoryBaseline: null,
     roofContourJoinSession: null,
     roofContourJoinHistoryBaseline: null,
     activeTool: "select",
@@ -1369,6 +1418,16 @@ function newRoofPlanePlacementSession(draft: RoofPlanePlacementDraftPersisted): 
   };
 }
 
+function newRoofSystemPlacementSession(draft: RoofSystemPlacementDraftPersisted): RoofSystemPlacementSession {
+  return {
+    draft,
+    phase: "waitingFirstCorner",
+    firstPointMm: null,
+    previewEndMm: null,
+    lastSnapKind: null,
+  };
+}
+
 function tryCommitSlabOutline(
   project: Project,
   session: SlabPlacementSession,
@@ -1442,6 +1501,9 @@ export const useAppStore = create<AppStore>((set, get) => {
     lastRoofPlanePlacementParams: null,
     roofPlanePlacementSession: null,
     roofPlanePlacementHistoryBaseline: null,
+    lastRoofSystemPlacementParams: null,
+    roofSystemPlacementSession: null,
+    roofSystemPlacementHistoryBaseline: null,
     roofContourJoinSession: null,
     roofContourJoinHistoryBaseline: null,
     wallCoordinateModalOpen: false,
@@ -1769,6 +1831,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           addRoofPlaneModalOpen: tab === "2d" ? s.addRoofPlaneModalOpen : false,
           roofPlanePlacementSession: tab === "2d" ? s.roofPlanePlacementSession : null,
           roofPlanePlacementHistoryBaseline: tab === "2d" ? s.roofPlanePlacementHistoryBaseline : null,
+          roofSystemPlacementSession: tab === "2d" ? s.roofSystemPlacementSession : null,
+          roofSystemPlacementHistoryBaseline: tab === "2d" ? s.roofSystemPlacementHistoryBaseline : null,
           roofContourJoinSession: tab === "2d" ? s.roofContourJoinSession : null,
           roofContourJoinHistoryBaseline: tab === "2d" ? s.roofContourJoinHistoryBaseline : null,
           wallJointSession: tab === "2d" ? s.wallJointSession : null,
@@ -4640,9 +4704,15 @@ export const useAppStore = create<AppStore>((set, get) => {
         }
 
         if (scope !== "roof") {
-          if (s.roofPlanePlacementSession != null || s.addRoofPlaneModalOpen) {
+          if (
+            s.roofPlanePlacementSession != null ||
+            s.roofSystemPlacementSession != null ||
+            s.addRoofPlaneModalOpen
+          ) {
             patch.roofPlanePlacementSession = null;
             patch.roofPlanePlacementHistoryBaseline = null;
+            patch.roofSystemPlacementSession = null;
+            patch.roofSystemPlacementHistoryBaseline = null;
             patch.addRoofPlaneModalOpen = false;
           }
           if (s.roofContourJoinSession != null) {
@@ -4737,6 +4807,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         addRoofPlaneModalOpen: true,
         roofContourJoinSession: null,
         roofContourJoinHistoryBaseline: null,
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
         lastError: null,
       }),
 
@@ -4777,15 +4849,193 @@ export const useAppStore = create<AppStore>((set, get) => {
         lastRoofPlanePlacementParams: draft,
         roofContourJoinSession: null,
         roofContourJoinHistoryBaseline: null,
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
         selectedEntityIds: [],
         lastError: null,
       });
+    },
+
+    applyAddRoofSystemModal: (input) => {
+      const p = get().currentProject;
+      if (p.viewState.editor2dPlanScope !== "roof") {
+        set({ lastError: "Переключитесь в режим «Крыша»." });
+        return;
+      }
+      const profileId = String(input.profileId ?? "").trim();
+      if (!profileId) {
+        set({ lastError: "Выберите профиль кровли." });
+        return;
+      }
+      const profile = getProfileById(p, profileId);
+      if (!profile || !isProfileUsableForRoofPlane(profile)) {
+        set({ lastError: "Выберите профиль категории «крыша»." });
+        return;
+      }
+      const pitchDeg = Number(input.pitchDeg);
+      const baseLevelMm = Number(input.baseLevelMm);
+      const eaveOverhangMm = Number(input.eaveOverhangMm);
+      const sideOverhangMm = Number(input.sideOverhangMm);
+      if (!Number.isFinite(pitchDeg) || !Number.isFinite(baseLevelMm)) {
+        set({ lastError: "Угол и уровень должны быть числами." });
+        return;
+      }
+      if (!Number.isFinite(eaveOverhangMm) || !Number.isFinite(sideOverhangMm) || eaveOverhangMm < 0 || sideOverhangMm < 0) {
+        set({ lastError: "Свесы должны быть неотрицательными числами (мм)." });
+        return;
+      }
+      const draft: RoofSystemPlacementDraftPersisted = {
+        roofKind: input.roofKind,
+        pitchDeg,
+        baseLevelMm,
+        profileId,
+        eaveOverhangMm,
+        sideOverhangMm,
+        ridgeAlong: input.ridgeAlong,
+        monoDrainCardinal: input.monoDrainCardinal,
+      };
+      const baseline = cloneProjectSnapshot(p);
+      set({
+        addRoofPlaneModalOpen: false,
+        roofSystemPlacementHistoryBaseline: baseline,
+        roofSystemPlacementSession: newRoofSystemPlacementSession(draft),
+        lastRoofSystemPlacementParams: draft,
+        roofPlanePlacementSession: null,
+        roofPlanePlacementHistoryBaseline: null,
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
+        selectedEntityIds: [],
+        lastError: null,
+      });
+    },
+
+    cancelRoofSystemPlacement: () =>
+      set({
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      }),
+
+    roofSystemPlacementBackOrExit: () => {
+      const s = get().roofSystemPlacementSession;
+      if (!s) {
+        return;
+      }
+      if (s.phase === "waitingSecondCorner") {
+        set({
+          roofSystemPlacementSession: {
+            ...s,
+            phase: "waitingFirstCorner",
+            firstPointMm: null,
+            previewEndMm: null,
+            lastSnapKind: null,
+          },
+          lastError: null,
+        });
+        return;
+      }
+      set({
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      });
+    },
+
+    roofSystemPlacementPreviewMove: (worldMm, viewport) => {
+      const s = get().roofSystemPlacementSession;
+      if (!s || isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
+      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      set({
+        roofSystemPlacementSession: {
+          ...s,
+          previewEndMm: snap.point,
+          lastSnapKind: snap.kind,
+        },
+      });
+    },
+
+    roofSystemPlacementPrimaryClick: (worldMm, viewport) => {
+      const s0 = get().roofSystemPlacementSession;
+      if (!s0) {
+        return;
+      }
+      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      const pt = snap.point;
+      const minLen = 10;
+      const p0 = get().currentProject;
+
+      if (s0.phase === "waitingFirstCorner") {
+        set({
+          roofSystemPlacementSession: {
+            ...s0,
+            phase: "waitingSecondCorner",
+            firstPointMm: pt,
+            previewEndMm: pt,
+            lastSnapKind: snap.kind,
+          },
+          lastError: null,
+        });
+        return;
+      }
+
+      if (s0.phase === "waitingSecondCorner" && s0.firstPointMm) {
+        const corners = rectangleCornersFromDiagonalMm(s0.firstPointMm, pt);
+        const xs = corners.map((c) => c.x);
+        const ys = corners.map((c) => c.y);
+        const w = Math.max(...xs) - Math.min(...xs);
+        const h = Math.max(...ys) - Math.min(...ys);
+        if (w < minLen || h < minLen) {
+          set({ lastError: "Прямоугольник слишком мал." });
+          return;
+        }
+        const beforeIds = new Set(p0.roofPlanes.map((r) => r.id));
+        const d = s0.draft;
+        let nextProject: Project;
+        try {
+          nextProject = addRectangleRoofSystemToProject(p0, {
+            footprintCcWMm: corners,
+            roofKind: d.roofKind,
+            pitchDeg: d.pitchDeg,
+            baseLevelMm: d.baseLevelMm,
+            profileId: d.profileId,
+            eaveOverhangMm: d.eaveOverhangMm,
+            sideOverhangMm: d.sideOverhangMm,
+            ridgeAlong: d.ridgeAlong,
+            monoDrainCardinal: d.monoDrainCardinal,
+          });
+        } catch (e) {
+          set({ lastError: e instanceof Error ? e.message : "Не удалось построить крышу." });
+          return;
+        }
+        const newPlaneIds = nextProject.roofPlanes.filter((r) => !beforeIds.has(r.id)).map((r) => r.id);
+        const nextSession = newRoofSystemPlacementSession(d);
+        set((st) =>
+          buildProjectMutationState(
+            st,
+            nextProject,
+            {
+              roofSystemPlacementSession: nextSession,
+              roofSystemPlacementHistoryBaseline: null,
+              selectedEntityIds: newPlaneIds.length > 0 ? [newPlaneIds[0]!] : [],
+              dirty: true,
+              lastError: null,
+            },
+            st.roofSystemPlacementHistoryBaseline != null ? { historyBefore: st.roofSystemPlacementHistoryBaseline } : {},
+          ),
+        );
+      }
     },
 
     cancelRoofPlanePlacement: () =>
       set({
         roofPlanePlacementSession: null,
         roofPlanePlacementHistoryBaseline: null,
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
         addRoofPlaneModalOpen: false,
         lastError: null,
       }),
@@ -5104,6 +5354,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         roofContourJoinHistoryBaseline: baseline,
         roofPlanePlacementSession: null,
         roofPlanePlacementHistoryBaseline: null,
+        roofSystemPlacementSession: null,
+        roofSystemPlacementHistoryBaseline: null,
         addRoofPlaneModalOpen: false,
         selectedEntityIds: [],
         lastError: null,
@@ -5287,8 +5539,12 @@ export const useAppStore = create<AppStore>((set, get) => {
         rp.id === r.a.id ? r.a : rp.id === r.b.id ? r.b : rp,
       );
       const touched = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
-      /** Общие рёбра со скатами на том же слое не получают боковой свес — линия стыка не разъезжается. */
-      const nextProject = refreshAllCalculatedRoofPlaneOverhangsInProject(touched);
+      /**
+       * Если в расчёте крыши только один из двух скатов стыка, без пары обновится только он — асимметрия.
+       * Сначала синхронизируем свесы по обоим id стыка, затем общий refresh по всем расчётным скатам.
+       */
+      let nextProject = refreshRoofOverhangForJoinPairInProject(touched, r.a.id, r.b.id);
+      nextProject = refreshAllCalculatedRoofPlaneOverhangsInProject(nextProject);
       set((st) => ({
         ...buildProjectMutationState(
           st,

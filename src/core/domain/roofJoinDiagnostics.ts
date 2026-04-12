@@ -1,3 +1,4 @@
+import { roofPlaneContourUvExtentsMm } from "./roofPlaneDrainExtents";
 import type { RoofPlaneEntity } from "./roofPlane";
 import {
   roofPlaneDrainUnitPlanMm,
@@ -87,7 +88,14 @@ export function roofPlaneHeightDebugSnapMm(
   readonly maxDotAlongDrain: number;
   readonly minDotAlongDrain: number;
   readonly runAlongDrainSpanMm: number;
+  readonly minU: number;
+  readonly maxU: number;
+  readonly spanAlongDrainUMm: number;
+  readonly minV: number;
+  readonly maxV: number;
+  readonly spanPerpDrainVMm: number;
   readonly planeContourVerticesMm: readonly { readonly x: number; readonly y: number }[];
+  readonly planContourBaseVerticesMm: readonly { readonly x: number; readonly y: number }[] | null;
   readonly heightFormula: "z = layerBase + levelMm + zAdjust + tan(angle)·(maxDot − p·û)";
 } {
   const poly = roofPlanePolygonMm(rp);
@@ -97,6 +105,7 @@ export function roofPlaneHeightDebugSnapMm(
   for (const p of poly) {
     minDot = Math.min(minDot, p.x * uxn + p.y * uyn);
   }
+  const uv = roofPlaneContourUvExtentsMm(poly, uxn, uyn);
   return {
     id: rp.id,
     angleDeg: rp.angleDeg,
@@ -108,7 +117,14 @@ export function roofPlaneHeightDebugSnapMm(
     maxDotAlongDrain: maxDot,
     minDotAlongDrain: minDot,
     runAlongDrainSpanMm: maxDot - minDot,
+    minU: uv.minU,
+    maxU: uv.maxU,
+    spanAlongDrainUMm: uv.spanUMm,
+    minV: uv.minV,
+    maxV: uv.maxV,
+    spanPerpDrainVMm: uv.spanVMm,
     planeContourVerticesMm: poly.map((p) => ({ x: p.x, y: p.y })),
+    planContourBaseVerticesMm: rp.planContourBaseMm?.map((p) => ({ x: p.x, y: p.y })) ?? null,
     heightFormula: "z = layerBase + levelMm + zAdjust + tan(angle)·(maxDot − p·û)",
   };
 }

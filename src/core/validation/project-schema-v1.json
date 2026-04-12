@@ -82,6 +82,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/roofPlaneEntity" }
     },
+    "roofSystems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofSystemEntity" }
+    },
     "roofAssemblyCalculations": {
       "type": "array",
       "items": { "$ref": "#/$defs/roofAssemblyCalculation" }
@@ -991,6 +995,69 @@
           "type": "array",
           "minItems": 3,
           "items": { "$ref": "#/$defs/point2d" }
+        },
+        "roofSystemId": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "minLength": 1 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roofSystemEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "layerId",
+        "roofKind",
+        "footprintMm",
+        "profileId",
+        "pitchDeg",
+        "baseLevelMm",
+        "eaveOverhangMm",
+        "sideOverhangMm",
+        "ridgeUnitPlan",
+        "drainUnitPlan",
+        "ridgeAlong",
+        "generatedPlaneIds",
+        "ridgeSegmentsPlanMm",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "const": "roofSystem" },
+        "layerId": { "type": "string", "minLength": 1 },
+        "roofKind": { "type": "string", "enum": ["mono", "gable", "hip"] },
+        "footprintMm": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/point2d" }
+        },
+        "profileId": { "type": "string", "minLength": 1 },
+        "pitchDeg": { "type": "number" },
+        "baseLevelMm": { "type": "number" },
+        "eaveOverhangMm": { "type": "number", "minimum": 0 },
+        "sideOverhangMm": { "type": "number", "minimum": 0 },
+        "ridgeUnitPlan": { "$ref": "#/$defs/point2d" },
+        "drainUnitPlan": { "$ref": "#/$defs/point2d" },
+        "ridgeAlong": { "type": "string", "enum": ["short", "long"] },
+        "generatedPlaneIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "ridgeSegmentsPlanMm": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ax", "ay", "bx", "by"],
+            "properties": {
+              "ax": { "type": "number" },
+              "ay": { "type": "number" },
+              "bx": { "type": "number" },
+              "by": { "type": "number" }
+            }
+          }
         },
         "createdAt": { "type": "string", "minLength": 1 },
         "updatedAt": { "type": "string", "minLength": 1 }

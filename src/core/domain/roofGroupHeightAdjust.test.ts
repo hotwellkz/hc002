@@ -113,6 +113,7 @@ describe("computeRoofGroupZAdjustMmByPlaneId", () => {
     p = {
       ...p,
       roofPlanes: [a, b],
+      roofSystems: [],
       roofAssemblyCalculations: [],
     };
     const adj = computeAllRoofPlanesZAdjustMmByPlaneIdInProject(p, () => 0);

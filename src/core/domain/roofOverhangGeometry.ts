@@ -186,6 +186,7 @@ export function roofQuadEdgesCoincideUndirectedMm(
 export function roofQuadSharedEdgeIndexPairsMm(
   quadCcWA: readonly Point2D[],
   quadCcWB: readonly Point2D[],
+  /** Допуск стыка в мм; для расчёта свесов берите ≥4, чтобы стык не «терялся» из‑за погрешности join. */
   tolMm = 2,
 ): readonly { readonly indexA: number; readonly indexB: number }[] {
   if (quadCcWA.length !== 4 || quadCcWB.length !== 4) {

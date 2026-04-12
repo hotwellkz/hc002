@@ -182,6 +182,7 @@ import {
 } from "@/core/domain/roofPlaneQuadEditGeometry";
 import { drawRoofBattensPlan2d } from "./drawRoofBattensPlan2d";
 import { drawRoofPlanePlacementPreview2d, drawRoofPlanes2d } from "./drawRoofPlanes2d";
+import { drawRoofSystemRidges2d } from "./drawRoofSystemRidges2d";
 import { appendRoofPlaneLabels2d } from "./roofPlaneLabels2dPixi";
 import { computeRoofLabelLayouts2d } from "./roofPlaneLabelLayout2d";
 import {
@@ -812,6 +813,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           floorBeamPlacementSession: stA.floorBeamPlacementSession,
           floorBeamSplitSession: stA.floorBeamSplitSession,
           slabPlacementSession: stA.slabPlacementSession,
+          roofSystemPlacementSession: stA.roofSystemPlacementSession,
           roofPlanePlacementSession: stA.roofPlanePlacementSession,
           roofContourJoinSession: stA.roofContourJoinSession,
           foundationStripPlacementSession: stA.foundationStripPlacementSession,
@@ -994,6 +996,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (stEsc.slabPlacementSession) {
           e.preventDefault();
           useAppStore.getState().slabPlacementBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          return;
+        }
+        if (stEsc.roofSystemPlacementSession) {
+          e.preventDefault();
+          useAppStore.getState().roofSystemPlacementBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
           return;
@@ -1562,6 +1571,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     roofBattens2dG.eventMode = "none";
     const roofPlanesG = new Graphics();
     roofPlanesG.eventMode = "none";
+    const roofSystemRidgesG = new Graphics();
+    roofSystemRidgesG.eventMode = "none";
     const roofPlanePreviewG = new Graphics();
     roofPlanePreviewG.eventMode = "none";
     const roofPlaneLabelsC = new Container();
@@ -2341,6 +2352,18 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         }
       }
 
+      const roofSysSessPaint = useAppStore.getState().roofSystemPlacementSession;
+      if (roofSysSessPaint?.previewEndMm && roofSysSessPaint.phase === "waitingSecondCorner" && roofSysSessPaint.firstPointMm) {
+        const cornersRs = rectangleCornersFromDiagonalMm(roofSysSessPaint.firstPointMm, roofSysSessPaint.previewEndMm);
+        for (let i = 0; i < cornersRs.length; i++) {
+          const a = worldToScreen(cornersRs[i]!.x, cornersRs[i]!.y, t);
+          const b = worldToScreen(cornersRs[(i + 1) % cornersRs.length]!.x, cornersRs[(i + 1) % cornersRs.length]!.y, t);
+          slabPreviewG.moveTo(a.x, a.y);
+          slabPreviewG.lineTo(b.x, b.y);
+        }
+        slabPreviewG.stroke({ width: 1.35, color: 0xf59e0b, alpha: 0.9, cap: "round", join: "round" });
+      }
+
       const roofPlanesForLabelLayout: RoofPlaneEntity[] = [];
       const roofLabelSeenIds = new Set<string>();
       for (const lid of contextIds) {
@@ -2397,6 +2420,15 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         clear: firstRoofDraw,
         labelLayoutByPlaneId: roofLabelLayoutByPlaneId,
       });
+
+      roofSystemRidgesG.clear();
+      let firstRidge = true;
+      for (const lid of contextIds) {
+        const ctxSys = narrowProjectToLayerSet(currentProject, new Set([lid])).roofSystems;
+        drawRoofSystemRidges2d(roofSystemRidgesG, ctxSys, t, { clear: firstRidge });
+        firstRidge = false;
+      }
+      drawRoofSystemRidges2d(roofSystemRidgesG, layerView.roofSystems, t, { clear: firstRidge });
 
       clearWallMarkLabelContainer(roofPlaneLabelsC);
       appendRoofPlaneLabels2d(roofPlaneLabelsC, roofPlanesForLabelLayout, roofLabelLayoutByPlaneId, t, {
@@ -3705,6 +3737,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(slabPreviewG);
       worldRoot.addChild(roofBattens2dG);
       worldRoot.addChild(roofPlanesG);
+      worldRoot.addChild(roofSystemRidgesG);
       worldRoot.addChild(roofPlanePreviewG);
       worldRoot.addChild(wallsG);
       worldRoot.addChild(floorBeamsG);
@@ -5350,6 +5383,45 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             }
             setCoordHudRef.current(null);
             paint();
+          } else if (useAppStore.getState().roofSystemPlacementSession) {
+            const rsS = useAppStore.getState().roofSystemPlacementSession;
+            if (rsS && !isSceneCoordinateModalBlocking(useAppStore.getState())) {
+              useAppStore.getState().roofSystemPlacementPreviewMove(p, t);
+            }
+            const rs2 = useAppStore.getState().roofSystemPlacementSession;
+            let snapRs: string | null = null;
+            if (rs2?.lastSnapKind && rs2.lastSnapKind !== "none") {
+              snapRs =
+                rs2.lastSnapKind === "vertex"
+                  ? "Привязка: угол"
+                  : rs2.lastSnapKind === "edge"
+                    ? "Привязка: линия"
+                    : "Привязка: сетка";
+            }
+            const phaseRs =
+              rs2?.phase === "waitingFirstCorner"
+                ? "Первый угол контура крыши — ЛКМ"
+                : "Второй угол прямоугольника — ЛКМ";
+            const layRs = computeEditorOverlayLayout({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
+            setWallHintRef.current({
+              left: layRs.instruction.left,
+              top: layRs.instruction.top,
+              snapLabel: snapRs,
+              lines: hintLines("Крыша (генератор)", [
+                { text: phaseRs },
+                { text: "ПКМ / Esc — шаг назад или выход", variant: "muted" },
+              ]),
+            });
+            setCoordHudRef.current(null);
+            paint();
           } else if (useAppStore.getState().roofPlanePlacementSession) {
             const rpS = useAppStore.getState().roofPlanePlacementSession;
             if (rpS && !isSceneCoordinateModalBlocking(useAppStore.getState())) {
@@ -5686,6 +5758,25 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           return;
         }
 
+        const roofSystemPlacementSessionPtr = useAppStore.getState().roofSystemPlacementSession;
+        if (roofSystemPlacementSessionPtr && ev.button === 2) {
+          ev.preventDefault();
+          useAppStore.getState().roofSystemPlacementBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          paint();
+          return;
+        }
+        if (roofSystemPlacementSessionPtr && ev.button === 0) {
+          useAppStore.getState().roofSystemPlacementPrimaryClick(worldMm, t, { clickDetail: ev.detail });
+          paint();
+          if (!useAppStore.getState().roofSystemPlacementSession) {
+            setWallHintRef.current(null);
+            setCoordHudRef.current(null);
+          }
+          return;
+        }
+
         const roofPlanePlacementSessionPtr = useAppStore.getState().roofPlanePlacementSession;
         if (roofPlanePlacementSessionPtr && ev.button === 2) {
           ev.preventDefault();
@@ -5986,6 +6077,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !useAppStore.getState().foundationStripPlacementSession &&
           !useAppStore.getState().foundationPilePlacementSession &&
           !useAppStore.getState().slabPlacementSession &&
+          !useAppStore.getState().roofSystemPlacementSession &&
           !useAppStore.getState().roofPlanePlacementSession &&
           !useAppStore.getState().roofContourJoinSession &&
           !useAppStore.getState().pendingWindowPlacement &&
@@ -6139,6 +6231,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !useAppStore.getState().foundationStripPlacementSession &&
           !useAppStore.getState().foundationPilePlacementSession &&
           !useAppStore.getState().slabPlacementSession &&
+          !useAppStore.getState().roofSystemPlacementSession &&
           !useAppStore.getState().roofPlanePlacementSession &&
           !useAppStore.getState().roofContourJoinSession &&
           !useAppStore.getState().pendingWindowPlacement &&

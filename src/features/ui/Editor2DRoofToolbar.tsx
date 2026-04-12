@@ -11,7 +11,8 @@ export function Editor2DRoofToolbar() {
   const openCalc = useAppStore((s) => s.openRoofCalculationModal);
   const startJoin = useAppStore((s) => s.startRoofContourJoinTool);
   const cancelJoin = useAppStore((s) => s.cancelRoofContourJoinTool);
-  const planeToolActive = useAppStore((s) => s.roofPlanePlacementSession != null);
+  const planeToolActive =
+    useAppStore((s) => s.roofPlanePlacementSession != null || s.roofSystemPlacementSession != null);
   const joinToolActive = useAppStore((s) => s.roofContourJoinSession != null);
   const selectedRoofCount = useAppStore((s) => {
     const sel = new Set(s.selectedEntityIds);

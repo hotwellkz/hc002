@@ -11,6 +11,7 @@ export interface SelectAllEditorSnapshot {
   readonly floorBeamPlacementSession: unknown | null;
   readonly floorBeamSplitSession: unknown | null;
   readonly slabPlacementSession: unknown | null;
+  readonly roofSystemPlacementSession: unknown | null;
   readonly roofPlanePlacementSession: unknown | null;
   readonly roofContourJoinSession: unknown | null;
   readonly foundationStripPlacementSession: unknown | null;
@@ -49,6 +50,10 @@ export function entityIdsForSelectAll2d(project: Project, snap: SelectAllEditorS
 
   if (snap.slabPlacementSession) {
     return layerView.slabs.map((s) => s.id);
+  }
+
+  if (snap.roofSystemPlacementSession) {
+    return layerView.roofPlanes.map((r) => r.id);
   }
 
   if (snap.roofPlanePlacementSession) {

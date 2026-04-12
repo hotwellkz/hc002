@@ -1,4 +1,5 @@
 import { newEntityId } from "./ids";
+import type { Point2D } from "../geometry/types";
 import type { Project } from "./project";
 import { getProfileById } from "./profileOps";
 import { countRoofPlaneConnectivityComponents } from "./roofCalculationConnectivity";
@@ -17,6 +18,22 @@ import {
 import type { RoofProfileAssembly } from "./roofProfileAssembly";
 import { touchProjectMeta } from "./projectFactory";
 
+/** Профиль кровли с учётом переопределения свесов из `RoofSystemEntity`, если скат из генератора. */
+export function mergeRoofProfileAssemblyForPlane(project: Project, rp: RoofPlaneEntity): RoofProfileAssembly | null {
+  const profile = getProfileById(project, rp.profileId);
+  if (!profile || profile.category !== "roof") {
+    return null;
+  }
+  let asm = resolveRoofProfileAssembly(profile);
+  if (rp.roofSystemId) {
+    const sys = project.roofSystems.find((s) => s.id === rp.roofSystemId);
+    if (sys) {
+      asm = { ...asm, eaveOverhangMm: sys.eaveOverhangMm, sideOverhangMm: sys.sideOverhangMm };
+    }
+  }
+  return asm;
+}
+
 export interface ApplyRoofCalculationInput {
   readonly project: Project;
   /** Идентификаторы выбранных скатов (roofPlane.id). */
@@ -27,26 +44,36 @@ export type ApplyRoofCalculationResult =
   | { readonly ok: true; readonly project: Project }
   | { readonly ok: false; readonly errors: readonly string[] };
 
+/** Допуск совпадения общего ребра двух скатов (мм): меньше — риск не найти стык после join и развести конёк свесами. */
+export const ROOF_INTERNAL_JOIN_SHARED_EDGE_TOL_MM = 4;
+
 /**
  * Рёбра четырёхугольника, совпадающие с другим скатом на том же слое: без свеса.
  * Иначе боковой свес к каждому полигону сдвигает общее ребро в противоположные стороны
  * (внешние нормали навстречу) → разъезд линии стыка и разная «длина» скатов в плане.
+ *
+ * `selfBaseQuad` — тот же базовый контур, от которого считается свес (immutable base), без повторного чтения
+ * у сущности с уже «плавающим» planContourMm.
  */
-function collectInternalJoinEdgeIndicesForRoofPlaneMm(project: Project, rp: RoofPlaneEntity): Set<number> {
+export function collectInternalJoinEdgeIndicesForRoofBaseMm(
+  project: Project,
+  selfId: string,
+  selfLayerId: string,
+  selfBaseQuad: readonly Point2D[],
+): Set<number> {
   const out = new Set<number>();
-  const baseSelf = roofPlaneCalculationBasePolygonMm(rp);
-  if (baseSelf.length !== 4) {
+  if (selfBaseQuad.length !== 4) {
     return out;
   }
   for (const other of project.roofPlanes) {
-    if (other.id === rp.id || other.layerId !== rp.layerId) {
+    if (other.id === selfId || other.layerId !== selfLayerId) {
       continue;
     }
     const baseO = roofPlaneCalculationBasePolygonMm(other);
     if (baseO.length !== 4) {
       continue;
     }
-    for (const { indexA } of roofQuadSharedEdgeIndexPairsMm(baseSelf, baseO)) {
+    for (const { indexA } of roofQuadSharedEdgeIndexPairsMm(selfBaseQuad, baseO, ROOF_INTERNAL_JOIN_SHARED_EDGE_TOL_MM)) {
       out.add(indexA);
     }
   }
@@ -56,7 +83,7 @@ function collectInternalJoinEdgeIndicesForRoofPlaneMm(project: Project, rp: Roof
 function roofPlaneWithProfileOverhangMm(project: Project, rp: RoofPlaneEntity, asm: RoofProfileAssembly): RoofPlaneEntity | null {
   const base = roofPlaneCalculationBasePolygonMm(rp);
   const rpWithFrozenBase: RoofPlaneEntity = { ...rp, planContourBaseMm: base };
-  const zeroIdx = collectInternalJoinEdgeIndicesForRoofPlaneMm(project, rp);
+  const zeroIdx = collectInternalJoinEdgeIndicesForRoofBaseMm(project, rp.id, rp.layerId, base);
   const expanded = applyRoofProfileOverhangToPlanPolygonMm(
     base,
     rp.slopeDirection,
@@ -77,7 +104,10 @@ export function refreshCalculatedRoofPlaneOverhangMm(project: Project, rp: RoofP
   if (!profile || profile.category !== "roof") {
     return rp;
   }
-  const asm = resolveRoofProfileAssembly(profile);
+  const asm = mergeRoofProfileAssemblyForPlane(project, rp);
+  if (!asm) {
+    return rp;
+  }
   return roofPlaneWithProfileOverhangMm(project, rp, asm) ?? rp;
 }
 
@@ -88,6 +118,39 @@ export function refreshAllCalculatedRoofPlaneOverhangsInProject(project: Project
     return project;
   }
   const nextPlanes = project.roofPlanes.map((p) => (ids.has(p.id) ? refreshCalculatedRoofPlaneOverhangMm(project, p) : p));
+  return { ...project, roofPlanes: nextPlanes };
+}
+
+/**
+ * После «Соединить контур»: если в расчёте крыши только один из двух скатов стыка,
+ * `refreshAllCalculatedRoofPlaneOverhangsInProject` обновит только его — второй останется без свесов профиля
+ * и визуально «другой» по длине/высоте. Пересчитываем свесы для **обоих** id одним профилем (при совпадении profileId).
+ */
+export function refreshRoofOverhangForJoinPairInProject(project: Project, idA: string, idB: string): Project {
+  const inAsm = (id: string) => project.roofAssemblyCalculations.some((c) => c.roofPlaneIds.includes(id));
+  if (!inAsm(idA) && !inAsm(idB)) {
+    return project;
+  }
+  const byId = new Map(project.roofPlanes.map((r) => [r.id, r] as const));
+  const pa = byId.get(idA);
+  const pb = byId.get(idB);
+  if (!pa || !pb || pa.layerId !== pb.layerId) {
+    return refreshAllCalculatedRoofPlaneOverhangsInProject(project);
+  }
+  if (pa.profileId !== pb.profileId) {
+    return refreshAllCalculatedRoofPlaneOverhangsInProject(project);
+  }
+  const profile = getProfileById(project, pa.profileId);
+  if (!profile || profile.category !== "roof") {
+    return refreshAllCalculatedRoofPlaneOverhangsInProject(project);
+  }
+  const nextPlanes = project.roofPlanes.map((rp) => {
+    if (rp.id !== idA && rp.id !== idB) {
+      return rp;
+    }
+    const asm = mergeRoofProfileAssemblyForPlane(project, rp);
+    return asm ? roofPlaneWithProfileOverhangMm(project, rp, asm) ?? rp : rp;
+  });
   return { ...project, roofPlanes: nextPlanes };
 }
 
@@ -125,8 +188,7 @@ export function applyRoofCalculationToProject(input: ApplyRoofCalculationInput):
     return { ok: false, errors: ["У ската не задан профиль категории «Кровля» или профиль не найден."] };
   }
 
-  const asm = resolveRoofProfileAssembly(profile);
-  const profErrs = validateRoofProfileAssemblyForCalculation(asm);
+  const profErrs = validateRoofProfileAssemblyForCalculation(resolveRoofProfileAssembly(profile));
   if (profErrs.length > 0) {
     return { ok: false, errors: profErrs };
   }
@@ -151,9 +213,13 @@ export function applyRoofCalculationToProject(input: ApplyRoofCalculationInput):
     roofPlaneIds: ids,
   };
 
-  const roofPlanes = project.roofPlanes.map((rp) =>
-    sel.has(rp.id) ? roofPlaneWithProfileOverhangMm(project, rp, asm) ?? rp : rp,
-  );
+  const roofPlanes = project.roofPlanes.map((rp) => {
+    if (!sel.has(rp.id)) {
+      return rp;
+    }
+    const merged = mergeRoofProfileAssemblyForPlane(project, rp);
+    return merged ? roofPlaneWithProfileOverhangMm(project, rp, merged) ?? rp : rp;
+  });
 
   const next: Project = {
     ...project,

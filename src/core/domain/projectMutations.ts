@@ -39,6 +39,14 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
   const floorBeamsKept = project.floorBeams.filter((b) => !selectedIds.has(b.id));
   const roofPlanesKept = project.roofPlanes.filter((r) => !selectedIds.has(r.id));
   const keptRoofIds = new Set(roofPlanesKept.map((r) => r.id));
+  const removedRoofIds = new Set(project.roofPlanes.filter((r) => selectedIds.has(r.id)).map((r) => r.id));
+  const systemsTouched = new Set(
+    project.roofSystems.filter((s) => s.generatedPlaneIds.some((id) => removedRoofIds.has(id))).map((s) => s.id),
+  );
+  const roofSystemsKept = project.roofSystems.filter((s) => !systemsTouched.has(s.id));
+  const roofPlanesStripped = roofPlanesKept.map((r) =>
+    r.roofSystemId && systemsTouched.has(r.roofSystemId) ? { ...r, roofSystemId: undefined } : r,
+  );
   const roofAssemblyCalculationsKept = project.roofAssemblyCalculations.filter((c) =>
     c.roofPlaneIds.every((id) => keptRoofIds.has(id)),
   );
@@ -51,7 +59,8 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
     foundationPiles: foundationPilesKept,
     slabs: slabsKept,
     floorBeams: floorBeamsKept,
-    roofPlanes: roofPlanesKept,
+    roofPlanes: roofPlanesStripped,
+    roofSystems: roofSystemsKept,
     roofAssemblyCalculations: roofAssemblyCalculationsKept,
     wallCalculations: wallCalculationsKept,
     wallJoints: wallJointsKept,

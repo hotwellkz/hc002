@@ -118,6 +118,7 @@ export function createDemoProject(): Project {
     slabs: [],
     floorBeams: [],
     roofPlanes: [],
+    roofSystems: [],
     roofAssemblyCalculations: [],
     openingFramingPieces: [],
     openings: [

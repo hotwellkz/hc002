@@ -10,6 +10,8 @@ import { ROOF_PLANE_QUAD_EDIT_MIN_EDGE_MM, type RoofQuad4 } from "./roofPlaneQua
 export interface RoofPlaneEntity {
   readonly id: string;
   readonly type: "roofPlane";
+  /** Если задан — скат создан генератором `RoofSystemEntity` с этим id. */
+  readonly roofSystemId?: string;
   readonly layerId: string;
   readonly p1: Point2D;
   readonly p2: Point2D;
