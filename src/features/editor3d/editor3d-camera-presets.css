@@ -1,0 +1,178 @@
+.ed3-cam-presets-wrap {
+  position: absolute;
+  z-index: 2;
+  top: 52px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-xs);
+  pointer-events: none;
+}
+
+.ed3-cam-presets-wrap > * {
+  pointer-events: auto;
+}
+
+.ed3-cam-presets-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: min(100vw - 24px, 320px);
+}
+
+.ed3-cam-presets-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  background: var(--color-editor3d-overlay-bg);
+  color: var(--color-editor3d-overlay-text);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow-popover);
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    transform var(--t-fast) var(--ease-standard);
+}
+
+@supports (backdrop-filter: blur(8px)) {
+  .ed3-cam-presets-menu-btn {
+    backdrop-filter: blur(var(--blur-popover)) saturate(var(--saturation-glass));
+    -webkit-backdrop-filter: blur(var(--blur-popover)) saturate(var(--saturation-glass));
+  }
+}
+
+.ed3-cam-presets-menu-btn:hover {
+  border-color: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-editor3d-overlay-bg) 88%, var(--color-surface-hover) 12%);
+}
+
+.ed3-cam-presets-menu-btn:active {
+  transform: scale(0.98);
+}
+
+.ed3-cam-presets-menu-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.ed3-cam-presets-menu-btn[aria-expanded="true"] {
+  border-color: var(--color-border-strong);
+}
+
+.ed3-cam-presets-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.88;
+}
+
+.ed3-cam-presets-popover {
+  min-width: 200px;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  background: var(--color-glass-fill-strong);
+  box-shadow: var(--shadow-popover);
+  animation: ed3-cam-presets-pop-in var(--t-fast) var(--ease-out-soft) both;
+}
+
+@supports (backdrop-filter: blur(8px)) {
+  .ed3-cam-presets-popover {
+    backdrop-filter: blur(var(--blur-popover)) saturate(var(--saturation-glass));
+    -webkit-backdrop-filter: blur(var(--blur-popover)) saturate(var(--saturation-glass));
+  }
+}
+
+@keyframes ed3-cam-presets-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ed3-cam-presets-popover-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-sm);
+  padding: 6px 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-editor3d-overlay-text);
+  font-size: var(--text-body-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease-standard);
+}
+
+.ed3-cam-presets-popover-row:hover {
+  background: color-mix(in srgb, var(--color-surface-hover) 55%, transparent);
+}
+
+.ed3-cam-presets-popover-row--active {
+  background: color-mix(in srgb, var(--color-accent-soft, rgba(90, 167, 255, 0.18)) 100%, transparent);
+  color: var(--color-accent, #6eb0ff);
+}
+
+.ed3-cam-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-editor3d-overlay-bg);
+  color: var(--color-editor3d-overlay-text);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    transform var(--t-fast) var(--ease-standard);
+}
+
+.ed3-cam-quick-btn:hover {
+  border-color: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-editor3d-overlay-bg) 88%, var(--color-surface-hover) 12%);
+}
+
+.ed3-cam-quick-btn:active {
+  transform: scale(0.97);
+}
+
+.ed3-cam-quick-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.ed3-cam-quick-btn--active {
+  border: 2px solid var(--color-accent-outline, #5a9fff);
+  background: var(--color-accent-soft, rgba(90, 167, 255, 0.18));
+  color: var(--color-accent, #6eb0ff);
+}
+
+.ed3-cam-quick-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.9;
+}
+
+@media (max-width: 720px) {
+  .ed3-cam-presets-row--quick {
+    display: none;
+  }
+}

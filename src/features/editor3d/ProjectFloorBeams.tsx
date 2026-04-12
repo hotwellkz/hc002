@@ -97,8 +97,10 @@ export function ProjectFloorBeams({
     return floorBeamsToMeshSpecs(project, beams);
   }, [project]);
 
+  const visible = project.viewState.show3dOverlap !== false;
+
   return (
-    <group name="project-floor-beams">
+    <group name="project-floor-beams" visible={visible}>
       {specs.map((s) => (
         <FloorBeamMesh3d
           key={s.reactKey}

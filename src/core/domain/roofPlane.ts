@@ -137,6 +137,64 @@ export function roofPlanePolygonMm(rp: RoofPlaneEntity): readonly Point2D[] {
 }
 
 /**
+ * Нормированное направление стока на плане (к низу ската), как в 3D `roofSlopeVerticesThreeMm`.
+ */
+export function roofPlaneDrainUnitPlanMm(rp: RoofPlaneEntity): { readonly uxn: number; readonly uyn: number } {
+  const ux = rp.slopeDirection.x;
+  const uy = rp.slopeDirection.y;
+  const ulen = Math.hypot(ux, uy);
+  const uxn = ulen > 1e-9 ? ux / ulen : 1;
+  const uyn = ulen > 1e-9 ? uy / ulen : 0;
+  return { uxn, uyn };
+}
+
+/** max(p·û) по вершинам контура — опорная точка «карниза» в модели подъёма ската. */
+export function roofPlaneMaxDotAlongDrainMm(
+  poly: readonly Point2D[],
+  uxn: number,
+  uyn: number,
+): number {
+  let maxDot = Number.NEGATIVE_INFINITY;
+  for (const p of poly) {
+    maxDot = Math.max(maxDot, p.x * uxn + p.y * uyn);
+  }
+  return maxDot;
+}
+
+/**
+ * Ребро контура, по которому оба конца лежат на «карнизе» в координатах стока (p·û = max).
+ * Для прямоугольного ската — длинная сторона у карниза; совпадает с базой для формулы Z = level + tan·(maxDot − p·û).
+ * Надёжнее, чем брать одну вершину с min(p·ê): при почти плоском ребре или шуме координат min мог «прыгать».
+ */
+export function roofPlanePreferredEaveEdgeVertexIndicesMm(
+  contourCcW: readonly Point2D[],
+  uxn: number,
+  uyn: number,
+  epsMm = 0.5,
+): { readonly i0: number; readonly i1: number } | null {
+  const maxDot = roofPlaneMaxDotAlongDrainMm(contourCcW, uxn, uyn);
+  const n = contourCcW.length;
+  let bestLenSq = -1;
+  let best: { readonly i0: number; readonly i1: number } | null = null;
+  for (let i = 0; i < n; i++) {
+    const a = contourCcW[i]!;
+    const b = contourCcW[(i + 1) % n]!;
+    const da = a.x * uxn + a.y * uyn;
+    const db = b.x * uxn + b.y * uyn;
+    if (Math.abs(da - maxDot) <= epsMm && Math.abs(db - maxDot) <= epsMm) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq > bestLenSq) {
+        bestLenSq = lenSq;
+        best = { i0: i, i1: (i + 1) % n };
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Обновляет сущность ската по 4 вершинам плана: p1,p2, глубина и slopeDirection согласованы с ребром «глубины».
  */
 export function roofPlaneEntityApplyPlanQuadMm(rp: RoofPlaneEntity, quad: RoofQuad4): RoofPlaneEntity {

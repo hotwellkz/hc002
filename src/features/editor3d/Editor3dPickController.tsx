@@ -87,6 +87,11 @@ function applyPickToStore(
     store.setSelectedEntityIds([payload.entityId]);
     return;
   }
+  if (payload.kind === "roofBatten") {
+    setCalcFocus(null);
+    store.setSelectedEntityIds([payload.entityId]);
+    return;
+  }
   setCalcFocus({ wallId: payload.entityId, reactKey: payload.reactKey });
   store.setSelectedEntityIds([payload.entityId]);
 }

@@ -230,8 +230,10 @@ export function ProjectFoundationPiles({
     return out;
   }, [project]);
 
+  const visible = project.viewState.show3dPiles !== false;
+
   return (
-    <group name="project-foundation-piles">
+    <group name="project-foundation-piles" visible={visible}>
       {items.map(({ pile, parts, concrete }) => {
         const shellSelected = selectedPileEntityId === pile.id;
         const hoverThis = hoverPileEntityId === pile.id && !shellSelected;

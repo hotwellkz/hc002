@@ -1,8 +1,11 @@
 import type { Point2D } from "../geometry/types";
 import type { RoofPlaneEntity } from "./roofPlane";
 import {
+  roofPlaneDrainUnitPlanMm,
   roofPlaneExtrusionDirectionMm,
+  roofPlaneMaxDotAlongDrainMm,
   roofPlanePolygonMm,
+  roofPlanePreferredEaveEdgeVertexIndicesMm,
 } from "./roofPlane";
 
 const EPS = 1e-4;
@@ -317,32 +320,47 @@ export function updateRoofPlaneEntityAfterContourEdit(
   if (contourCcW.length < 3) {
     return null;
   }
+  const { uxn, uyn } = roofPlaneDrainUnitPlanMm(rp);
+  const oldPoly = roofPlanePolygonMm(rp);
+  const maxDotOld = roofPlaneMaxDotAlongDrainMm(oldPoly, uxn, uyn);
+  const maxDotNew = roofPlaneMaxDotAlongDrainMm(contourCcW, uxn, uyn);
+  const tanP = Math.tan((rp.angleDeg * Math.PI) / 180);
+  const levelMm = rp.levelMm + (maxDotOld - maxDotNew) * tanP;
+
   const e = unit2(roofPlaneExtrusionDirectionMm(rp));
   if (!e) {
     return null;
   }
-  let minDot = Infinity;
-  let minIdx = 0;
-  for (let i = 0; i < contourCcW.length; i++) {
-    const p = contourCcW[i]!;
-    const d = p.x * e.x + p.y * e.y;
-    if (d < minDot) {
-      minDot = d;
-      minIdx = i;
-    }
-  }
   const n = contourCcW.length;
-  const v0 = contourCcW[minIdx]!;
-  const vPrev = contourCcW[(minIdx + n - 1) % n]!;
-  const vNext = contourCcW[(minIdx + 1) % n]!;
-  const edgeAlong = (a: Point2D, b: Point2D) => {
-    const ux = b.x - a.x;
-    const uy = b.y - a.y;
-    return Math.abs(ux * e.x + uy * e.y);
-  };
-  const usePrev = edgeAlong(v0, vPrev) < edgeAlong(v0, vNext);
-  const p1 = v0;
-  const p2 = usePrev ? vPrev : vNext;
+  const eaveEdge = roofPlanePreferredEaveEdgeVertexIndicesMm(contourCcW, uxn, uyn);
+  let p1: Point2D;
+  let p2: Point2D;
+  if (eaveEdge) {
+    p1 = contourCcW[eaveEdge.i0]!;
+    p2 = contourCcW[eaveEdge.i1]!;
+  } else {
+    let minDot = Infinity;
+    let minIdx = 0;
+    for (let i = 0; i < contourCcW.length; i++) {
+      const p = contourCcW[i]!;
+      const d = p.x * e.x + p.y * e.y;
+      if (d < minDot) {
+        minDot = d;
+        minIdx = i;
+      }
+    }
+    const v0 = contourCcW[minIdx]!;
+    const vPrev = contourCcW[(minIdx + n - 1) % n]!;
+    const vNext = contourCcW[(minIdx + 1) % n]!;
+    const edgeAlong = (a: Point2D, b: Point2D) => {
+      const ux = b.x - a.x;
+      const uy = b.y - a.y;
+      return Math.abs(ux * e.x + uy * e.y);
+    };
+    const usePrev = edgeAlong(v0, vPrev) < edgeAlong(v0, vNext);
+    p1 = v0;
+    p2 = usePrev ? vPrev : vNext;
+  }
   if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < MIN_EDGE_MM) {
     return null;
   }
@@ -362,6 +380,7 @@ export function updateRoofPlaneEntityAfterContourEdit(
     p1,
     p2,
     depthMm: maxAlong,
+    levelMm,
     planContourMm: baseCopy,
     ...(updateBase ? { planContourBaseMm: baseCopy } : {}),
     updatedAt: t,

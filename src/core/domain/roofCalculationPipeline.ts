@@ -4,7 +4,10 @@ import { getProfileById } from "./profileOps";
 import { countRoofPlaneConnectivityComponents } from "./roofCalculationConnectivity";
 import type { RoofAssemblyCalculation } from "./roofAssemblyCalculation";
 import { updateRoofPlaneEntityAfterContourEdit } from "./roofContourJoin";
-import { applyRoofProfileOverhangToPlanPolygonMm } from "./roofOverhangGeometry";
+import {
+  applyRoofProfileOverhangToPlanPolygonMm,
+  roofQuadSharedEdgeIndexPairsMm,
+} from "./roofOverhangGeometry";
 import type { RoofPlaneEntity } from "./roofPlane";
 import { roofPlaneCalculationBasePolygonMm } from "./roofPlane";
 import {
@@ -24,14 +27,42 @@ export type ApplyRoofCalculationResult =
   | { readonly ok: true; readonly project: Project }
   | { readonly ok: false; readonly errors: readonly string[] };
 
-function roofPlaneWithProfileOverhangMm(rp: RoofPlaneEntity, asm: RoofProfileAssembly): RoofPlaneEntity | null {
+/**
+ * Рёбра четырёхугольника, совпадающие с другим скатом на том же слое: без свеса.
+ * Иначе боковой свес к каждому полигону сдвигает общее ребро в противоположные стороны
+ * (внешние нормали навстречу) → разъезд линии стыка и разная «длина» скатов в плане.
+ */
+function collectInternalJoinEdgeIndicesForRoofPlaneMm(project: Project, rp: RoofPlaneEntity): Set<number> {
+  const out = new Set<number>();
+  const baseSelf = roofPlaneCalculationBasePolygonMm(rp);
+  if (baseSelf.length !== 4) {
+    return out;
+  }
+  for (const other of project.roofPlanes) {
+    if (other.id === rp.id || other.layerId !== rp.layerId) {
+      continue;
+    }
+    const baseO = roofPlaneCalculationBasePolygonMm(other);
+    if (baseO.length !== 4) {
+      continue;
+    }
+    for (const { indexA } of roofQuadSharedEdgeIndexPairsMm(baseSelf, baseO)) {
+      out.add(indexA);
+    }
+  }
+  return out;
+}
+
+function roofPlaneWithProfileOverhangMm(project: Project, rp: RoofPlaneEntity, asm: RoofProfileAssembly): RoofPlaneEntity | null {
   const base = roofPlaneCalculationBasePolygonMm(rp);
   const rpWithFrozenBase: RoofPlaneEntity = { ...rp, planContourBaseMm: base };
+  const zeroIdx = collectInternalJoinEdgeIndicesForRoofPlaneMm(project, rp);
   const expanded = applyRoofProfileOverhangToPlanPolygonMm(
     base,
     rp.slopeDirection,
     asm.eaveOverhangMm,
     asm.sideOverhangMm,
+    { zeroOffsetEdgeIndices: zeroIdx },
   );
   return updateRoofPlaneEntityAfterContourEdit(rpWithFrozenBase, expanded, { updateBaseContour: false });
 }
@@ -47,7 +78,7 @@ export function refreshCalculatedRoofPlaneOverhangMm(project: Project, rp: RoofP
     return rp;
   }
   const asm = resolveRoofProfileAssembly(profile);
-  return roofPlaneWithProfileOverhangMm(rp, asm) ?? rp;
+  return roofPlaneWithProfileOverhangMm(project, rp, asm) ?? rp;
 }
 
 /** Обновить свесы у всех скатов, участвующих в любом расчёте крыши (после правки базового контура). */
@@ -121,7 +152,7 @@ export function applyRoofCalculationToProject(input: ApplyRoofCalculationInput):
   };
 
   const roofPlanes = project.roofPlanes.map((rp) =>
-    sel.has(rp.id) ? roofPlaneWithProfileOverhangMm(rp, asm) ?? rp : rp,
+    sel.has(rp.id) ? roofPlaneWithProfileOverhangMm(project, rp, asm) ?? rp : rp,
   );
 
   const next: Project = {

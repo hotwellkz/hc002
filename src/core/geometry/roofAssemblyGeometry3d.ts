@@ -4,7 +4,7 @@ import { computeAllRoofPlanesZAdjustMmByPlaneIdInProject } from "@/core/domain/r
 import { computeLayerVerticalStack } from "@/core/domain/layerVerticalStack";
 import type { Project } from "@/core/domain/project";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
-import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
+import { roofPlaneDrainUnitPlanMm, roofPlaneMaxDotAlongDrainMm, roofPlanePolygonMm } from "@/core/domain/roofPlane";
 import type { RoofProfileAssembly } from "@/core/domain/roofProfileAssembly";
 
 const MM_TO_M = 0.001;
@@ -69,16 +69,8 @@ export function roofSlopeVerticesThreeMm(
   zAdjustMm = 0,
 ): { readonly verts: RoofThreeMm[]; readonly outwardNormal: RoofThreeMm } {
   const poly = roofPlanePolygonMm(rp);
-  const ux = rp.slopeDirection.x;
-  const uy = rp.slopeDirection.y;
-  const ulen = Math.hypot(ux, uy);
-  const uxn = ulen > 1e-9 ? ux / ulen : 1;
-  const uyn = ulen > 1e-9 ? uy / ulen : 0;
-  let maxDot = Number.NEGATIVE_INFINITY;
-  for (const p of poly) {
-    const d = p.x * uxn + p.y * uyn;
-    maxDot = Math.max(maxDot, d);
-  }
+  const { uxn, uyn } = roofPlaneDrainUnitPlanMm(rp);
+  const maxDot = roofPlaneMaxDotAlongDrainMm(poly, uxn, uyn);
   const pitchRad = (rp.angleDeg * Math.PI) / 180;
   const tanP = Math.tan(pitchRad);
   const z0 = layerBaseMm + rp.levelMm + zAdjustMm;
@@ -269,15 +261,8 @@ function roofZUpAtPlanPointMm(
   py: number,
 ): number {
   const poly = roofPlanePolygonMm(rp);
-  const ux = rp.slopeDirection.x;
-  const uy = rp.slopeDirection.y;
-  const ulen = Math.hypot(ux, uy);
-  const uxn = ulen > 1e-9 ? ux / ulen : 1;
-  const uyn = ulen > 1e-9 ? uy / ulen : 0;
-  let maxDot = Number.NEGATIVE_INFINITY;
-  for (const p of poly) {
-    maxDot = Math.max(maxDot, p.x * uxn + p.y * uyn);
-  }
+  const { uxn, uyn } = roofPlaneDrainUnitPlanMm(rp);
+  const maxDot = roofPlaneMaxDotAlongDrainMm(poly, uxn, uyn);
   const d = px * uxn + py * uyn;
   const tanP = Math.tan((rp.angleDeg * Math.PI) / 180);
   return layerBaseMm + rp.levelMm + zAdjustMm + (maxDot - d) * tanP;

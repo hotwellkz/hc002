@@ -124,6 +124,36 @@ export function Editor3dVisibilityPanel() {
             />
           </div>
           <p className="ed3-vis-hint" style={{ marginTop: 10, marginBottom: 4 }}>
+            Фундамент и перекрытие
+          </p>
+          <div className="ed3-vis-row">
+            <label htmlFor={`${idBase}-found`}>Фундамент</label>
+            <input
+              id={`${idBase}-found`}
+              type="checkbox"
+              checked={vs.show3dFoundation !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dFoundation: e.target.checked })}
+            />
+          </div>
+          <div className="ed3-vis-row">
+            <label htmlFor={`${idBase}-pile`}>Сваи</label>
+            <input
+              id={`${idBase}-pile`}
+              type="checkbox"
+              checked={vs.show3dPiles !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dPiles: e.target.checked })}
+            />
+          </div>
+          <div className="ed3-vis-row">
+            <label htmlFor={`${idBase}-overlap`}>Перекрытие</label>
+            <input
+              id={`${idBase}-overlap`}
+              type="checkbox"
+              checked={vs.show3dOverlap !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dOverlap: e.target.checked })}
+            />
+          </div>
+          <p className="ed3-vis-hint" style={{ marginTop: 10, marginBottom: 4 }}>
             Крыша (после «Рассчитать» в режиме крыши)
           </p>
           <div

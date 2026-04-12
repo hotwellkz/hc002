@@ -6,6 +6,19 @@ import {
   quadEdgeOverhangDistancesMm,
 } from "./roofOverhangGeometry";
 
+function verticalJoinXsMm(poly: { readonly x: number; readonly y: number }[], xExpect: number): number[] {
+  const xs: number[] = [];
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % n]!;
+    if (Math.abs(a.x - b.x) < 2 && Math.abs(a.y - b.y) > 80 && Math.abs((a.x + b.x) * 0.5 - xExpect) < 4000) {
+      xs.push((a.x + b.x) * 0.5);
+    }
+  }
+  return xs;
+}
+
 describe("roofOverhangGeometry", () => {
   it("повторное применение тех же свесов к тому же базовому четырёхугольнику даёт тот же результат", () => {
     const base = [
@@ -100,6 +113,38 @@ describe("roofOverhangGeometry", () => {
     expect(d[1]).toBe(0);
     expect(d[2]).toBe(0);
     expect(d[3]).toBe(400);
+  });
+
+  it("внутренний стык: нулевой свес на общем ребре не разводит вертикаль (два ската)", () => {
+    const baseA = [
+      { x: 0, y: 0 },
+      { x: 11_000, y: 0 },
+      { x: 11_000, y: 5000 },
+      { x: 0, y: 5000 },
+    ];
+    const baseB = [
+      { x: 11_000, y: 0 },
+      { x: 22_000, y: 0 },
+      { x: 22_000, y: 5000 },
+      { x: 11_000, y: 5000 },
+    ];
+    const oaBad = applyRoofProfileOverhangToPlanPolygonMm(baseA, { x: 0, y: -1 }, 300, 200);
+    const obBad = applyRoofProfileOverhangToPlanPolygonMm(baseB, { x: 0, y: 1 }, 300, 200);
+    const xsBadA = verticalJoinXsMm(oaBad, 11_000);
+    const xsBadB = verticalJoinXsMm(obBad, 11_000);
+    expect(Math.min(...xsBadA) - Math.max(...xsBadB)).toBeGreaterThan(100);
+
+    const oa = applyRoofProfileOverhangToPlanPolygonMm(baseA, { x: 0, y: -1 }, 300, 200, {
+      zeroOffsetEdgeIndices: new Set([1]),
+    });
+    const ob = applyRoofProfileOverhangToPlanPolygonMm(baseB, { x: 0, y: 1 }, 300, 200, {
+      zeroOffsetEdgeIndices: new Set([3]),
+    });
+    const xsA = verticalJoinXsMm(oa, 11_000);
+    const xsB = verticalJoinXsMm(ob, 11_000);
+    expect(xsA.length).toBeGreaterThan(0);
+    expect(xsB.length).toBeGreaterThan(0);
+    expect(xsA[0]!).toBeCloseTo(xsB[0]!, 0);
   });
 
   it("боковой свес по-прежнему на двух сторонах между карнизом и коньком", () => {

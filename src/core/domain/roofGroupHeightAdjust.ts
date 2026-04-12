@@ -2,7 +2,7 @@ import type { Point2D } from "../geometry/types";
 
 import type { Project } from "./project";
 import type { RoofPlaneEntity } from "./roofPlane";
-import { roofPlanePolygonMm } from "./roofPlane";
+import { roofPlaneDrainUnitPlanMm, roofPlaneMaxDotAlongDrainMm, roofPlanePolygonMm } from "./roofPlane";
 
 /** Строгое совпадение вершин (наследие, тесты). */
 const VERTEX_MATCH_MM = 2.5;
@@ -25,15 +25,8 @@ export function rawRoofZUpAtPlanPointMm(
   py: number,
 ): number {
   const poly = roofPlanePolygonMm(rp);
-  const ux = rp.slopeDirection.x;
-  const uy = rp.slopeDirection.y;
-  const ulen = Math.hypot(ux, uy);
-  const uxn = ulen > 1e-9 ? ux / ulen : 1;
-  const uyn = ulen > 1e-9 ? uy / ulen : 0;
-  let maxDot = Number.NEGATIVE_INFINITY;
-  for (const p of poly) {
-    maxDot = Math.max(maxDot, p.x * uxn + p.y * uyn);
-  }
+  const { uxn, uyn } = roofPlaneDrainUnitPlanMm(rp);
+  const maxDot = roofPlaneMaxDotAlongDrainMm(poly, uxn, uyn);
   const d = px * uxn + py * uyn;
   const tanP = Math.tan((rp.angleDeg * Math.PI) / 180);
   return layerBaseMm + rp.levelMm + (maxDot - d) * tanP;

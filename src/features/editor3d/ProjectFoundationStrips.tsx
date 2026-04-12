@@ -144,8 +144,9 @@ export function ProjectFoundationStrips({
   void _h;
   void _l;
   const strips = useMemo(() => selectFoundationStripsForScene3d(project), [project]);
+  const visible = project.viewState.show3dFoundation !== false;
   return (
-    <group name="project-foundation-strips">
+    <group name="project-foundation-strips" visible={visible}>
       {strips.map((fs) => (
         <FoundationStripMesh3d
           key={fs.id}

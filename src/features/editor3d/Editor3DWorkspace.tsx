@@ -1,8 +1,11 @@
 import { Grid } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject, Ref, RefObject } from "react";
+import type { Group } from "three";
 
 import { slabWorldBottomMm, slabWorldTopMm } from "@/core/domain/layerVerticalStack";
+import { parseRoofBattenPickEntityId } from "@/core/domain/roofBattenPick3d";
 import { formatLumberDisplayMark, lumberDisplayIndexByPieceId } from "@/core/domain/pieceDisplayMark";
 import { buildCalculationSolidSpecsForProject } from "@/core/domain/wallCalculation3dSpecs";
 import { lumberRoleLabelRu } from "@/core/domain/wallSpecification";
@@ -10,9 +13,12 @@ import { hasBlockingEditorOverlayModal } from "@/shared/editorToolShortcuts/shou
 import { isEditableKeyboardTarget } from "@/shared/editableKeyboardTarget";
 import { useAppStore } from "@/store/useAppStore";
 
+import { Editor3dCameraPresetPanel } from "./Editor3dCameraPresetPanel";
 import { Editor3dFlyControls } from "./Editor3dFlyControls";
 import { Editor3dOrbitControls } from "./Editor3dOrbitControls";
 import { Editor3dOrbitPivotCoordinator } from "./Editor3dOrbitPivotCoordinator";
+import type { Editor3dCameraPresetKind } from "./editor3dCameraPresetsMath";
+import { Editor3dPresetCameraRunner } from "./Editor3dPresetCameraRunner";
 import { Editor3dEntityContextMenu } from "./Editor3dEntityContextMenu";
 import { Editor3dPickController } from "./Editor3dPickController";
 import { Editor3dTexturePickController } from "./Editor3dTexturePickController";
@@ -114,9 +120,11 @@ function SceneFromProject({
   hoverPileEntityId,
   hoverStripEntityId,
   hoverSlabEntityId,
+  hoverRoofBattenEntityId,
   hoverCalcReactKey,
   texturePickHover,
   texturePickLocked,
+  selectedRoofBattenEntityId,
 }: {
   readonly selectedWallEntityId: string | null;
   readonly selectedFloorBeamEntityId: string | null;
@@ -124,6 +132,7 @@ function SceneFromProject({
   readonly selectedPileEntityId: string | null;
   readonly selectedStripEntityId: string | null;
   readonly selectedSlabEntityId: string | null;
+  readonly selectedRoofBattenEntityId: string | null;
   readonly calcFocus: CalcFocus | null;
   readonly hoverWallEntityId: string | null;
   readonly hoverFloorBeamEntityId: string | null;
@@ -131,6 +140,7 @@ function SceneFromProject({
   readonly hoverPileEntityId: string | null;
   readonly hoverStripEntityId: string | null;
   readonly hoverSlabEntityId: string | null;
+  readonly hoverRoofBattenEntityId: string | null;
   readonly hoverCalcReactKey: string | null;
   readonly texturePickHover: Editor3dPickPayload | null;
   readonly texturePickLocked: Editor3dPickPayload | null;
@@ -191,7 +201,11 @@ function SceneFromProject({
         texturePickHover={texturePickHover}
         texturePickLocked={texturePickLocked}
       />
-      <ProjectRoofAssembly project={project} />
+      <ProjectRoofAssembly
+        project={project}
+        selectedRoofBattenEntityId={selectedRoofBattenEntityId}
+        hoverRoofBattenEntityId={hoverRoofBattenEntityId}
+      />
     </>
   );
 }
@@ -209,6 +223,7 @@ function Editor3dCanvasScene({
   hoverPileEntityId,
   hoverStripEntityId,
   hoverSlabEntityId,
+  hoverRoofBattenEntityId,
   hoverCalcReactKey,
   flyModeActive,
   orbitPivotModeActive,
@@ -219,6 +234,12 @@ function Editor3dCanvasScene({
   onTextureHoverPick,
   texturePickHover,
   texturePickLocked,
+  modelBoundsRef,
+  presetCameraRequest,
+  onPresetCameraConsumed,
+  cameraPresetDriving,
+  orbitViewportSerialRef,
+  onCameraPresetDrivingChange,
 }: {
   readonly theme3d: ReturnType<typeof useEditor3dThemeColors>;
   readonly originXM: number;
@@ -232,6 +253,7 @@ function Editor3dCanvasScene({
   readonly hoverPileEntityId: string | null;
   readonly hoverStripEntityId: string | null;
   readonly hoverSlabEntityId: string | null;
+  readonly hoverRoofBattenEntityId: string | null;
   readonly hoverCalcReactKey: string | null;
   readonly flyModeActive: boolean;
   readonly orbitPivotModeActive: boolean;
@@ -242,6 +264,12 @@ function Editor3dCanvasScene({
   readonly onTextureHoverPick: (p: Editor3dPickPayload | null) => void;
   readonly texturePickHover: Editor3dPickPayload | null;
   readonly texturePickLocked: Editor3dPickPayload | null;
+  readonly modelBoundsRef: RefObject<Group | null>;
+  readonly presetCameraRequest: { readonly id: number; readonly kind: Editor3dCameraPresetKind } | null;
+  readonly onPresetCameraConsumed: () => void;
+  readonly cameraPresetDriving: boolean;
+  readonly orbitViewportSerialRef: MutableRefObject<string>;
+  readonly onCameraPresetDrivingChange: (v: boolean) => void;
 }) {
   const project = useAppStore((s) => s.currentProject);
   const selectedEntityIds = useAppStore((s) => s.selectedEntityIds);
@@ -294,6 +322,14 @@ function Editor3dCanvasScene({
     return project.floorBeams.some((b) => b.id === id) ? id : null;
   }, [project.floorBeams, selectedEntityIds]);
 
+  const selectedRoofBattenEntityId = useMemo(() => {
+    if (selectedEntityIds.length !== 1) {
+      return null;
+    }
+    const id = selectedEntityIds[0]!;
+    return parseRoofBattenPickEntityId(id) != null ? id : null;
+  }, [selectedEntityIds]);
+
   const show3dGrid = project.viewState.show3dGrid !== false;
 
   return (
@@ -337,27 +373,43 @@ function Editor3dCanvasScene({
       {textureApply3dToolActive && !flyModeActive ? (
         <Editor3dTexturePickController modalOpen={textureParamsModalOpen} onHoverTexturablePick={onTextureHoverPick} />
       ) : null}
-      <SceneFromProject
-        selectedWallEntityId={selectedWallEntityId}
-        selectedFloorBeamEntityId={selectedFloorBeamEntityId}
-        selectedOpeningEntityId={selectedOpeningEntityId}
-        selectedPileEntityId={selectedPileEntityId}
-        selectedStripEntityId={selectedStripEntityId}
-        selectedSlabEntityId={selectedSlabEntityId}
-        calcFocus={calcFocus}
-        hoverWallEntityId={hoverWallEntityId}
-        hoverFloorBeamEntityId={hoverFloorBeamEntityId}
-        hoverOpeningEntityId={hoverOpeningEntityId}
-        hoverPileEntityId={hoverPileEntityId}
-        hoverStripEntityId={hoverStripEntityId}
-        hoverSlabEntityId={hoverSlabEntityId}
-        hoverCalcReactKey={hoverCalcReactKey}
-        texturePickHover={texturePickHover}
-        texturePickLocked={texturePickLocked}
-      />
+      <group ref={modelBoundsRef as Ref<Group>}>
+        <SceneFromProject
+          selectedWallEntityId={selectedWallEntityId}
+          selectedFloorBeamEntityId={selectedFloorBeamEntityId}
+          selectedOpeningEntityId={selectedOpeningEntityId}
+          selectedPileEntityId={selectedPileEntityId}
+          selectedStripEntityId={selectedStripEntityId}
+          selectedSlabEntityId={selectedSlabEntityId}
+          selectedRoofBattenEntityId={selectedRoofBattenEntityId}
+          calcFocus={calcFocus}
+          hoverWallEntityId={hoverWallEntityId}
+          hoverFloorBeamEntityId={hoverFloorBeamEntityId}
+          hoverOpeningEntityId={hoverOpeningEntityId}
+          hoverPileEntityId={hoverPileEntityId}
+          hoverStripEntityId={hoverStripEntityId}
+          hoverSlabEntityId={hoverSlabEntityId}
+          hoverRoofBattenEntityId={hoverRoofBattenEntityId}
+          hoverCalcReactKey={hoverCalcReactKey}
+          texturePickHover={texturePickHover}
+          texturePickLocked={texturePickLocked}
+        />
+      </group>
       <Editor3dPivotMarker point={pivotMarkerWorld} />
       <Editor3dFlyControls enabled={flyModeActive} />
-      <Editor3dOrbitControls flyModeActive={flyModeActive} />
+      <Editor3dOrbitControls
+        flyModeActive={flyModeActive}
+        suspendApplyFromStore={cameraPresetDriving}
+        lastAppliedSerialRef={orbitViewportSerialRef}
+      />
+      <Editor3dPresetCameraRunner
+        modelBoundsRef={modelBoundsRef}
+        pending={presetCameraRequest}
+        flyModeActive={flyModeActive}
+        onDrivingChange={onCameraPresetDrivingChange}
+        onConsumed={onPresetCameraConsumed}
+        orbitLastAppliedRef={orbitViewportSerialRef}
+      />
       <Editor3dOrbitPivotCoordinator
         modeActive={orbitPivotModeActive}
         flyModeActive={flyModeActive}
@@ -390,6 +442,18 @@ export function Editor3DWorkspace() {
   const [flyModeActive, setFlyModeActive] = useState(false);
   const [orbitPivotModeActive, setOrbitPivotModeActive] = useState(false);
   const [pivotMarkerWorld, setPivotMarkerWorld] = useState<readonly [number, number, number] | null>(null);
+  const modelBoundsRef = useRef<Group | null>(null);
+  const orbitViewportSerialRef = useRef<string>("");
+  const [presetCameraRequest, setPresetCameraRequest] = useState<{
+    readonly id: number;
+    readonly kind: Editor3dCameraPresetKind;
+  } | null>(null);
+  const [cameraPresetDriving, setCameraPresetDriving] = useState(false);
+  const onPresetCameraConsumed = useCallback(() => setPresetCameraRequest(null), []);
+  const onCameraPresetDrivingChange = useCallback((v: boolean) => setCameraPresetDriving(v), []);
+  const requestCameraPreset = useCallback((kind: Editor3dCameraPresetKind) => {
+    setPresetCameraRequest({ id: Date.now(), kind });
+  }, []);
   const initialCameraPosRef = useRef<[number, number, number] | null>(null);
   if (initialCameraPosRef.current == null) {
     initialCameraPosRef.current = initialCameraPositionFromViewport3d(project.viewState.viewport3d);
@@ -423,6 +487,7 @@ export function Editor3DWorkspace() {
   const hoverPileEntityId = hoverPick?.kind === "foundationPile" ? hoverPick.entityId : null;
   const hoverStripEntityId = hoverPick?.kind === "foundationStrip" ? hoverPick.entityId : null;
   const hoverSlabEntityId = hoverPick?.kind === "slab" ? hoverPick.entityId : null;
+  const hoverRoofBattenEntityId = hoverPick?.kind === "roofBatten" ? hoverPick.entityId : null;
   const hoverCalcReactKey = hoverPick?.kind === "calc" ? hoverPick.reactKey : null;
 
   useEffect(() => {
@@ -629,6 +694,19 @@ export function Editor3DWorkspace() {
       };
     }
 
+    const roofBattenPick = parseRoofBattenPickEntityId(id);
+    if (roofBattenPick) {
+      const plane = project.roofPlanes.find((p) => p.id === roofBattenPick.planeId);
+      return {
+        title: "Доска обрешётки",
+        rows: [
+          ["Скат", roofBattenPick.planeId],
+          ["Индекс доски", String(roofBattenPick.battenIndex)],
+          ["Профиль кровли", plane?.profileId ?? "—"],
+        ] as const,
+      };
+    }
+
     return null;
   }, [calcFocus, project, selectedEntityIds]);
 
@@ -650,6 +728,9 @@ export function Editor3DWorkspace() {
     }
     if (hoverPick.kind === "slab") {
       return "Плита";
+    }
+    if (hoverPick.kind === "roofBatten") {
+      return "Доска обрешётки";
     }
     if (hoverPick.kind === "calc") {
       return "Элемент расчёта";
@@ -679,6 +760,7 @@ export function Editor3DWorkspace() {
       }}
     >
       <Editor3dVisibilityPanel />
+      <Editor3dCameraPresetPanel disabled={flyModeActive} onSelectPreset={requestCameraPreset} />
       <label
         style={{
           position: "absolute",
@@ -853,6 +935,7 @@ export function Editor3DWorkspace() {
           hoverPileEntityId={hoverPileEntityId}
           hoverStripEntityId={hoverStripEntityId}
           hoverSlabEntityId={hoverSlabEntityId}
+          hoverRoofBattenEntityId={hoverRoofBattenEntityId}
           hoverCalcReactKey={hoverCalcReactKey}
           flyModeActive={flyModeActive}
           orbitPivotModeActive={orbitPivotModeActive}
@@ -863,6 +946,12 @@ export function Editor3DWorkspace() {
           onTextureHoverPick={onTextureHoverPick}
           texturePickHover={texturePickHover}
           texturePickLocked={texturePickLocked}
+          modelBoundsRef={modelBoundsRef}
+          presetCameraRequest={presetCameraRequest}
+          onPresetCameraConsumed={onPresetCameraConsumed}
+          cameraPresetDriving={cameraPresetDriving}
+          orbitViewportSerialRef={orbitViewportSerialRef}
+          onCameraPresetDrivingChange={onCameraPresetDrivingChange}
         />
       </Canvas>
       {flyModeActive ? (

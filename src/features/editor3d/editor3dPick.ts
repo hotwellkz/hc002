@@ -12,6 +12,7 @@ const PICK_PRIORITY: Record<Editor3dPickKind, number> = {
   slab: 2,
   wall: 2,
   floorBeam: 2,
+  roofBatten: 2,
   calc: 1,
 };
 

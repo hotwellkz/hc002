@@ -64,7 +64,10 @@ import {
 } from "@/core/domain/openingWindowGeometry";
 import { editor3dPickSupportsContextDelete } from "@/core/domain/editor3dContextMenuPolicy";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
-import { applyRoofCalculationToProject } from "@/core/domain/roofCalculationPipeline";
+import {
+  applyRoofCalculationToProject,
+  refreshAllCalculatedRoofPlaneOverhangsInProject,
+} from "@/core/domain/roofCalculationPipeline";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
 import {
@@ -151,6 +154,7 @@ import {
   isProfileUsableForRoofPlane,
   nextRoofPlaneSlopeIndex,
   roofPlaneEntityApplyPlanQuadMm,
+  roofPlaneImplicitQuadVerticesMm,
   roofPlaneNormalAndDepthFromCursorMm,
   roofPlanePolygonMm,
 } from "@/core/domain/roofPlane";
@@ -562,6 +566,9 @@ interface AppActions {
         | "show3dLayerWindows"
         | "show3dLayerDoors"
         | "show3dGrid"
+        | "show3dFoundation"
+        | "show3dPiles"
+        | "show3dOverlap"
         | "show3dRoof"
         | "show3dRoofMembrane"
         | "show3dRoofBattens"
@@ -5040,7 +5047,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           return;
         }
         const t = new Date().toISOString();
-        const entity: RoofPlaneEntity = {
+        const entityCore: RoofPlaneEntity = {
           id: newEntityId(),
           type: "roofPlane",
           layerId: p0.activeLayerId,
@@ -5054,6 +5061,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           slopeIndex: nextRoofPlaneSlopeIndex(p0),
           createdAt: t,
           updatedAt: t,
+        };
+        const baseContour = roofPlaneImplicitQuadVerticesMm(entityCore).map((p) => ({ x: p.x, y: p.y }));
+        const entity: RoofPlaneEntity = {
+          ...entityCore,
+          planContourMm: baseContour,
+          planContourBaseMm: baseContour.map((p) => ({ x: p.x, y: p.y })),
         };
         const nextProject = touchProjectMeta({
           ...p0,
@@ -5273,10 +5286,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       const nextPlanes = p0.roofPlanes.map((rp) =>
         rp.id === r.a.id ? r.a : rp.id === r.b.id ? r.b : rp,
       );
-      // Не пересчитываем свесы сразу: refreshAllCalculatedRoofPlaneOverhangsInProject задаёт разные
-      // карниз/конёк по slopeDirection каждого ската и заново вызывает updateRoofPlaneEntityAfterContourEdit,
-      // из‑за чего глубина/контур после стыка расходились. Свесы пользователь обновит командой расчёта кровли.
-      const nextProject = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
+      const touched = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
+      /** Общие рёбра со скатами на том же слое не получают боковой свес — линия стыка не разъезжается. */
+      const nextProject = refreshAllCalculatedRoofPlaneOverhangsInProject(touched);
       set((st) => ({
         ...buildProjectMutationState(
           st,

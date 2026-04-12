@@ -24,3 +24,11 @@ export interface SlabEntity {
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+/**
+ * Категория плиты для видимости в 3D: лента/фундамент отдельно от перекрытия.
+ * Без `structuralPurpose` считаем перекрытием (старые проекты и общий случай).
+ */
+export function slabStructuralCategoryFor3d(slab: SlabEntity): "foundation" | "overlap" {
+  return slab.structuralPurpose === "foundation" ? "foundation" : "overlap";
+}

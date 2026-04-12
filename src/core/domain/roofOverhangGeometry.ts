@@ -86,11 +86,22 @@ export function offsetConvexPolygonByEdgeDistancesMm(
  * Эквивалентно для прямоугольника: внешняя нормаль карниза сонаправлена со стоком (max dot(n_out, fall)).
  * Раньше ошибочно брали min dot(n_out, fall) как карниз — свес уходил на конёк.
  */
+export interface QuadEdgeOverhangOptions {
+  /**
+   * Индексы рёбер четырёхугольника (ребро i: вершина i → i+1), на которых **не** накладывать свес.
+   * Нужно для **внутреннего стыка** двух скатов: у каждого полигона внешняя нормаль к общему ребру
+   * направлена в противоположные стороны; боковой свес сдвигает линии в разные стороны на ~2×side,
+   * из‑за чего «один скат длиннее», линия стыка расходится в 2D/3D.
+   */
+  readonly zeroOffsetEdgeIndices?: ReadonlySet<number>;
+}
+
 export function quadEdgeOverhangDistancesMm(
   quadCcW: readonly Point2D[],
   slopeDirection: Point2D,
   eaveOverhangMm: number,
   sideOverhangMm: number,
+  opts?: QuadEdgeOverhangOptions,
 ): readonly number[] {
   const fall = unit2(slopeDirection);
   const n = quadCcW.length;
@@ -119,8 +130,11 @@ export function quadEdgeOverhangDistancesMm(
   const dist = new Array(n).fill(0);
   const e = Math.max(0, eaveOverhangMm);
   const s = Math.max(0, sideOverhangMm);
+  const zero = opts?.zeroOffsetEdgeIndices;
   for (let i = 0; i < n; i++) {
-    if (i === iEave) {
+    if (zero?.has(i)) {
+      dist[i] = 0;
+    } else if (i === iEave) {
       dist[i] = e;
     } else if (i === iRidge) {
       dist[i] = 0;
@@ -140,6 +154,7 @@ export function applyRoofProfileOverhangToPlanPolygonMm(
   slopeDirection: Point2D,
   eaveOverhangMm: number,
   sideOverhangMm: number,
+  opts?: QuadEdgeOverhangOptions,
 ): Point2D[] {
   if (basePolygonCcW.length !== 4) {
     return basePolygonCcW.map((p) => ({ x: p.x, y: p.y }));
@@ -147,7 +162,46 @@ export function applyRoofProfileOverhangToPlanPolygonMm(
   if (eaveOverhangMm <= EPS && sideOverhangMm <= EPS) {
     return basePolygonCcW.map((p) => ({ x: p.x, y: p.y }));
   }
-  const dist = quadEdgeOverhangDistancesMm(basePolygonCcW, slopeDirection, eaveOverhangMm, sideOverhangMm);
+  const dist = quadEdgeOverhangDistancesMm(basePolygonCcW, slopeDirection, eaveOverhangMm, sideOverhangMm, opts);
   const next = offsetConvexPolygonByEdgeDistancesMm(basePolygonCcW, dist);
   return next ?? basePolygonCcW.map((p) => ({ x: p.x, y: p.y }));
+}
+
+/** Совпадение отрезков с точностью до направления (концы могут быть переставлены), мм. */
+export function roofQuadEdgesCoincideUndirectedMm(
+  a0: Point2D,
+  a1: Point2D,
+  b0: Point2D,
+  b1: Point2D,
+  tolMm: number,
+): boolean {
+  const dFwd = Math.hypot(a0.x - b0.x, a0.y - b0.y) + Math.hypot(a1.x - b1.x, a1.y - b1.y);
+  const dRev = Math.hypot(a0.x - b1.x, a0.y - b1.y) + Math.hypot(a1.x - b0.x, a1.y - b0.y);
+  return Math.min(dFwd, dRev) <= tolMm * 4;
+}
+
+/**
+ * Пары индексов рёбер (i → i+1) двух четырёхугольников CCW, которые совпадают в плане (стык скатов).
+ */
+export function roofQuadSharedEdgeIndexPairsMm(
+  quadCcWA: readonly Point2D[],
+  quadCcWB: readonly Point2D[],
+  tolMm = 2,
+): readonly { readonly indexA: number; readonly indexB: number }[] {
+  if (quadCcWA.length !== 4 || quadCcWB.length !== 4) {
+    return [];
+  }
+  const pairs: { readonly indexA: number; readonly indexB: number }[] = [];
+  for (let ia = 0; ia < 4; ia++) {
+    const a0 = quadCcWA[ia]!;
+    const a1 = quadCcWA[(ia + 1) % 4]!;
+    for (let ib = 0; ib < 4; ib++) {
+      const b0 = quadCcWB[ib]!;
+      const b1 = quadCcWB[(ib + 1) % 4]!;
+      if (roofQuadEdgesCoincideUndirectedMm(a0, a1, b0, b1, tolMm)) {
+        pairs.push({ indexA: ia, indexB: ib });
+      }
+    }
+  }
+  return pairs;
 }

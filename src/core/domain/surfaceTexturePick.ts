@@ -13,6 +13,9 @@ export function isOpeningMeshKindTexturable(kind: Opening3dMeshKind | undefined)
 
 /** Raycast-попадание можно назначить текстуру (стекло исключаем). */
 export function isEditor3dPickTexturable(pick: Editor3dPickPayload): boolean {
+  if (pick.kind === "roofBatten") {
+    return false;
+  }
   if (pick.kind !== "opening") {
     return true;
   }
@@ -39,6 +42,8 @@ export function pickLayerIdForSurfaceTexture(project: Project, pick: Editor3dPic
       }
       return project.walls.find((w) => w.id === wallId)?.layerId ?? null;
     }
+    case "roofBatten":
+      return null;
     default:
       return null;
   }

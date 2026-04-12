@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { DoubleSide } from "three";
 
 import type { Editor3dPickPayload } from "@/core/domain/editor3dPickPayload";
-import type { SlabEntity } from "@/core/domain/slab";
+import { slabStructuralCategoryFor3d, type SlabEntity } from "@/core/domain/slab";
 import type { Project } from "@/core/domain/project";
 import { resolveSurfaceTextureBinding } from "@/core/domain/surfaceTextureResolve";
 import { surfaceTextureMeshKey } from "@/core/domain/surfaceTextureState";
@@ -140,18 +140,42 @@ export function ProjectSlabs({
 }: ProjectSlabsProps) {
   void _h;
   void _l;
-  const slabs = useMemo(() => selectSlabsForScene3d(project), [project]);
+  const { foundationSlabs, overlapSlabs } = useMemo(() => {
+    const all = selectSlabsForScene3d(project);
+    const foundationSlabs: SlabEntity[] = [];
+    const overlapSlabs: SlabEntity[] = [];
+    for (const s of all) {
+      (slabStructuralCategoryFor3d(s) === "foundation" ? foundationSlabs : overlapSlabs).push(s);
+    }
+    return { foundationSlabs, overlapSlabs };
+  }, [project]);
+  const vs = project.viewState;
+  const foundationOn = vs.show3dFoundation !== false;
+  const overlapOn = vs.show3dOverlap !== false;
   return (
-    <group name="project-slabs">
-      {slabs.map((s) => (
-        <SlabMesh3d
-          key={s.id}
-          entity={s}
-          project={project}
-          selected={selectedSlabEntityId === s.id}
-          hover={hoverSlabEntityId === s.id && selectedSlabEntityId !== s.id}
-        />
-      ))}
-    </group>
+    <>
+      <group name="project-slabs-foundation" visible={foundationOn}>
+        {foundationSlabs.map((s) => (
+          <SlabMesh3d
+            key={s.id}
+            entity={s}
+            project={project}
+            selected={selectedSlabEntityId === s.id}
+            hover={hoverSlabEntityId === s.id && selectedSlabEntityId !== s.id}
+          />
+        ))}
+      </group>
+      <group name="project-slabs-overlap" visible={overlapOn}>
+        {overlapSlabs.map((s) => (
+          <SlabMesh3d
+            key={s.id}
+            entity={s}
+            project={project}
+            selected={selectedSlabEntityId === s.id}
+            hover={hoverSlabEntityId === s.id && selectedSlabEntityId !== s.id}
+          />
+        ))}
+      </group>
+    </>
   );
 }

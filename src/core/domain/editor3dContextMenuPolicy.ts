@@ -5,7 +5,7 @@ import type { Editor3dPickPayload } from "./editor3dPickPayload";
  * Детали расчёта (kind === "calc") привязаны к стене и отдельно не удаляются — только через 2D/расчёт.
  */
 export function editor3dPickSupportsContextDelete(pick: Editor3dPickPayload): boolean {
-  return pick.kind !== "calc";
+  return pick.kind !== "calc" && pick.kind !== "roofBatten";
 }
 
 export function editor3dContextDeleteTargetLabelRu(pick: Editor3dPickPayload): string {

@@ -1,3 +1,4 @@
+import { Edges } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry, DoubleSide, Quaternion } from "three";
 
@@ -5,6 +6,8 @@ import { getProfileById } from "@/core/domain/profileOps";
 import type { Project } from "@/core/domain/project";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
 import { resolveRoofProfileAssembly } from "@/core/domain/roofProfileAssembly";
+import { roofBattenPickEntityId, roofBattenPickReactKey } from "@/core/domain/roofBattenPick3d";
+import type { RoofBattenBoxSpecMm } from "@/core/geometry/roofAssemblyGeometry3d";
 import {
   buildRoofBattenBoxSpecsMm,
   buildRoofSlopeSurfaceMeshMm,
@@ -15,6 +18,13 @@ import {
   roofMeshToWorldMeters,
 } from "@/core/geometry/roofAssemblyGeometry3d";
 
+import {
+  FLOOR_BEAM_PROFILE_EDGES_3D,
+  HOVER_BOX_OUTLINE_3D,
+  SELECTION_BOX_OUTLINE_3D,
+} from "./calculationSeamVisual3d";
+import { editor3dPickUserData } from "./editor3dPick";
+import { ExactBoxSelectionOutline } from "./ExactBoxSelectionOutline";
 import { meshStandardPresetForMaterialType } from "./materials3d";
 
 function parseHexColor(hex: string): number {
@@ -25,14 +35,91 @@ function parseHexColor(hex: string): number {
   return parseInt(m[1]!, 16);
 }
 
+function RoofBattenBoardMesh3d({
+  planeId,
+  battenIndex,
+  b,
+  woodPreset,
+  selected,
+  hoverThis,
+}: {
+  readonly planeId: string;
+  readonly battenIndex: number;
+  readonly b: RoofBattenBoxSpecMm;
+  readonly woodPreset: ReturnType<typeof meshStandardPresetForMaterialType>;
+  readonly selected: boolean;
+  readonly hoverThis: boolean;
+}) {
+  const c = roofBattenCenterWorldM(b);
+  const q = new Quaternion(b.quaternion[0], b.quaternion[1], b.quaternion[2], b.quaternion[3]);
+  const qw = b.widthMm * 0.001;
+  const qh = b.heightMm * 0.001;
+  const qd = b.lengthMm * 0.001;
+  const entityId = roofBattenPickEntityId(planeId, battenIndex);
+  const reactKey = roofBattenPickReactKey(planeId, battenIndex);
+  const pick = editor3dPickUserData({ kind: "roofBatten", entityId, reactKey });
+  const edgeV = FLOOR_BEAM_PROFILE_EDGES_3D.edges;
+
+  return (
+    <group>
+      <mesh position={c} quaternion={q} castShadow receiveShadow userData={pick}>
+        <boxGeometry args={[qw, qh, qd]} />
+        <meshStandardMaterial
+          color={woodPreset.color}
+          roughness={woodPreset.roughness}
+          metalness={woodPreset.metalness}
+          side={DoubleSide}
+        />
+        <Edges
+          threshold={edgeV.threshold}
+          color={edgeV.color}
+          lineWidth={edgeV.lineWidthPx}
+          transparent
+          opacity={edgeV.opacity}
+          depthTest
+          depthWrite={false}
+          renderOrder={2}
+          raycast={() => null}
+        />
+      </mesh>
+      {selected ? (
+        <ExactBoxSelectionOutline
+          width={qw}
+          height={qh}
+          depth={qd}
+          position={c}
+          quaternion={b.quaternion}
+          color={SELECTION_BOX_OUTLINE_3D.color}
+          opacity={SELECTION_BOX_OUTLINE_3D.opacity}
+        />
+      ) : null}
+      {hoverThis ? (
+        <ExactBoxSelectionOutline
+          width={qw}
+          height={qh}
+          depth={qd}
+          position={c}
+          quaternion={b.quaternion}
+          color={HOVER_BOX_OUTLINE_3D.color}
+          opacity={HOVER_BOX_OUTLINE_3D.opacity}
+        />
+      ) : null}
+    </group>
+  );
+}
+
 function CalculatedRoofPlaneMeshes({
   project,
   rp,
   zAdjustMm,
+  selectedRoofBattenEntityId,
+  hoverRoofBattenEntityId,
 }: {
   readonly project: Project;
   readonly rp: RoofPlaneEntity;
   readonly zAdjustMm: number;
+  readonly selectedRoofBattenEntityId: string | null;
+  readonly hoverRoofBattenEntityId: string | null;
 }) {
   const profile = getProfileById(project, rp.profileId);
   const asm = useMemo(() => resolveRoofProfileAssembly(profile ?? {}), [profile]);
@@ -120,20 +207,17 @@ function CalculatedRoofPlaneMeshes({
       ) : null}
       {showBat
         ? battenSpecs.map((b, i) => {
-            const c = roofBattenCenterWorldM(b);
-            const q = new Quaternion(b.quaternion[0], b.quaternion[1], b.quaternion[2], b.quaternion[3]);
-            const qw = b.widthMm * 0.001;
-            const qh = b.heightMm * 0.001;
-            const qd = b.lengthMm * 0.001;
+            const entityId = roofBattenPickEntityId(rp.id, i);
             return (
-              <mesh key={`${rp.id}-bat-${i}`} position={c} quaternion={q} castShadow receiveShadow>
-                <boxGeometry args={[qw, qh, qd]} />
-                <meshStandardMaterial
-                  color={woodPreset.color}
-                  roughness={woodPreset.roughness}
-                  metalness={woodPreset.metalness}
-                />
-              </mesh>
+              <RoofBattenBoardMesh3d
+                key={roofBattenPickReactKey(rp.id, i)}
+                planeId={rp.id}
+                battenIndex={i}
+                b={b}
+                woodPreset={woodPreset}
+                selected={selectedRoofBattenEntityId === entityId}
+                hoverThis={hoverRoofBattenEntityId === entityId}
+              />
             );
           })
         : null}
@@ -153,10 +237,16 @@ function CalculatedRoofPlaneMeshes({
 
 export interface ProjectRoofAssemblyProps {
   readonly project: Project;
+  readonly selectedRoofBattenEntityId: string | null;
+  readonly hoverRoofBattenEntityId: string | null;
 }
 
 /** 3D-узел кровли: только скаты, отмеченные расчётом; подслои по профилю кровли. */
-export function ProjectRoofAssembly({ project }: ProjectRoofAssemblyProps) {
+export function ProjectRoofAssembly({
+  project,
+  selectedRoofBattenEntityId,
+  hoverRoofBattenEntityId,
+}: ProjectRoofAssemblyProps) {
   const calculatedIds = useMemo(() => {
     const s = new Set<string>();
     for (const c of project.roofAssemblyCalculations) {
@@ -186,6 +276,8 @@ export function ProjectRoofAssembly({ project }: ProjectRoofAssemblyProps) {
           project={project}
           rp={rp}
           zAdjustMm={zAdjustByPlaneId.get(rp.id) ?? 0}
+          selectedRoofBattenEntityId={selectedRoofBattenEntityId}
+          hoverRoofBattenEntityId={hoverRoofBattenEntityId}
         />
       ))}
     </group>

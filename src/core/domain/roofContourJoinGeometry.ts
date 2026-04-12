@@ -3,6 +3,7 @@ import {
   tryJoinTwoRoofPlaneContoursMm,
   updateRoofPlaneEntityAfterContourEdit,
 } from "@/core/domain/roofContourJoin";
+import { isRoofJoinDebugEnabled, roofJoinDebugSnapPlaneMm } from "@/core/domain/roofJoinDiagnostics";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
 import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
 import type { Point2D } from "@/core/geometry/types";
@@ -481,13 +482,45 @@ export function joinParallelRoofPlaneEdgesToMidlineMm(
     return { error: "Соединение невозможно: контур стал нулевой площади." };
   }
 
-  const t = new Date().toISOString();
-  const withContourA = { ...planeA, planContourMm: nextA, updatedAt: t };
-  const withContourB = { ...planeB, planContourMm: nextB, updatedAt: t };
-  const syncA = updateRoofPlaneEntityAfterContourEdit(withContourA, nextA);
-  const syncB = updateRoofPlaneEntityAfterContourEdit(withContourB, nextB);
+  /** Важно: первый аргумент — скат **до** смены контура, иначе maxDot старый/новый совпадают и levelMm не сдвигается. */
+  const syncA = updateRoofPlaneEntityAfterContourEdit(planeA, nextA);
+  const syncB = updateRoofPlaneEntityAfterContourEdit(planeB, nextB);
   if (!syncA || !syncB) {
     return { error: "Соединение невозможно: не удалось пересчитать параметры ската." };
+  }
+  if (isRoofJoinDebugEnabled()) {
+    console.info(
+      "[roofJoin parallel midline]",
+      JSON.stringify(
+        {
+          note:
+            "Линия стыка: n·p = (sA+sB)/2 между параллельными прямыми рёбер; касательная eU — направление ребра planeA; отрезок — пересечение интервалов intA∩intB вдоль eU (хорды до соседних рёбер).",
+          planeA: roofJoinDebugSnapPlaneMm(planeA),
+          planeB: roofJoinDebugSnapPlaneMm(planeB),
+          edgeA,
+          edgeB,
+          computed: {
+            midA,
+            midB,
+            eU,
+            n,
+            sA,
+            sB,
+            sJoin,
+            pOnJoin,
+            distAbs,
+            intA,
+            intB,
+            merged,
+            qLo,
+            qHi,
+          },
+          after: { a: roofJoinDebugSnapPlaneMm(syncA), b: roofJoinDebugSnapPlaneMm(syncB) },
+        },
+        null,
+        2,
+      ),
+    );
   }
   return { a: syncA, b: syncB };
 }
