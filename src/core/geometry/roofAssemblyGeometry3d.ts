@@ -333,7 +333,9 @@ function buildRoofBattenStripPackMm(
     const p1 = polySt[(i + 1) % polySt.length]!;
     area2 += p0.x * p1.y - p1.x * p0.y;
   }
-  if (area2 < 0) {
+  /** Отражение только для клипа; при обратном обходе нужно вернуть исходную координату вдоль шага. */
+  const stCoordXFlipped = area2 < 0;
+  if (stCoordXFlipped) {
     for (const p of polySt) {
       p.x = -p.x;
     }
@@ -357,8 +359,10 @@ function buildRoofBattenStripPackMm(
     if (!seg) {
       continue;
     }
-    const pa = planPointFromStMm(seg.a.x, seg.a.y, wSpace, uRun);
-    const pb = planPointFromStMm(seg.b.x, seg.b.y, wSpace, uRun);
+    const sa = stCoordXFlipped ? -seg.a.x : seg.a.x;
+    const sb = stCoordXFlipped ? -seg.b.x : seg.b.x;
+    const pa = planPointFromStMm(sa, seg.a.y, wSpace, uRun);
+    const pb = planPointFromStMm(sb, seg.b.y, wSpace, uRun);
     const zA = roofZUpAtPlanPointMm(rp, layerBaseMm, zAdjustMm, pa.x, pa.y);
     const zB = roofZUpAtPlanPointMm(rp, layerBaseMm, zAdjustMm, pb.x, pb.y);
     const pA = roofPlanVertexToThreeMm(pa.x, pa.y, zA);
@@ -451,8 +455,14 @@ export function battenBoxQuaternionWorld(longAxis: RoofThreeMm, outwardNormal: R
     B.set(1, 0, 0);
   }
   B.normalize();
-  const N2 = new Vector3().crossVectors(B, W).normalize();
-  const m = new Matrix4().makeBasis(B, N2, W);
+  /**
+   * Праворукий базис для кватерниона: (X,Y,Z) локального бокса → (ширина, высота, длина) в мире.
+   * Раньше использовали makeBasis(B, N2, W) с N2 = B×W; для W и N ортогональных N2 = −N,
+   * тогда det(B, N2, W) = −1 (леворукий базис). Кватернион задаёт только proper rotation,
+   * из‑за чего ось длины «скручивалась» вдоль ската (эффект «вертолёта» / крест-накрест).
+   * Корректно: (−B) × N = W ⇒ makeBasis(−B, N, W): local Z → длина вдоль ската, local Y → наружу.
+   */
+  const m = new Matrix4().makeBasis(new Vector3().copy(B).multiplyScalar(-1), N, W);
   const q = new Quaternion().setFromRotationMatrix(m);
   return [q.x, q.y, q.z, q.w];
 }

@@ -1,10 +1,16 @@
+import { Matrix4, Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 
 import { newEntityId } from "@/core/domain/ids";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
 import { DEFAULT_ROOF_PROFILE_ASSEMBLY } from "@/core/domain/roofProfileAssembly";
 
-import { buildRoofBattenPlanSegmentsMm, buildRoofBattenStripSegmentsOnSlopeThreeMm } from "./roofAssemblyGeometry3d";
+import {
+  buildRoofBattenBoxSpecsMm,
+  buildRoofBattenPlanSegmentsMm,
+  buildRoofBattenStripSegmentsOnSlopeThreeMm,
+  roofSlopeVerticesThreeMm,
+} from "./roofAssemblyGeometry3d";
 
 function testRoofPlane(): RoofPlaneEntity {
   const t = new Date().toISOString();
@@ -92,5 +98,57 @@ describe("buildRoofBattenPlanSegmentsMm", () => {
     const uyA = (para[0]!.y2 - para[0]!.y1) / dirPara;
     const dot = Math.abs(uxP * uxA + uyP * uyA);
     expect(dot).toBeLessThan(0.99);
+  });
+
+  it("3D: ось длины бокса (local Z) совпадает с направлением отрезка доски; высота — вдоль нормали наружу", () => {
+    const rp = testRoofPlane();
+    const asm = {
+      ...DEFAULT_ROOF_PROFILE_ASSEMBLY,
+      battenUse: true,
+      battenStepMm: 350,
+      battenLayoutDir: "perpendicular_to_fall" as const,
+    };
+    const strips = buildRoofBattenStripSegmentsOnSlopeThreeMm(rp, 0, asm, 0);
+    const specs = buildRoofBattenBoxSpecsMm(rp, 0, asm, 0);
+    expect(specs.length).toBe(strips.length);
+    const { outwardNormal: n } = roofSlopeVerticesThreeMm(rp, 0, 0);
+    const n3 = new Vector3(n[0], n[1], n[2]).normalize();
+    for (let i = 0; i < Math.min(specs.length, 3); i++) {
+      const s = strips[i]!;
+      const b = specs[i]!;
+      const d = new Vector3(s.b[0] - s.a[0], s.b[1] - s.a[1], s.b[2] - s.a[2]).normalize();
+      const q = new Quaternion(b.quaternion[0], b.quaternion[1], b.quaternion[2], b.quaternion[3]);
+      const m = new Matrix4().makeRotationFromQuaternion(q);
+      const ez = new Vector3(0, 0, 1).applyMatrix4(m);
+      const ey = new Vector3(0, 1, 0).applyMatrix4(m);
+      expect(Math.abs(ez.dot(d))).toBeGreaterThan(0.999);
+      expect(ey.dot(n3)).toBeGreaterThan(0.999);
+    }
+  });
+
+  it("при обратном обходе контура план-отрезки остаются валидными (исправление координаты s после отражения)", () => {
+    const t = new Date().toISOString();
+    const rpCw: RoofPlaneEntity = {
+      ...testRoofPlane(),
+      planContourMm: [
+        { x: 0, y: 0 },
+        { x: 0, y: 3000 },
+        { x: 5000, y: 3000 },
+        { x: 5000, y: 0 },
+      ],
+      createdAt: t,
+      updatedAt: t,
+    };
+    const asm = {
+      ...DEFAULT_ROOF_PROFILE_ASSEMBLY,
+      battenUse: true,
+      battenStepMm: 350,
+      battenLayoutDir: "perpendicular_to_fall" as const,
+    };
+    const segs = buildRoofBattenPlanSegmentsMm(rpCw, 0, asm, 0);
+    expect(segs.length).toBeGreaterThan(2);
+    for (const s of segs) {
+      expect(Math.hypot(s.x2 - s.x1, s.y2 - s.y1)).toBeGreaterThan(100);
+    }
   });
 });

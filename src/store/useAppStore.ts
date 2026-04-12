@@ -64,10 +64,7 @@ import {
 } from "@/core/domain/openingWindowGeometry";
 import { editor3dPickSupportsContextDelete } from "@/core/domain/editor3dContextMenuPolicy";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
-import {
-  applyRoofCalculationToProject,
-  refreshAllCalculatedRoofPlaneOverhangsInProject,
-} from "@/core/domain/roofCalculationPipeline";
+import { applyRoofCalculationToProject } from "@/core/domain/roofCalculationPipeline";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
 import {
@@ -5276,9 +5273,10 @@ export const useAppStore = create<AppStore>((set, get) => {
       const nextPlanes = p0.roofPlanes.map((rp) =>
         rp.id === r.a.id ? r.a : rp.id === r.b.id ? r.b : rp,
       );
-      const nextProject = refreshAllCalculatedRoofPlaneOverhangsInProject(
-        touchProjectMeta({ ...p0, roofPlanes: nextPlanes }),
-      );
+      // Не пересчитываем свесы сразу: refreshAllCalculatedRoofPlaneOverhangsInProject задаёт разные
+      // карниз/конёк по slopeDirection каждого ската и заново вызывает updateRoofPlaneEntityAfterContourEdit,
+      // из‑за чего глубина/контур после стыка расходились. Свесы пользователь обновит командой расчёта кровли.
+      const nextProject = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
       set((st) => ({
         ...buildProjectMutationState(
           st,

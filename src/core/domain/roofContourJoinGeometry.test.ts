@@ -61,6 +61,33 @@ describe("roofJoinArrowUnitWorldMm", () => {
 });
 
 describe("joinTwoRoofPlaneContoursMvp", () => {
+  it("после стыка общая кромка одинаковой длины у обоих скатов (симметричное сближение)", () => {
+    const left = rectPlane("a", 0, 10_000, 0, 5_000);
+    const right = rectPlane("b", 12_000, 22_000, 0, 5_000);
+    const r = joinTwoRoofPlaneContoursMvp(left, 1, right, 3);
+    expect("error" in r).toBe(false);
+    if ("error" in r) {
+      return;
+    }
+    const ca = r.a.planContourMm!;
+    const cb = r.b.planContourMm!;
+    const xJoin = 11_000;
+    const ysA = ca.filter((p) => Math.abs(p.x - xJoin) < 2).map((p) => p.y);
+    const ysB = cb.filter((p) => Math.abs(p.x - xJoin) < 2).map((p) => p.y);
+    expect(ysA.length).toBeGreaterThanOrEqual(2);
+    expect(ysB.length).toBeGreaterThanOrEqual(2);
+    const spanA = Math.max(...ysA) - Math.min(...ysA);
+    const spanB = Math.max(...ysB) - Math.min(...ysB);
+    expect(spanA).toBeCloseTo(spanB, 0);
+    expect(spanA).toBeCloseTo(5000, 0);
+    const joinPtsA = ca.filter((p) => Math.abs(p.x - xJoin) < 2).sort((u, v) => u.y - v.y);
+    const joinPtsB = cb.filter((p) => Math.abs(p.x - xJoin) < 2).sort((u, v) => u.y - v.y);
+    expect(joinPtsA.length).toBe(2);
+    expect(joinPtsB.length).toBe(2);
+    expect(joinPtsA[0]!.y).toBeCloseTo(joinPtsB[0]!.y, 1);
+    expect(joinPtsA[1]!.y).toBeCloseTo(joinPtsB[1]!.y, 1);
+  });
+
   it("сдвигает два прямоугольника к средней линии между внутренними рёбрами", () => {
     const left = rectPlane("a", 0, 10_000, 0, 5_000);
     const right = rectPlane("b", 12_000, 22_000, 0, 5_000);
@@ -91,9 +118,18 @@ describe("joinTwoRoofPlaneContoursMvp", () => {
       ...rectPlane("a", 0, 10_000, 0, 5_000),
       slopeDirection: { x: 0, y: -1 },
     };
+    /** Явный контур: при slopeDirection (0,1) имплицитный quad уходит в −Y и хорды стыка не пересекаются. */
+    const rightContour = [
+      { x: 12_000, y: 0 },
+      { x: 22_000, y: 0 },
+      { x: 22_000, y: 5_000 },
+      { x: 12_000, y: 5_000 },
+    ] as const;
     const right = {
       ...rectPlane("b", 12_000, 22_000, 0, 5_000),
       slopeDirection: { x: 0, y: 1 },
+      planContourMm: [...rightContour],
+      planContourBaseMm: [...rightContour],
     };
     const r = joinTwoRoofPlaneContoursMvp(left, 1, right, 3);
     expect("error" in r).toBe(false);

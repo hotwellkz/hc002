@@ -8,7 +8,8 @@ import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
 import type { Point2D } from "@/core/geometry/types";
 
 const MM_EPS = 1e-4;
-const PARALLEL_CROSS_MAX = 0.06;
+/** Порог |eA×eB| для «параллельных» рёбер на плане (~arcsin(0.12) ≈ 6.9°). */
+const PARALLEL_CROSS_MAX = 0.12;
 const MIN_JOIN_GAP_MM = 25;
 const MIN_EDGE_MM = 80;
 
@@ -261,15 +262,14 @@ export function findCompatibleRoofJoinTargetEdge(
 }
 
 /**
- * Заменить ребро `edgeIndex` (Vi–Vi+1) отрезком на линии стыка между двумя параллельными рёбрами.
- * Точки пересечения — с продолжениями соседних рёбер многоугольника.
+ * Пересечения бесконечной линии стыка с продолжениями соседних рёбер у ребра `edgeIndex`.
  */
-export function replacePolygonEdgeWithParallelJoinLine(
+function joinChordEndpointsOnInfiniteLineMm(
   poly: readonly Point2D[],
   edgeIndex: number,
   joinLineThrough: Point2D,
   joinTangentUnit: Point2D,
-): Point2D[] | null {
+): { readonly p0: Point2D; readonly p1: Point2D } | null {
   const n = poly.length;
   if (n < 3) {
     return null;
@@ -281,20 +281,75 @@ export function replacePolygonEdgeWithParallelJoinLine(
   const Vi1 = poly[(i + 1) % n]!;
   const Vprev = poly[iPrev]!;
   const Vi2 = poly[iNext]!;
-  const jDir = joinTangentUnit;
-  const j2 = { x: joinLineThrough.x + jDir.x, y: joinLineThrough.y + jDir.y };
+  const j2 = { x: joinLineThrough.x + joinTangentUnit.x, y: joinLineThrough.y + joinTangentUnit.y };
   const P0 = intersectLinesInfinite(Vprev, Vi, joinLineThrough, j2);
   const P1 = intersectLinesInfinite(Vi1, Vi2, joinLineThrough, j2);
   if (!P0 || !P1) {
     return null;
   }
+  return { p0: P0, p1: P1 };
+}
+
+/**
+ * Параметр t вдоль единичного eU: точка = pOrigin + eU * t (обе на одной прямой со стык).
+ */
+function scalarAlongJoinTangentMm(p: Point2D, pOrigin: Point2D, eU: Point2D): number {
+  return (p.x - pOrigin.x) * eU.x + (p.y - pOrigin.y) * eU.y;
+}
+
+/**
+ * Интервал [tMin, tMax] отрезка стыка для одного многоугольника до пересечения с соседями.
+ */
+function joinEdgeScalarIntervalMm(
+  poly: readonly Point2D[],
+  edgeIndex: number,
+  pOnJoin: Point2D,
+  eU: Point2D,
+): { readonly tMin: number; readonly tMax: number } | null {
+  const chord = joinChordEndpointsOnInfiniteLineMm(poly, edgeIndex, pOnJoin, eU);
+  if (!chord) {
+    return null;
+  }
+  const t0 = scalarAlongJoinTangentMm(chord.p0, pOnJoin, eU);
+  const t1 = scalarAlongJoinTangentMm(chord.p1, pOnJoin, eU);
+  return { tMin: Math.min(t0, t1), tMax: Math.max(t0, t1) };
+}
+
+function mergeScalarIntervalsMm(
+  a: { readonly tMin: number; readonly tMax: number },
+  b: { readonly tMin: number; readonly tMax: number },
+): { readonly lo: number; readonly hi: number } | null {
+  const lo = Math.max(a.tMin, b.tMin);
+  const hi = Math.min(a.tMax, b.tMax);
+  if (hi - lo < MIN_EDGE_MM) {
+    return null;
+  }
+  return { lo, hi };
+}
+
+/**
+ * Заменить ребро фиксированным отрезком (концы уже на линии стыка); порядок вершин — по обходу многоугольника.
+ */
+function replacePolygonEdgeWithJoinEndpointsMm(
+  poly: readonly Point2D[],
+  edgeIndex: number,
+  qLo: Point2D,
+  qHi: Point2D,
+): Point2D[] | null {
+  const n = poly.length;
+  if (n < 3) {
+    return null;
+  }
+  const i = edgeIndex;
+  const Vi = poly[i]!;
+  const Vi1 = poly[(i + 1) % n]!;
   const u = { x: Vi1.x - Vi.x, y: Vi1.y - Vi.y };
-  const w0 = { x: P0.x - Vi.x, y: P0.y - Vi.y };
-  const w1 = { x: P1.x - Vi.x, y: P1.y - Vi.y };
+  const w0 = { x: qLo.x - Vi.x, y: qLo.y - Vi.y };
+  const w1 = { x: qHi.x - Vi.x, y: qHi.y - Vi.y };
   const s0 = w0.x * u.x + w0.y * u.y;
   const s1 = w1.x * u.x + w1.y * u.y;
-  const Q0 = s0 < s1 ? P0 : P1;
-  const Q1 = s0 < s1 ? P1 : P0;
+  const Q0 = s0 < s1 ? qLo : qHi;
+  const Q1 = s0 < s1 ? qHi : qLo;
   const edgeLen = Math.hypot(Q1.x - Q0.x, Q1.y - Q0.y);
   if (edgeLen < MIN_EDGE_MM) {
     return null;
@@ -310,6 +365,23 @@ export function replacePolygonEdgeWithParallelJoinLine(
     }
   }
   return out;
+}
+
+/**
+ * Заменить ребро `edgeIndex` (Vi–Vi+1) отрезком на линии стыка между двумя параллельными рёбрами.
+ * Точки пересечения — с продолжениями соседних рёбер многоугольника.
+ */
+export function replacePolygonEdgeWithParallelJoinLine(
+  poly: readonly Point2D[],
+  edgeIndex: number,
+  joinLineThrough: Point2D,
+  joinTangentUnit: Point2D,
+): Point2D[] | null {
+  const chord = joinChordEndpointsOnInfiniteLineMm(poly, edgeIndex, joinLineThrough, joinTangentUnit);
+  if (!chord) {
+    return null;
+  }
+  return replacePolygonEdgeWithJoinEndpointsMm(poly, edgeIndex, chord.p0, chord.p1);
 }
 
 function polygonAreaSignedMm(poly: readonly Point2D[]): number {
@@ -363,20 +435,42 @@ export function joinParallelRoofPlaneEdgesToMidlineMm(
 
   const midA = { x: (a0.x + a1.x) * 0.5, y: (a0.y + a1.y) * 0.5 };
   const midB = { x: (b0.x + b1.x) * 0.5, y: (b0.y + b1.y) * 0.5 };
+  /** Единичная нормаль к обоим ребрам на плане; направление от прямой A к прямой B. */
   let n = { x: -eU.y, y: eU.x };
   if ((midB.x - midA.x) * n.x + (midB.y - midA.y) * n.y < 0) {
     n = { x: -n.x, y: -n.y };
   }
-  const distSigned = (midB.x - midA.x) * n.x + (midB.y - midA.y) * n.y;
-  const distAbs = Math.abs(distSigned);
+  /**
+   * Средняя линия стыка в одной системе координат (мм плана):
+   * sA = n·midA, sB = n·midB — смещения середин выбранных рёбер вдоль общей нормали;
+   * линия стыка: n·p = sJoin = (sA + sB) / 2 (эквивалентно середине между двумя параллельными прямыми).
+   */
+  const sA = n.x * midA.x + n.y * midA.y;
+  const sB = n.x * midB.x + n.y * midB.y;
+  const sJoin = (sA + sB) * 0.5;
+  const distAbs = Math.abs(sB - sA);
   if (distAbs < MIN_JOIN_GAP_MM) {
     return { error: "Соединение невозможно: плоскости слишком близко или уже соприкасаются." };
   }
+  const pOnJoin = { x: midA.x + n.x * (sJoin - sA), y: midA.y + n.y * (sJoin - sA) };
 
-  const pOnJoin = { x: midA.x + n.x * (distSigned * 0.5), y: midA.y + n.y * (distSigned * 0.5) };
+  const intA = joinEdgeScalarIntervalMm(polyA, edgeA, pOnJoin, eU);
+  const intB = joinEdgeScalarIntervalMm(polyB, edgeB, pOnJoin, eU);
+  if (!intA || !intB) {
+    return { error: "Соединение невозможно: не удалось построить линию стыка." };
+  }
+  const merged = mergeScalarIntervalsMm(intA, intB);
+  if (!merged) {
+    return {
+      error:
+        "Соединение невозможно: выбранные рёбра не дают общего отрезка стыка (проверьте форму контуров).",
+    };
+  }
+  const qLo = { x: pOnJoin.x + eU.x * merged.lo, y: pOnJoin.y + eU.y * merged.lo };
+  const qHi = { x: pOnJoin.x + eU.x * merged.hi, y: pOnJoin.y + eU.y * merged.hi };
 
-  const nextA = replacePolygonEdgeWithParallelJoinLine(polyA, edgeA, pOnJoin, eU);
-  const nextB = replacePolygonEdgeWithParallelJoinLine(polyB, edgeB, pOnJoin, eU);
+  const nextA = replacePolygonEdgeWithJoinEndpointsMm(polyA, edgeA, qLo, qHi);
+  const nextB = replacePolygonEdgeWithJoinEndpointsMm(polyB, edgeB, qLo, qHi);
   if (!nextA || !nextB) {
     return { error: "Соединение невозможно: не удалось построить линию стыка." };
   }
@@ -400,8 +494,9 @@ export function joinParallelRoofPlaneEdgesToMidlineMm(
 
 /**
  * Стыковка по двум выбранным рёбрам.
- * Параллельные рёбра → средняя линия стыка и замена стороны контура (ожидаемый кейс «два ската навстречу»).
- * Иначе → обрезка по линии пересечения плоскостей скатов в плане (hip/разный уклон).
+ * Параллельные (на плане) рёбра → **средняя линия строго между этими рёбрами** (`joinParallelRoofPlaneEdgesToMidlineMm`),
+ * без линии пересечения «высотных» плоскостей (она не совпадает с серединой выбранных сторон и давала асимметрию).
+ * Непараллельные → обрезка по линии пересечения плоскостей скатов (вальма / разный уклон).
  */
 export function joinTwoRoofPlaneContoursBySelectedEdgesMm(
   planeA: RoofPlaneEntity,
@@ -436,12 +531,6 @@ export function joinTwoRoofPlaneContoursBySelectedEdgesMm(
   const parallel = cross <= PARALLEL_CROSS_MAX;
 
   if (parallel) {
-    if (!areRoofJoinEdgePairCompatibleMm(polyA, edgeA, polyB, edgeB)) {
-      return {
-        error:
-          "Соединение невозможно: выбранные рёбра не смотрят навстречу друг другу или не подходят для стыка.",
-      };
-    }
     return joinParallelRoofPlaneEdgesToMidlineMm(planeA, edgeA, planeB, edgeB);
   }
   return tryJoinTwoRoofPlaneContoursMm(planeA, planeB, edgeA, edgeB);

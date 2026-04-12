@@ -247,8 +247,9 @@ function edgeMidpointMm(poly: readonly Point2D[], edgeIndex: number): Point2D {
 }
 
 /**
- * Стыковка по линии пересечения плоскостей скатов.
- * Полуплоскость для каждого контура выбирается по стороне выбранных рёбер (а не по центроиду).
+ * Обрезка контуров по линии пересечения **высотных** плоскостей скатов в плане (hip / сильно непараллельные кромки).
+ * Для двух почти параллельных выбранных рёбер используйте `joinParallelRoofPlaneEdgesToMidlineMm` — там линия стыка
+ * посередине между рёбрами, а не по этой формуле.
  */
 export function tryJoinTwoRoofPlaneContoursMm(
   source: RoofPlaneEntity,
