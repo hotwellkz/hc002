@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { projectCommands } from "@/features/project/commands";
+import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
 import { useMobileLayout } from "@/shared/hooks/useMobileLayout";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
 import { useAppStore } from "@/store/useAppStore";
@@ -18,6 +19,8 @@ export function RightPropertiesPanelContent() {
     selected.length === 1
       ? project.openings.find((o) => o.id === selected[0] && o.kind === "window" && o.wallId != null)
       : undefined;
+  const selectedRoofPlane: RoofPlaneEntity | undefined =
+    selected.length === 1 ? project.roofPlanes.find((r) => r.id === selected[0]) : undefined;
 
   return (
     <>
@@ -31,6 +34,14 @@ export function RightPropertiesPanelContent() {
           </button>
           <p className="muted rpp-hint">
             Двойной клик по окну на плане или клавиша Enter — то же окно свойств. Перетаскивание — вдоль стены.
+          </p>
+        </div>
+      ) : null}
+      {selectedRoofPlane ? (
+        <div className="rpp-block">
+          <p className="muted rpp-hint" style={{ marginBottom: 8 }}>
+            Выбран объект: <strong>плоскость крыши</strong> (тип roofPlane). Угол {Math.round(selectedRoofPlane.angleDeg * 10) / 10}
+            °, Скат {selectedRoofPlane.slopeIndex}. Редактирование параметров — в следующих версиях.
           </p>
         </div>
       ) : null}

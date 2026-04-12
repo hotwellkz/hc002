@@ -1,10 +1,19 @@
+import { normalizeVisibleLayerIds } from "../domain/layerVisibility";
 import type { Project } from "../domain/project";
 import type { Point2D } from "./types";
 
-/** Слои, по геометрии которых разрешена привязка: активный + видимые контекстные. */
+/**
+ * Слои, по геометрии которых разрешена привязка на плане: совпадает с 2D-отрисовкой контекста.
+ * Активный слой всегда; дополнительно — только записи из normalizeVisibleLayerIds (как «Видимость» в параметрах слоёв).
+ * Контекстные слои с isVisible === false не участвуют (активный не отфильтровываем — редактирование).
+ */
 export function layerIdsForSnapGeometry(project: Project): ReadonlySet<string> {
   const ids = new Set<string>([project.activeLayerId]);
-  for (const id of project.visibleLayerIds) {
+  for (const id of normalizeVisibleLayerIds(project)) {
+    const layer = project.layers.find((l) => l.id === id);
+    if (layer?.isVisible === false) {
+      continue;
+    }
     ids.add(id);
   }
   return ids;

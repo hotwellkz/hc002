@@ -13,6 +13,14 @@ import { normalizeSurfaceTextureState } from "../domain/surfaceTextureOps";
 import { normalizeLayer, type Layer } from "../domain/layer";
 import { migrateWireV0ToProject } from "./migrateWireV0";
 
+/** schema v1: slopeDirection хранил направление выдавливания; в v2 — направление стока (инверсия). */
+function migrateRoofPlanesSlopeSemanticsV1ToV2(roofPlanes: Project["roofPlanes"]): Project["roofPlanes"] {
+  return roofPlanes.map((rp) => ({
+    ...rp,
+    slopeDirection: { x: -rp.slopeDirection.x, y: -rp.slopeDirection.y },
+  }));
+}
+
 /** Старые проекты без markPrefix у профилей «стена». */
 function normalizeProfilesImported(profiles: readonly Profile[]): Profile[] {
   return profiles.map((p) => {
@@ -49,6 +57,7 @@ export interface ProjectFileV1 {
   readonly foundationPiles?: Project["foundationPiles"];
   readonly slabs?: Project["slabs"];
   readonly floorBeams?: Project["floorBeams"];
+  readonly roofPlanes?: Project["roofPlanes"];
   /** В старых файлах может отсутствовать — []. */
   readonly wallCalculations?: Project["wallCalculations"];
   /** В старых файлах может отсутствовать — []. */
@@ -83,7 +92,7 @@ export function projectToWire(project: Project): ProjectFileV1 {
 
 export function projectFromWireV1(wire: ProjectFileV1): Project {
   const meta: ProjectMeta = {
-    schemaVersion: wire.schemaVersion,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
     id: wire.id,
     name: wire.name,
     createdAt: wire.createdAt,
@@ -93,7 +102,7 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
   if (wire.units !== PROJECT_UNITS) {
     throw new Error(`Ожидались единицы ${PROJECT_UNITS}`);
   }
-  if (wire.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+  if (wire.schemaVersion !== 1 && wire.schemaVersion !== PROJECT_SCHEMA_VERSION) {
     throw new Error(`Неподдерживаемая schemaVersion: ${wire.schemaVersion}`);
   }
   if (!wire.layers.length) {
@@ -103,6 +112,10 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     throw new Error("activeLayerId не найден среди layers");
   }
   const visibleRaw = wire.visibleLayerIds ?? [];
+  let roofPlanes = wire.roofPlanes ?? [];
+  if (wire.schemaVersion === 1) {
+    roofPlanes = migrateRoofPlanesSlopeSemanticsV1ToV2(roofPlanes);
+  }
   const base: Project = {
     meta,
     projectOrigin: wire.projectOrigin ?? null,
@@ -115,6 +128,7 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     foundationPiles: wire.foundationPiles ?? [],
     slabs: wire.slabs ?? [],
     floorBeams: wire.floorBeams ?? [],
+    roofPlanes,
     wallCalculations: wire.wallCalculations ?? [],
     wallJoints: wire.wallJoints ?? [],
     openings: wire.openings,
@@ -144,7 +158,7 @@ export function projectFromWire(wire: ProjectFileV1 | Record<string, unknown>): 
   if (sv === 0) {
     return migrateWireV0ToProject(o);
   }
-  if (sv === 1) {
+  if (sv === 1 || sv === 2) {
     return projectFromWireV1(wire as ProjectFileV1);
   }
   throw new Error(`Неподдерживаемая schemaVersion: ${String(sv)}`);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { getLayerById } from "@/core/domain/layerOps";
 import { useAppStore } from "@/store/useAppStore";
@@ -25,6 +26,32 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
     }
   }, [open, active]);
 
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      return;
+    }
+    const { body } = document;
+    const prevOverflow = body.style.overflow;
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.overflow = prevOverflow;
+    };
+  }, [open]);
+
   if (!open) {
     return null;
   }
@@ -38,10 +65,14 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
     onClose();
   };
 
-  return (
-    <div className="lm-backdrop" role="presentation" onClick={onClose}>
+  const modal = (
+    <div
+      className="lm-backdrop lm-backdrop--root"
+      role="presentation"
+      onClick={onClose}
+    >
       <div
-        className="lm-dialog"
+        className="lm-dialog lm-dialog--scrollable"
         role="dialog"
         aria-modal="true"
         aria-labelledby="lm-create-title"
@@ -79,4 +110,6 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
 }

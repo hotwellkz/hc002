@@ -18,6 +18,7 @@ import {
   resolveSnap2d,
   SNAP_GRID_PX,
   type SnapKind,
+  type SnapResult2d,
   type SnapSettings2d,
 } from "./snap2d";
 import { collectEntityCopySnapPointsForFullScene } from "../domain/entityCopySnapSystem";
@@ -269,6 +270,11 @@ export interface LinearSecondPointPreviewInput {
   readonly altKey?: boolean;
   /** Иначе {@link findShiftLockSnapHit}. */
   readonly shiftLockFindHit?: ShiftLockHitFinder;
+  /**
+   * Подмена базового snap (иначе {@link resolveSnap2d}).
+   * Например инструмент «Плоскость крыши» — {@link resolveWallPlacementToolSnap} в режиме линейного профиля.
+   */
+  readonly resolvePrimarySnap?: (rawWorldMm: Point2D) => SnapResult2d;
 }
 
 export interface LinearSecondPointPreviewResult {
@@ -295,8 +301,13 @@ export function computeLinearSecondPointPreview(input: LinearSecondPointPreviewI
     altKey,
   } = input;
 
+  const pickSnap = (raw: Point2D) =>
+    input.resolvePrimarySnap
+      ? input.resolvePrimarySnap(raw)
+      : resolveSnap2d({ rawWorldMm: raw, viewport, project, snapSettings, gridStepMm });
+
   if (altKey) {
-    const snap = resolveSnap2d({ rawWorldMm, viewport, project, snapSettings, gridStepMm });
+    const snap = pickSnap(rawWorldMm);
     return {
       previewEnd: snap.point,
       lastSnapKind: snap.kind,
@@ -324,7 +335,7 @@ export function computeLinearSecondPointPreview(input: LinearSecondPointPreviewI
     };
   }
 
-  const snap = resolveSnap2d({ rawWorldMm, viewport, project, snapSettings, gridStepMm });
+  const snap = pickSnap(rawWorldMm);
   let previewEnd = snap.point;
   let nextAngleLocked = angleSnapLockedDeg;
   if (!skipAngleSnap) {

@@ -10,6 +10,7 @@ import {
   floorBeamPlanQuadCornersMm,
 } from "../domain/floorBeamGeometry";
 import { isOpeningPlacedOnWall } from "../domain/opening";
+import type { PlanLine } from "../domain/planLine";
 import type { LinearProfilePlacementMode } from "./linearPlacementGeometry";
 import type { Point2D } from "./types";
 import type { ShiftLockSnapHit } from "./shiftDirectionLock2d";
@@ -30,6 +31,65 @@ const WALL_PLACEMENT_GRID_PX = 10;
 
 const ENDPOINT_EPS = 1e-5;
 const VERT_MERGE_MM = 0.5;
+
+/** При почти равном расстоянии до двух вершин/рёбер — отдать предпочтение активному слою (инструмент «Плоскость крыши»). */
+const SNAP_LAYER_TIE_BREAK_PX = 1.35;
+
+export type WallToolSnapLayerBias = "none" | "preferActive";
+
+function vertexKeyMm(p: Point2D): string {
+  const rx = Math.round(p.x * 1000) / 1000;
+  const ry = Math.round(p.y * 1000) / 1000;
+  return `${rx},${ry}`;
+}
+
+function activeLayerWallToolVertexKeys(
+  project: Project,
+  walls: readonly Wall[],
+  floorBeams: readonly FloorBeamEntity[],
+  planLines: readonly PlanLine[],
+  face: "left" | "right" | null,
+): ReadonlySet<string> {
+  const aw = walls.filter((w) => w.layerId === project.activeLayerId);
+  const ab = floorBeams.filter((b) => b.layerId === project.activeLayerId);
+  const apl = planLines.filter((l) => l.layerId === project.activeLayerId);
+  const vertsBase =
+    face === null
+      ? collectCenterModeVerticesMm(project, aw, ab)
+      : collectFaceModeVerticesMm(project, aw, ab, face);
+  const keys = new Set(vertsBase.map(vertexKeyMm));
+  for (const pl of apl) {
+    keys.add(vertexKeyMm(pl.start));
+    keys.add(vertexKeyMm(pl.end));
+  }
+  return keys;
+}
+
+function activeLayerShiftLockVertexKeys(
+  project: Project,
+  walls: readonly Wall[],
+  floorBeams: readonly FloorBeamEntity[],
+  planLines: readonly PlanLine[],
+  face: "left" | "right" | null,
+): ReadonlySet<string> {
+  const keys = new Set(activeLayerWallToolVertexKeys(project, walls, floorBeams, planLines, face));
+  for (const o of project.openings) {
+    if (!isOpeningPlacedOnWall(o)) {
+      continue;
+    }
+    const wall = project.walls.find((w) => w.id === o.wallId);
+    if (!wall || wall.layerId !== project.activeLayerId) {
+      continue;
+    }
+    const q = openingSlotCornersMmForSnap(wall, o.offsetFromStartMm, o.widthMm);
+    if (q) {
+      for (const c of q) {
+        keys.add(vertexKeyMm(c));
+      }
+    }
+  }
+  return keys;
+}
 
 function screenDistancePx(a: Point2D, b: Point2D, t: ViewportTransform): number {
   const sa = worldToScreen(a.x, a.y, t);
@@ -198,8 +258,11 @@ export function resolveWallPlacementToolSnap(input: {
   readonly snapSettings: SnapSettings2d;
   readonly gridStepMm: number;
   readonly linearPlacementMode: LinearProfilePlacementMode;
+  /** При равенстве расстояний — предпочесть вершину/ребро активного слоя (плоскость крыши и контекстные слои). */
+  readonly snapLayerBias?: WallToolSnapLayerBias;
 }): SnapResult2d {
-  const { rawWorldMm, viewport, project, snapSettings, gridStepMm, linearPlacementMode } = input;
+  const { rawWorldMm, viewport, project, snapSettings, gridStepMm, linearPlacementMode, snapLayerBias } = input;
+  const bias = snapLayerBias ?? "none";
   const raw = rawWorldMm;
 
   if (!viewport) {
@@ -226,11 +289,28 @@ export function resolveWallPlacementToolSnap(input: {
     }
     const verts = dedupeVerticesMm([...vertsBase, ...plVerts], VERT_MERGE_MM);
 
-    let bestV: { readonly point: Point2D; readonly dist: number } | null = null;
+    const activeKeys =
+      bias === "preferActive"
+        ? activeLayerWallToolVertexKeys(project, walls, floorBeams, planLines, face)
+        : null;
+
+    let bestV: { readonly point: Point2D; readonly dist: number; readonly onActive: boolean } | null = null;
     for (const pt of verts) {
       const d = screenDistancePx(raw, pt, viewport);
-      if (d <= WALL_PLACEMENT_VERTEX_PX && (!bestV || d < bestV.dist)) {
-        bestV = { point: { x: pt.x, y: pt.y }, dist: d };
+      if (d > WALL_PLACEMENT_VERTEX_PX) {
+        continue;
+      }
+      const onActive = activeKeys ? activeKeys.has(vertexKeyMm(pt)) : false;
+      if (!bestV || d < bestV.dist - SNAP_LAYER_TIE_BREAK_PX) {
+        bestV = { point: { x: pt.x, y: pt.y }, dist: d, onActive };
+      } else if (
+        bias === "preferActive" &&
+        bestV &&
+        Math.abs(d - bestV.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+        onActive &&
+        !bestV.onActive
+      ) {
+        bestV = { point: { x: pt.x, y: pt.y }, dist: d, onActive };
       }
     }
     if (bestV) {
@@ -245,6 +325,7 @@ export function resolveWallPlacementToolSnap(input: {
       readonly dist: number;
       readonly wallId?: string;
       readonly planLineId?: string;
+      readonly onActive: boolean;
     } | null = null;
 
     if (face === null) {
@@ -254,8 +335,20 @@ export function resolveWallPlacementToolSnap(input: {
           continue;
         }
         const d = screenDistancePx(raw, q, viewport);
-        if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: w.id };
+        if (d > WALL_PLACEMENT_EDGE_PX) {
+          continue;
+        }
+        const onActive = w.layerId === project.activeLayerId;
+        if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: w.id, onActive };
+        } else if (
+          bias === "preferActive" &&
+          bestE &&
+          Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+          onActive &&
+          !bestE.onActive
+        ) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: w.id, onActive };
         }
       }
       for (const b of floorBeams) {
@@ -268,8 +361,20 @@ export function resolveWallPlacementToolSnap(input: {
           continue;
         }
         const d = screenDistancePx(raw, q, viewport);
-        if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: b.id };
+        if (d > WALL_PLACEMENT_EDGE_PX) {
+          continue;
+        }
+        const onActive = b.layerId === project.activeLayerId;
+        if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: b.id, onActive };
+        } else if (
+          bias === "preferActive" &&
+          bestE &&
+          Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+          onActive &&
+          !bestE.onActive
+        ) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: b.id, onActive };
         }
       }
     } else {
@@ -279,8 +384,23 @@ export function resolveWallPlacementToolSnap(input: {
           continue;
         }
         const d = screenDistancePx(raw, q, viewport);
-        if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: seg.wallId };
+        if (d > WALL_PLACEMENT_EDGE_PX) {
+          continue;
+        }
+        const wall = walls.find((w0) => w0.id === seg.wallId);
+        const beam = !wall ? floorBeams.find((b0) => b0.id === seg.wallId) : undefined;
+        const onActive =
+          (wall?.layerId === project.activeLayerId) || (beam?.layerId === project.activeLayerId);
+        if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: seg.wallId, onActive };
+        } else if (
+          bias === "preferActive" &&
+          bestE &&
+          Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+          onActive &&
+          !bestE.onActive
+        ) {
+          bestE = { point: { x: q.x, y: q.y }, dist: d, wallId: seg.wallId, onActive };
         }
       }
     }
@@ -291,8 +411,20 @@ export function resolveWallPlacementToolSnap(input: {
         continue;
       }
       const d = screenDistancePx(raw, q, viewport);
-      if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-        bestE = { point: { x: q.x, y: q.y }, dist: d, planLineId: pl.id };
+      if (d > WALL_PLACEMENT_EDGE_PX) {
+        continue;
+      }
+      const onActive = pl.layerId === project.activeLayerId;
+      if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, planLineId: pl.id, onActive };
+      } else if (
+        bias === "preferActive" &&
+        bestE &&
+        Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+        onActive &&
+        !bestE.onActive
+      ) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, planLineId: pl.id, onActive };
       }
     }
 
@@ -359,8 +491,10 @@ export function findWallPlacementShiftLockSnapHit(input: {
   readonly snapSettings: SnapSettings2d;
   readonly gridStepMm: number;
   readonly linearPlacementMode: LinearProfilePlacementMode;
+  readonly snapLayerBias?: WallToolSnapLayerBias;
 }): ShiftLockSnapHit | null {
-  const { rawWorldMm, viewport, project, snapSettings, gridStepMm, linearPlacementMode } = input;
+  const { rawWorldMm, viewport, project, snapSettings, gridStepMm, linearPlacementMode, snapLayerBias } = input;
+  const bias = snapLayerBias ?? "none";
   const raw = rawWorldMm;
 
   const layerIds = layerIdsForSnapGeometry(project);
@@ -393,18 +527,35 @@ export function findWallPlacementShiftLockSnapHit(input: {
     }
   }
 
-  let bestV: { readonly point: Point2D; readonly dist: number } | null = null;
+  const activeSlKeys =
+    bias === "preferActive"
+      ? activeLayerShiftLockVertexKeys(project, walls, floorBeamsSl, planLinesSl, face)
+      : null;
+
+  let bestV: { readonly point: Point2D; readonly dist: number; readonly onActive: boolean } | null = null;
   for (const pt of verts) {
     const d = screenDistancePx(raw, pt, viewport);
-    if (d <= WALL_PLACEMENT_VERTEX_PX && (!bestV || d < bestV.dist)) {
-      bestV = { point: { x: pt.x, y: pt.y }, dist: d };
+    if (d > WALL_PLACEMENT_VERTEX_PX) {
+      continue;
+    }
+    const onActive = activeSlKeys ? activeSlKeys.has(vertexKeyMm(pt)) : false;
+    if (!bestV || d < bestV.dist - SNAP_LAYER_TIE_BREAK_PX) {
+      bestV = { point: { x: pt.x, y: pt.y }, dist: d, onActive };
+    } else if (
+      bias === "preferActive" &&
+      bestV &&
+      Math.abs(d - bestV.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+      onActive &&
+      !bestV.onActive
+    ) {
+      bestV = { point: { x: pt.x, y: pt.y }, dist: d, onActive };
     }
   }
   if (bestV) {
     return { point: bestV.point, kind: "vertex" };
   }
 
-  let bestE: { readonly point: Point2D; readonly dist: number } | null = null;
+  let bestE: { readonly point: Point2D; readonly dist: number; readonly onActive: boolean } | null = null;
 
   if (face === null) {
     for (const w of walls) {
@@ -413,8 +564,20 @@ export function findWallPlacementShiftLockSnapHit(input: {
         continue;
       }
       const d = screenDistancePx(raw, q, viewport);
-      if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-        bestE = { point: { x: q.x, y: q.y }, dist: d };
+      if (d > WALL_PLACEMENT_EDGE_PX) {
+        continue;
+      }
+      const onActive = w.layerId === project.activeLayerId;
+      if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
+      } else if (
+        bias === "preferActive" &&
+        bestE &&
+        Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+        onActive &&
+        !bestE.onActive
+      ) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
       }
     }
     for (const b of floorBeamsSl) {
@@ -427,8 +590,20 @@ export function findWallPlacementShiftLockSnapHit(input: {
         continue;
       }
       const d = screenDistancePx(raw, q, viewport);
-      if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-        bestE = { point: { x: q.x, y: q.y }, dist: d };
+      if (d > WALL_PLACEMENT_EDGE_PX) {
+        continue;
+      }
+      const onActive = b.layerId === project.activeLayerId;
+      if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
+      } else if (
+        bias === "preferActive" &&
+        bestE &&
+        Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+        onActive &&
+        !bestE.onActive
+      ) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
       }
     }
   } else {
@@ -438,8 +613,23 @@ export function findWallPlacementShiftLockSnapHit(input: {
         continue;
       }
       const d = screenDistancePx(raw, q, viewport);
-      if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-        bestE = { point: { x: q.x, y: q.y }, dist: d };
+      if (d > WALL_PLACEMENT_EDGE_PX) {
+        continue;
+      }
+      const wall0 = walls.find((w0) => w0.id === seg.wallId);
+      const beam0 = !wall0 ? floorBeamsSl.find((b0) => b0.id === seg.wallId) : undefined;
+      const onActive =
+        (wall0?.layerId === project.activeLayerId) || (beam0?.layerId === project.activeLayerId);
+      if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
+      } else if (
+        bias === "preferActive" &&
+        bestE &&
+        Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+        onActive &&
+        !bestE.onActive
+      ) {
+        bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
       }
     }
   }
@@ -450,8 +640,20 @@ export function findWallPlacementShiftLockSnapHit(input: {
       continue;
     }
     const d = screenDistancePx(raw, q, viewport);
-    if (d <= WALL_PLACEMENT_EDGE_PX && (!bestE || d < bestE.dist)) {
-      bestE = { point: { x: q.x, y: q.y }, dist: d };
+    if (d > WALL_PLACEMENT_EDGE_PX) {
+      continue;
+    }
+    const onActive = pl.layerId === project.activeLayerId;
+    if (!bestE || d < bestE.dist - SNAP_LAYER_TIE_BREAK_PX) {
+      bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
+    } else if (
+      bias === "preferActive" &&
+      bestE &&
+      Math.abs(d - bestE.dist) <= SNAP_LAYER_TIE_BREAK_PX &&
+      onActive &&
+      !bestE.onActive
+    ) {
+      bestE = { point: { x: q.x, y: q.y }, dist: d, onActive };
     }
   }
 

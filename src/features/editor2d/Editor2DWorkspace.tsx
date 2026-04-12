@@ -170,6 +170,29 @@ import {
 } from "@/features/project/objectEditorActions";
 import { rectangleCornersFromDiagonalMm } from "@/core/domain/slabPolygon";
 import { drawSlabPlacementPreview2d, drawSlabs2d } from "./drawSlabs2d";
+import { drawRoofContourJoinOverlay2d } from "./drawRoofContourJoinOverlay2d";
+import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
+import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
+import {
+  clampRoofQuadCornerTargetMm,
+  clampRoofQuadEdgeDeltaMm,
+  isRoofQuadEditorCompatible,
+  tryMoveRoofQuadEdgeMm,
+  type RoofQuad4,
+} from "@/core/domain/roofPlaneQuadEditGeometry";
+import { drawRoofPlanePlacementPreview2d, drawRoofPlanes2d } from "./drawRoofPlanes2d";
+import { appendRoofPlaneLabels2d } from "./roofPlaneLabels2dPixi";
+import { computeRoofLabelLayouts2d } from "./roofPlaneLabelLayout2d";
+import {
+  drawRoofPlaneEditHandles2d,
+  type RoofPlaneEditHandleUiState,
+} from "./drawRoofPlaneEditHandles2d";
+import {
+  pickRoofPlaneEditHandleScreen,
+  type RoofPlaneEditScreenSticky,
+} from "./roofPlaneEditHandlesPick2d";
+import { roofPlaneEditModalBridge } from "./roofPlaneEditModalBridge";
+import { pickClosestRoofPlaneAtPoint } from "./roofPlanePick2d";
 import { pickClosestSlabAtPoint } from "./slabPick2d";
 import { readFloorBeamOverStockPaintFromTheme } from "./floorBeamOverStock2dTheme";
 import { drawFloorBeams2d } from "./floorBeams2dPixi";
@@ -276,6 +299,14 @@ function openingPickTolerancesMm(zoomPixelsPerMm: number): { readonly along: num
   };
 }
 
+function roofPlaneQuad4OrNull(rp: RoofPlaneEntity): RoofQuad4 | null {
+  const poly = roofPlanePolygonMm(rp);
+  if (poly.length !== 4 || !isRoofQuadEditorCompatible(poly)) {
+    return null;
+  }
+  return [poly[0]!, poly[1]!, poly[2]!, poly[3]!];
+}
+
 interface Editor2DWorkspaceProps {
   readonly onWorldCursorMm: (point: { x: number; y: number } | null) => void;
 }
@@ -320,6 +351,25 @@ interface SlabPointerSession {
   lastWorldMm: { x: number; y: number };
   dragActive: boolean;
   readonly slabIds: readonly string[];
+}
+
+interface RoofPlaneEditPointerSession {
+  readonly pointerId: number;
+  readonly sx: number;
+  readonly sy: number;
+  readonly planeId: string;
+  readonly kind: "edge" | "corner";
+  readonly edgeIndex?: number;
+  readonly cornerIndex?: number;
+  readonly baseQuad: RoofQuad4;
+  readonly anchorSnapMm: Point2D;
+  /** Сырой мир в момент ЛКМ — для смещения ребра только вдоль нормали, без привязки snap. */
+  readonly anchorWorldMm: Point2D;
+  readonly nOut?: Point2D;
+  lastWorldMm: Point2D;
+  dragActive: boolean;
+  suspendedForModal: boolean;
+  pointerReleasedWhileModalOpen: boolean;
 }
 
 type MoveDimSide = "left" | "right";
@@ -472,6 +522,17 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const foundationPileDragHistoryBaselineRef = useRef<ReturnType<typeof cloneProjectSnapshot> | null>(null);
   const slabPointerRef = useRef<SlabPointerSession | null>(null);
   const slabDragHistoryBaselineRef = useRef<ReturnType<typeof cloneProjectSnapshot> | null>(null);
+  const roofPlaneEditPointerRef = useRef<RoofPlaneEditPointerSession | null>(null);
+  const roofPlaneEditDragHistoryBaselineRef = useRef<ReturnType<typeof cloneProjectSnapshot> | null>(null);
+  const roofPlaneEditHoverRef = useRef<{
+    readonly planeId: string;
+    readonly kind: "edge" | "corner";
+    readonly edgeIndex?: number;
+    readonly cornerIndex?: number;
+    readonly nOut?: Point2D;
+  } | null>(null);
+  /** Явный выбор ребра/угла для смещения (клик); Space и drag опираются на это для рёбер. */
+  const roofPlaneEditSelectedRef = useRef<RoofPlaneEditHandleUiState>(null);
   const lastOpeningClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const lastWallClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
   const lastFoundationStripClickRef = useRef<{ readonly id: string; readonly t: number } | null>(null);
@@ -545,6 +606,35 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const openingAlongMoveInputRef = useRef<HTMLInputElement | null>(null);
   const canvasForOpeningDragRef = useRef<HTMLCanvasElement | null>(null);
   const paintWorkspaceRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    roofPlaneEditModalBridge.onEdgeOffsetApplied = () => {
+      roofPlaneEditDragHistoryBaselineRef.current = null;
+      roofPlaneEditPointerRef.current = null;
+      roofPlaneEditHoverRef.current = null;
+      roofPlaneEditSelectedRef.current = null;
+      paintWorkspaceRef.current?.();
+    };
+    roofPlaneEditModalBridge.onEdgeOffsetCancelled = () => {
+      const s = roofPlaneEditPointerRef.current;
+      if (!s) {
+        return;
+      }
+      s.suspendedForModal = false;
+      if (s.pointerReleasedWhileModalOpen) {
+        roofPlaneEditPointerRef.current = null;
+        const b = roofPlaneEditDragHistoryBaselineRef.current;
+        roofPlaneEditDragHistoryBaselineRef.current = null;
+        if (b) {
+          useAppStore.getState().recordUndoIfModelChangedSince(b);
+        }
+      }
+    };
+    return () => {
+      roofPlaneEditModalBridge.onEdgeOffsetApplied = null;
+      roofPlaneEditModalBridge.onEdgeOffsetCancelled = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!wallPlacementSession) {
@@ -680,6 +770,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               addFoundationStripModalOpen: stA.addFoundationStripModalOpen,
               addFoundationPileModalOpen: stA.addFoundationPileModalOpen,
               addSlabModalOpen: stA.addSlabModalOpen,
+              addRoofPlaneModalOpen: stA.addRoofPlaneModalOpen,
               addWindowModalOpen: stA.addWindowModalOpen,
               addDoorModalOpen: stA.addDoorModalOpen,
               windowEditModal: stA.windowEditModal,
@@ -696,6 +787,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               lengthChangeCoordinateModalOpen: stA.lengthChangeCoordinateModalOpen,
               projectOriginCoordinateModalOpen: stA.projectOriginCoordinateModalOpen,
               openingAlongMoveNumericModalOpen: stA.openingAlongMoveNumericModalOpen,
+              roofPlaneEdgeOffsetModal: stA.roofPlaneEdgeOffsetModal,
               foundationStripAutoPilesModal: stA.foundationStripAutoPilesModal,
               entityCopyCoordinateModalOpen: stA.entityCopyCoordinateModalOpen,
               entityCopyParamsModal: stA.entityCopyParamsModal,
@@ -718,6 +810,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           floorBeamPlacementSession: stA.floorBeamPlacementSession,
           floorBeamSplitSession: stA.floorBeamSplitSession,
           slabPlacementSession: stA.slabPlacementSession,
+          roofPlanePlacementSession: stA.roofPlanePlacementSession,
+          roofContourJoinSession: stA.roofContourJoinSession,
           foundationStripPlacementSession: stA.foundationStripPlacementSession,
           foundationPilePlacementSession: stA.foundationPilePlacementSession,
           pendingWindowPlacement: stA.pendingWindowPlacement,
@@ -745,6 +839,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             addFoundationStripModalOpen: st0.addFoundationStripModalOpen,
             addFoundationPileModalOpen: st0.addFoundationPileModalOpen,
             addSlabModalOpen: st0.addSlabModalOpen,
+            addRoofPlaneModalOpen: st0.addRoofPlaneModalOpen,
             addWindowModalOpen: st0.addWindowModalOpen,
             addDoorModalOpen: st0.addDoorModalOpen,
             windowEditModal: st0.windowEditModal,
@@ -761,6 +856,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             lengthChangeCoordinateModalOpen: st0.lengthChangeCoordinateModalOpen,
             projectOriginCoordinateModalOpen: st0.projectOriginCoordinateModalOpen,
             openingAlongMoveNumericModalOpen: st0.openingAlongMoveNumericModalOpen,
+            roofPlaneEdgeOffsetModal: st0.roofPlaneEdgeOffsetModal,
             foundationStripAutoPilesModal: st0.foundationStripAutoPilesModal,
             entityCopyCoordinateModalOpen: st0.entityCopyCoordinateModalOpen,
             entityCopyParamsModal: st0.entityCopyParamsModal,
@@ -845,6 +941,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           useAppStore.getState().closeWallCoordinateModal();
           return;
         }
+        if (useAppStore.getState().roofPlaneEdgeOffsetModal) {
+          e.preventDefault();
+          roofPlaneEditModalBridge.onEdgeOffsetCancelled?.();
+          useAppStore.getState().closeRoofPlaneEdgeOffsetModal();
+          paintWorkspaceRef.current?.();
+          return;
+        }
         if (useAppStore.getState().slabCoordinateModalOpen) {
           e.preventDefault();
           useAppStore.getState().closeSlabCoordinateModal();
@@ -888,6 +991,20 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (stEsc.slabPlacementSession) {
           e.preventDefault();
           useAppStore.getState().slabPlacementBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          return;
+        }
+        if (stEsc.roofPlanePlacementSession) {
+          e.preventDefault();
+          useAppStore.getState().roofPlanePlacementBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          return;
+        }
+        if (stEsc.roofContourJoinSession) {
+          e.preventDefault();
+          useAppStore.getState().roofContourJoinBackOrExit();
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
           return;
@@ -941,6 +1058,17 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (stEsc.openingMoveModeActive) {
           e.preventDefault();
           stEsc.setOpeningMoveModeActive(false);
+          return;
+        }
+        if (
+          stEsc.activeTool === "select" &&
+          stEsc.currentProject.viewState.editor2dPlanScope === "roof" &&
+          !stEsc.roofContourJoinSession &&
+          roofPlaneEditSelectedRef.current
+        ) {
+          e.preventDefault();
+          roofPlaneEditSelectedRef.current = null;
+          paintWorkspaceRef.current?.();
           return;
         }
         if (stEsc.activeTool === "pan") {
@@ -1002,6 +1130,65 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           st.setOpeningAlongMoveNumericModalOpen(true);
           setOpeningAlongMoveModal({ valueStr: String(delta0), error: null });
           return;
+        }
+        const rpPtrSpace = roofPlaneEditPointerRef.current;
+        if (
+          st.activeTool === "select" &&
+          st.currentProject.viewState.editor2dPlanScope === "roof" &&
+          !st.roofContourJoinSession &&
+          st.roofPlaneEdgeOffsetModal == null
+        ) {
+          let edgeIdxSp: number | null = null;
+          let baseQuadSp: RoofQuad4 | null = null;
+          let initStrSp = "0";
+          const selSp = st.selectedEntityIds;
+          if (
+            rpPtrSpace?.kind === "edge" &&
+            rpPtrSpace.edgeIndex != null &&
+            !rpPtrSpace.suspendedForModal &&
+            rpPtrSpace.nOut
+          ) {
+            edgeIdxSp = rpPtrSpace.edgeIndex;
+            baseQuadSp = rpPtrSpace.baseQuad;
+            const lx = rpPtrSpace.lastWorldMm.x - rpPtrSpace.anchorWorldMm.x;
+            const ly = rpPtrSpace.lastWorldMm.y - rpPtrSpace.anchorWorldMm.y;
+            const n0 = rpPtrSpace.nOut;
+            initStrSp = String(Math.round(lx * n0.x + ly * n0.y));
+          } else if (selSp.length === 1) {
+            const ridSp = selSp[0]!;
+            const selEd = roofPlaneEditSelectedRef.current;
+            if (selEd?.kind === "edge" && selEd.planeId === ridSp && selEd.edgeIndex != null) {
+              const lvSp = narrowProjectToActiveLayer(st.currentProject);
+              const rpSp = lvSp.roofPlanes.find((r) => r.id === ridSp);
+              const qSp = rpSp ? roofPlaneQuad4OrNull(rpSp) : null;
+              if (qSp) {
+                edgeIdxSp = selEd.edgeIndex;
+                baseQuadSp = qSp;
+              }
+            }
+          }
+          if (edgeIdxSp != null && baseQuadSp && selSp.length === 1) {
+            e.preventDefault();
+            if (rpPtrSpace && !rpPtrSpace.suspendedForModal) {
+              const cnvRp = canvasForOpeningDragRef.current;
+              if (cnvRp) {
+                try {
+                  cnvRp.releasePointerCapture(rpPtrSpace.pointerId);
+                } catch {
+                  /* ignore */
+                }
+              }
+              rpPtrSpace.suspendedForModal = true;
+            }
+            st.openRoofPlaneEdgeOffsetModal({
+              planeId: selSp[0]!,
+              edgeIndex: edgeIdxSp,
+              baseQuad: baseQuadSp,
+              initialValueStr: initStrSp,
+            });
+            paintWorkspaceRef.current?.();
+            return;
+          }
         }
         if (st.projectOriginMoveToolActive && !st.projectOriginCoordinateModalOpen) {
           e.preventDefault();
@@ -1272,6 +1459,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   const pendingDoorPlacement = useAppStore((s) => s.pendingDoorPlacement);
   const projectOriginMoveToolActive = useAppStore((s) => s.projectOriginMoveToolActive);
   const activeToolCrosshair = useAppStore((s) => s.activeTool);
+  const roofContourJoinActive = useAppStore((s) => s.roofContourJoinSession != null);
   const openingMoveModeActive = useAppStore((s) => s.openingMoveModeActive);
   const selectedIds = useAppStore((s) => s.selectedEntityIds);
   useEffect(() => {
@@ -1283,8 +1471,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       pendingWindowPlacement ||
       pendingDoorPlacement ||
       projectOriginMoveToolActive ||
-      floorBeamPlacementSession ||
       floorBeamSplitSession ||
+      roofContourJoinActive ||
       activeToolCrosshair === "line" ||
       activeToolCrosshair === "ruler"
     ) {
@@ -1296,8 +1484,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     pendingWindowPlacement,
     pendingDoorPlacement,
     projectOriginMoveToolActive,
-    floorBeamPlacementSession,
     floorBeamSplitSession,
+    roofContourJoinActive,
     activeToolCrosshair,
   ]);
 
@@ -1367,6 +1555,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     slabsG.eventMode = "none";
     const slabPreviewG = new Graphics();
     slabPreviewG.eventMode = "none";
+    const roofPlanesG = new Graphics();
+    roofPlanesG.eventMode = "none";
+    const roofPlanePreviewG = new Graphics();
+    roofPlanePreviewG.eventMode = "none";
+    const roofPlaneLabelsC = new Container();
+    roofPlaneLabelsC.eventMode = "none";
     const wallsG = new Graphics();
     const floorBeamsG = new Graphics();
     floorBeamsG.eventMode = "none";
@@ -1391,6 +1585,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     dimensionsLabelC.eventMode = "none";
     const jointPickG = new Graphics();
     jointPickG.eventMode = "none";
+    const roofContourJoinG = new Graphics();
+    roofContourJoinG.eventMode = "none";
     const windowPlacementG = new Graphics();
     windowPlacementG.eventMode = "none";
     const previewG = new Graphics();
@@ -1406,6 +1602,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     const lineG = new Graphics();
     lineG.eventMode = "none";
     const marqueeG = new Graphics();
+    const roofPlaneEditHandlesG = new Graphics();
+    roofPlaneEditHandlesG.eventMode = "none";
     const originMarkerC = new Container();
     originMarkerC.eventMode = "none";
     const worldRoot = new Container();
@@ -1486,9 +1684,27 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         !st.floorBeamPlacementCoordinateModalOpen &&
         !st.openingMoveModeActive &&
         !st.projectOriginMoveToolActive;
+      const rpsCross = st.roofPlanePlacementSession;
+      const roofPickCrosshair =
+        rpsCross != null &&
+        !st.openingMoveModeActive &&
+        !st.projectOriginMoveToolActive;
+      const roofContourJoinPickCrosshair =
+        st.roofContourJoinSession != null &&
+        st.currentProject.viewState.editor2dPlanScope === "roof" &&
+        !st.openingMoveModeActive &&
+        !st.projectOriginMoveToolActive;
+      const roofPlaneEditCrosshair =
+        roofPlaneEditPointerRef.current?.dragActive === true &&
+        st.activeTool === "select" &&
+        !st.openingMoveModeActive &&
+        !st.projectOriginMoveToolActive;
       const show =
         (wallPickCrosshair ||
           beamPickCrosshair ||
+          roofPickCrosshair ||
+          roofContourJoinPickCrosshair ||
+          roofPlaneEditCrosshair ||
           foundationPickCrosshair ||
           pileMovePickCrosshair ||
           rulerShow ||
@@ -1724,6 +1940,33 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           centerRx = scSl3.x;
           centerRy = scSl3.y;
         }
+      } else if (roofPickCrosshair && rpsCross) {
+        const rp = rpsCross;
+        if (rp.previewEndMm) {
+          const scRp = worldToScreen(rp.previewEndMm.x, rp.previewEndMm.y, t);
+          centerRx = scRp.x;
+          centerRy = scRp.y;
+        } else {
+          const snapRp = resolveWallPlacementToolSnap({
+            rawWorldMm: { x: last.worldX, y: last.worldY },
+            viewport: t,
+            project: proj,
+            snapSettings: {
+              snapToVertex: e2.snapToVertex,
+              snapToEdge: e2.snapToEdge,
+              snapToGrid: e2.snapToGrid,
+            },
+            gridStepMm: proj.settings.gridStepMm,
+            linearPlacementMode: e2.linearPlacementMode,
+          });
+          const scRp0 = worldToScreen(snapRp.point.x, snapRp.point.y, t);
+          centerRx = scRp0.x;
+          centerRy = scRp0.y;
+        }
+      } else if (roofContourJoinPickCrosshair) {
+        const scRj = worldToScreen(last.worldX, last.worldY, t);
+        centerRx = scRj.x;
+        centerRy = scRj.y;
       } else if (beamPickCrosshair && fbs) {
         if (fbs.phase === "waitingSecondPoint" && fbs.previewEndMm) {
           const sc = worldToScreen(fbs.previewEndMm.x, fbs.previewEndMm.y, t);
@@ -1783,6 +2026,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           centerRx = sc.x;
           centerRy = sc.y;
         }
+      } else if (roofPlaneEditCrosshair) {
+        const snapRe = resolveSnap2d({
+          rawWorldMm: { x: last.worldX, y: last.worldY },
+          viewport: t,
+          project: proj,
+          snapSettings: {
+            snapToVertex: e2.snapToVertex,
+            snapToEdge: e2.snapToEdge,
+            snapToGrid: e2.snapToGrid,
+          },
+          gridStepMm: proj.settings.gridStepMm,
+        });
+        const scRe = worldToScreen(snapRe.point.x, snapRe.point.y, t);
+        centerRx = scRe.x;
+        centerRy = scRe.y;
       } else {
         const sc = worldToScreen(last.worldX, last.worldY, t);
         centerRx = sc.x;
@@ -1844,6 +2102,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         } else if (beamFirstPh) {
           snapActive = Boolean(fbs.lastSnapKind && fbs.lastSnapKind !== "none");
         }
+      } else if (roofPickCrosshair && rpsCross) {
+        const rpSn = rpsCross;
+        if (rpSn.phase === "waitingSecondPoint") {
+          if (rpSn.shiftDirectionLockUnit) {
+            snapActive = Boolean(
+              rpSn.shiftLockReferenceMm && rpSn.lastSnapKind && rpSn.lastSnapKind !== "none",
+            );
+          } else {
+            snapActive = Boolean(rpSn.lastSnapKind && rpSn.lastSnapKind !== "none");
+          }
+        } else {
+          snapActive = Boolean(rpSn.lastSnapKind && rpSn.lastSnapKind !== "none");
+        }
+      } else if (roofContourJoinPickCrosshair) {
+        snapActive = false;
       } else if (wallPickCrosshair && ws) {
         if (ws.phase === "waitingSecondPoint") {
           snapActive = Boolean(ws.lastSnapKind && ws.lastSnapKind !== "none");
@@ -1909,6 +2182,19 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           });
           snapActive = snSlab.kind !== "none";
         }
+      } else if (roofPlaneEditCrosshair) {
+        const snRe2 = resolveSnap2d({
+          rawWorldMm: { x: last.worldX, y: last.worldY },
+          viewport: t,
+          project: proj,
+          snapSettings: {
+            snapToVertex: e2.snapToVertex,
+            snapToEdge: e2.snapToEdge,
+            snapToGrid: e2.snapToGrid,
+          },
+          gridStepMm: proj.settings.gridStepMm,
+        });
+        snapActive = snRe2.kind !== "none";
       }
       inner.dataset["snapActive"] = snapActive ? "1" : "0";
 
@@ -2046,6 +2332,79 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               highlightFirstMm: hf,
               firstHighlightActive: Boolean(nearClose),
             },
+          );
+        }
+      }
+
+      const roofPlanesForLabelLayout: RoofPlaneEntity[] = [];
+      const roofLabelSeenIds = new Set<string>();
+      for (const lid of contextIds) {
+        const ctxRoofLbl = narrowProjectToLayerSet(currentProject, new Set([lid]));
+        for (const rp of ctxRoofLbl.roofPlanes) {
+          if (!roofLabelSeenIds.has(rp.id)) {
+            roofLabelSeenIds.add(rp.id);
+            roofPlanesForLabelLayout.push(rp);
+          }
+        }
+      }
+      for (const rp of layerView.roofPlanes) {
+        if (!roofLabelSeenIds.has(rp.id)) {
+          roofLabelSeenIds.add(rp.id);
+          roofPlanesForLabelLayout.push(rp);
+        }
+      }
+      const roofLabelLayouts = computeRoofLabelLayouts2d(roofPlanesForLabelLayout, t, {
+        style: { fontSizePx: 11, lineHeightFactor: 1.28 },
+      });
+      const roofLabelLayoutByPlaneId = new Map(roofLabelLayouts.map((l) => [l.planeId, l]));
+
+      roofPlanesG.clear();
+      let firstRoofDraw = true;
+      for (const lid of contextIds) {
+        const ctxRoof = narrowProjectToLayerSet(currentProject, new Set([lid]));
+        drawRoofPlanes2d(roofPlanesG, ctxRoof.roofPlanes, t, selected, {
+          clear: firstRoofDraw,
+          labelLayoutByPlaneId: roofLabelLayoutByPlaneId,
+        });
+        firstRoofDraw = false;
+      }
+      drawRoofPlanes2d(roofPlanesG, layerView.roofPlanes, t, selected, {
+        clear: firstRoofDraw,
+        labelLayoutByPlaneId: roofLabelLayoutByPlaneId,
+      });
+
+      clearWallMarkLabelContainer(roofPlaneLabelsC);
+      appendRoofPlaneLabels2d(roofPlaneLabelsC, roofPlanesForLabelLayout, roofLabelLayoutByPlaneId, t, {
+        fontSizePx: 11,
+        lineHeightFactor: 1.28,
+      });
+
+      roofPlanePreviewG.clear();
+      const roofSessPaint = useAppStore.getState().roofPlanePlacementSession;
+      if (roofSessPaint?.p1 && roofSessPaint.previewEndMm) {
+        if (roofSessPaint.phase === "waitingSecondPoint") {
+          drawRoofPlanePlacementPreview2d(
+            roofPlanePreviewG,
+            {
+              phase: "waitingSecondPoint",
+              p1: roofSessPaint.p1,
+              p2OrPreview: roofSessPaint.previewEndMm,
+              depthNormal: null,
+              depthMm: null,
+            },
+            t,
+          );
+        } else if (roofSessPaint.phase === "waitingDepth" && roofSessPaint.p2) {
+          drawRoofPlanePlacementPreview2d(
+            roofPlanePreviewG,
+            {
+              phase: "waitingDepth",
+              p1: roofSessPaint.p1,
+              p2OrPreview: roofSessPaint.p2,
+              depthNormal: roofSessPaint.previewSlopeNormal,
+              depthMm: roofSessPaint.previewDepthMm,
+            },
+            t,
           );
         }
       }
@@ -2284,6 +2643,12 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           jSession.phase === "pickSecond" ? jSession.first : undefined,
           jointHoverRef.current,
         );
+      }
+
+      roofContourJoinG.clear();
+      const rjSessPaint = useAppStore.getState().roofContourJoinSession;
+      if (rjSessPaint && currentProject.viewState.editor2dPlanScope === "roof") {
+        drawRoofContourJoinOverlay2d(roofContourJoinG, rjSessPaint, layerView.roofPlanes, t);
       }
 
       windowPlacementG.clear();
@@ -2830,6 +3195,67 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         snapMarkerG.fill({ color: colFb3, alpha: 0.95 });
       }
 
+      const rpMark = stPaint.roofPlanePlacementSession;
+      const rpFirstPickPh = rpMark && rpMark.phase === "waitingFirstPoint" && rpMark.p1 == null;
+      if (
+        rpMark?.previewEndMm &&
+        rpMark.lastSnapKind &&
+        rpMark.lastSnapKind !== "none" &&
+        rpFirstPickPh
+      ) {
+        const skRp = rpMark.lastSnapKind;
+        const pRp = rpMark.previewEndMm;
+        const scRp = worldToScreen(pRp.x, pRp.y, t);
+        const colRp = skRp === "vertex" ? 0x5cff8a : skRp === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(scRp.x, scRp.y, 7);
+        snapMarkerG.stroke({ width: 2, color: colRp, alpha: 0.95 });
+        snapMarkerG.circle(scRp.x, scRp.y, 2);
+        snapMarkerG.fill({ color: colRp, alpha: 0.95 });
+      } else if (
+        rpMark?.phase === "waitingSecondPoint" &&
+        rpMark.shiftLockReferenceMm &&
+        rpMark.lastSnapKind &&
+        rpMark.lastSnapKind !== "none"
+      ) {
+        const skRp2 = rpMark.lastSnapKind;
+        const pRp2 = rpMark.shiftLockReferenceMm;
+        const scRp2 = worldToScreen(pRp2.x, pRp2.y, t);
+        const colRp2 = skRp2 === "vertex" ? 0x5cff8a : skRp2 === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(scRp2.x, scRp2.y, 8);
+        snapMarkerG.stroke({ width: 2, color: colRp2, alpha: 0.95 });
+        snapMarkerG.circle(scRp2.x, scRp2.y, 2);
+        snapMarkerG.fill({ color: colRp2, alpha: 0.95 });
+      } else if (
+        rpMark?.phase === "waitingSecondPoint" &&
+        rpMark.previewEndMm &&
+        rpMark.lastSnapKind &&
+        rpMark.lastSnapKind !== "none" &&
+        rpMark.shiftDirectionLockUnit == null
+      ) {
+        const skRp3 = rpMark.lastSnapKind;
+        const pRp3 = rpMark.previewEndMm;
+        const scRp3 = worldToScreen(pRp3.x, pRp3.y, t);
+        const colRp3 = skRp3 === "vertex" ? 0x5cff8a : skRp3 === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(scRp3.x, scRp3.y, 7);
+        snapMarkerG.stroke({ width: 2, color: colRp3, alpha: 0.95 });
+        snapMarkerG.circle(scRp3.x, scRp3.y, 2);
+        snapMarkerG.fill({ color: colRp3, alpha: 0.95 });
+      } else if (
+        rpMark?.phase === "waitingDepth" &&
+        rpMark.previewEndMm &&
+        rpMark.lastSnapKind &&
+        rpMark.lastSnapKind !== "none"
+      ) {
+        const skRp4 = rpMark.lastSnapKind;
+        const pRp4 = rpMark.previewEndMm;
+        const scRp4 = worldToScreen(pRp4.x, pRp4.y, t);
+        const colRp4 = skRp4 === "vertex" ? 0x5cff8a : skRp4 === "edge" ? 0x5ab4ff : 0xffc857;
+        snapMarkerG.circle(scRp4.x, scRp4.y, 7);
+        snapMarkerG.stroke({ width: 2, color: colRp4, alpha: 0.95 });
+        snapMarkerG.circle(scRp4.x, scRp4.y, 2);
+        snapMarkerG.fill({ color: colRp4, alpha: 0.95 });
+      }
+
       const fbMvMark = stPaint.floorBeamMoveCopySession;
       const subtleMoveMark = (sx: number, sy: number, sk: "vertex" | "edge" | "grid") => {
         const colM = sk === "vertex" ? 0x5cff8a : sk === "edge" ? 0x5ab4ff : 0xffc857;
@@ -3179,6 +3605,48 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         originMarkerC.removeChildren();
       }
 
+      roofPlaneEditHandlesG.clear();
+      const stRoofEdit = useAppStore.getState();
+      const roofEditHandlesVisible =
+        stRoofEdit.activeTool === "select" &&
+        stRoofEdit.currentProject.viewState.editor2dPlanScope === "roof" &&
+        !stRoofEdit.roofContourJoinSession &&
+        stRoofEdit.selectedEntityIds.length === 1;
+      if (!roofEditHandlesVisible) {
+        roofPlaneEditSelectedRef.current = null;
+      }
+      if (roofEditHandlesVisible) {
+        const onlyRpId = stRoofEdit.selectedEntityIds[0]!;
+        const rpSel = layerView.roofPlanes.find((r) => r.id === onlyRpId);
+        const quadSel = rpSel ? roofPlaneQuad4OrNull(rpSel) : null;
+        if (quadSel) {
+          const sr = roofPlaneEditSelectedRef.current;
+          if (sr && sr.planeId !== onlyRpId) {
+            roofPlaneEditSelectedRef.current = null;
+          }
+          const rpAct = roofPlaneEditPointerRef.current;
+          const roofEditActiveUi =
+            rpAct != null
+              ? {
+                  planeId: rpAct.planeId,
+                  kind: rpAct.kind,
+                  edgeIndex: rpAct.edgeIndex,
+                  cornerIndex: rpAct.cornerIndex,
+                  dragActive: rpAct.dragActive,
+                }
+              : null;
+          drawRoofPlaneEditHandles2d(
+            roofPlaneEditHandlesG,
+            quadSel,
+            t,
+            onlyRpId,
+            roofPlaneEditHoverRef.current,
+            roofPlaneEditSelectedRef.current,
+            roofEditActiveUi,
+          );
+        }
+      }
+
       syncAnchorCrosshairOverlay(app.canvas as HTMLCanvasElement);
     };
 
@@ -3210,6 +3678,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(foundationPilesG);
       worldRoot.addChild(slabsG);
       worldRoot.addChild(slabPreviewG);
+      worldRoot.addChild(roofPlanesG);
+      worldRoot.addChild(roofPlanePreviewG);
       worldRoot.addChild(wallsG);
       worldRoot.addChild(floorBeamsG);
       worldRoot.addChild(planLinesG);
@@ -3218,11 +3688,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(openingsG);
       worldRoot.addChild(wallLabelsC);
       worldRoot.addChild(windowOpeningLabelsC);
+      worldRoot.addChild(roofPlaneLabelsC);
       worldRoot.addChild(dimensionsG);
       worldRoot.addChild(dimensionsLabelC);
       worldRoot.addChild(openingMoveG);
       worldRoot.addChild(openingMoveLabelC);
       worldRoot.addChild(jointPickG);
+      worldRoot.addChild(roofContourJoinG);
       worldRoot.addChild(windowPlacementG);
       worldRoot.addChild(previewG);
       worldRoot.addChild(lengthChangeG);
@@ -3233,6 +3705,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(lineG);
       worldRoot.addChild(marqueeG);
       worldRoot.addChild(originMarkerC);
+      worldRoot.addChild(roofPlaneEditHandlesG);
       app.stage.addChild(worldRoot);
       useAppStore.getState().setViewportCanvas2dPx(app.renderer.width, app.renderer.height);
 
@@ -3370,6 +3843,20 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       store.setSelectedEntityIds([hitFs.stripId]);
                     }
                   } else {
+                    const hitRoofTap = pickClosestRoofPlaneAtPoint(wClick, layerView.roofPlanes, segTol);
+                    if (hitRoofTap) {
+                      if (m.shiftKey) {
+                        const s = new Set(store.selectedEntityIds);
+                        if (s.has(hitRoofTap.roofPlaneId)) {
+                          s.delete(hitRoofTap.roofPlaneId);
+                        } else {
+                          s.add(hitRoofTap.roofPlaneId);
+                        }
+                        store.setSelectedEntityIds([...s]);
+                      } else {
+                        store.setSelectedEntityIds([hitRoofTap.roofPlaneId]);
+                      }
+                    } else {
                     const hitBeam = pickFloorBeamAtPlanPoint(currentProject, layerView.floorBeams, wClick, segTol);
                     if (hitBeam) {
                       if (m.shiftKey) {
@@ -3400,6 +3887,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                       } else {
                         store.clearSelection();
                       }
+                    }
                     }
                   }
                 }
@@ -3536,10 +4024,143 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           }
         }
 
+        const rpEditPtr = roofPlaneEditPointerRef.current;
+        if (!coordBlock && rpEditPtr && ev.pointerId === rpEditPtr.pointerId && !rpEditPtr.suspendedForModal) {
+          const distPxRp = Math.hypot(ev.global.x - rpEditPtr.sx, ev.global.y - rpEditPtr.sy);
+          if (!rpEditPtr.dragActive && distPxRp >= OPENING_DRAG_THRESHOLD_PX) {
+            rpEditPtr.dragActive = true;
+            if (roofPlaneEditDragHistoryBaselineRef.current == null) {
+              roofPlaneEditDragHistoryBaselineRef.current = cloneProjectSnapshot(useAppStore.getState().currentProject);
+            }
+          }
+          if (rpEditPtr.dragActive) {
+            const projRp = useAppStore.getState().currentProject;
+            const e2Rp = projRp.settings.editor2d;
+            const snapRp = resolveSnap2d({
+              rawWorldMm: p,
+              viewport: t,
+              project: projRp,
+              snapSettings: {
+                snapToVertex: e2Rp.snapToVertex,
+                snapToEdge: e2Rp.snapToEdge,
+                snapToGrid: e2Rp.snapToGrid,
+              },
+              gridStepMm: projRp.settings.gridStepMm,
+            });
+            const applyLive = useAppStore.getState().applyRoofPlaneQuadLive;
+            if (rpEditPtr.kind === "edge" && rpEditPtr.edgeIndex != null && rpEditPtr.nOut) {
+              const n = rpEditPtr.nOut;
+              const ax = p.x - rpEditPtr.anchorWorldMm.x;
+              const ay = p.y - rpEditPtr.anchorWorldMm.y;
+              const deltaMm = ax * n.x + ay * n.y;
+              const d = clampRoofQuadEdgeDeltaMm(rpEditPtr.baseQuad, rpEditPtr.edgeIndex, deltaMm);
+              const moved = tryMoveRoofQuadEdgeMm(rpEditPtr.baseQuad, rpEditPtr.edgeIndex, d);
+              if (moved.ok) {
+                applyLive(rpEditPtr.planeId, moved.quad, { skipHistory: true });
+              }
+              rpEditPtr.lastWorldMm = { x: p.x, y: p.y };
+            } else if (rpEditPtr.kind === "corner" && rpEditPtr.cornerIndex != null) {
+              const qNew = clampRoofQuadCornerTargetMm(rpEditPtr.baseQuad, rpEditPtr.cornerIndex, snapRp.point);
+              applyLive(rpEditPtr.planeId, qNew, { skipHistory: true });
+              rpEditPtr.lastWorldMm = { x: snapRp.point.x, y: snapRp.point.y };
+            }
+          } else {
+            if (rpEditPtr.kind === "edge") {
+              rpEditPtr.lastWorldMm = { x: p.x, y: p.y };
+            } else {
+              const projRp0 = useAppStore.getState().currentProject;
+              const e2Rp0 = projRp0.settings.editor2d;
+              const snapRp0 = resolveSnap2d({
+                rawWorldMm: p,
+                viewport: t,
+                project: projRp0,
+                snapSettings: {
+                  snapToVertex: e2Rp0.snapToVertex,
+                  snapToEdge: e2Rp0.snapToEdge,
+                  snapToGrid: e2Rp0.snapToGrid,
+                },
+                gridStepMm: projRp0.settings.gridStepMm,
+              });
+              rpEditPtr.lastWorldMm = { x: snapRp0.point.x, y: snapRp0.point.y };
+            }
+          }
+        }
+
         if (coordBlock) {
           setWallHintRef.current(null);
           setCoordHudRef.current(null);
         } else {
+          const stHoverRoof = useAppStore.getState();
+          const selOneRoof = stHoverRoof.selectedEntityIds.length === 1 ? stHoverRoof.selectedEntityIds[0]! : null;
+          const srMis = roofPlaneEditSelectedRef.current;
+          if (srMis && (selOneRoof == null || srMis.planeId !== selOneRoof)) {
+            roofPlaneEditSelectedRef.current = null;
+          }
+          let nextRoofHover: {
+            readonly planeId: string;
+            readonly kind: "edge" | "corner";
+            readonly edgeIndex?: number;
+            readonly cornerIndex?: number;
+            readonly nOut?: Point2D;
+          } | null = null;
+          const prevRoofHover = roofPlaneEditHoverRef.current;
+          if (
+            stHoverRoof.activeTool === "select" &&
+            stHoverRoof.currentProject.viewState.editor2dPlanScope === "roof" &&
+            !stHoverRoof.roofContourJoinSession &&
+            !roofPlaneEditPointerRef.current &&
+            stHoverRoof.selectedEntityIds.length === 1
+          ) {
+            const ridH = stHoverRoof.selectedEntityIds[0]!;
+            const lvH = narrowProjectToActiveLayer(stHoverRoof.currentProject);
+            const rpH = lvH.roofPlanes.find((r) => r.id === ridH);
+            const quadH = rpH ? roofPlaneQuad4OrNull(rpH) : null;
+            if (quadH) {
+              const stickyHv: RoofPlaneEditScreenSticky =
+                prevRoofHover != null && prevRoofHover.planeId === ridH
+                  ? {
+                      kind: prevRoofHover.kind,
+                      edgeIndex: prevRoofHover.edgeIndex,
+                      cornerIndex: prevRoofHover.cornerIndex,
+                    }
+                  : null;
+              const hitHv = pickRoofPlaneEditHandleScreen(ev.global.x, ev.global.y, quadH, t, stickyHv);
+              if (hitHv) {
+                nextRoofHover = {
+                  planeId: ridH,
+                  kind: hitHv.kind,
+                  edgeIndex: hitHv.kind === "edge" ? hitHv.edgeIndex : undefined,
+                  cornerIndex: hitHv.kind === "corner" ? hitHv.cornerIndex : undefined,
+                  nOut: hitHv.kind === "edge" ? hitHv.nOut : undefined,
+                };
+              }
+            }
+          }
+          const nOutSame = (() => {
+            const pa = prevRoofHover?.nOut;
+            const na = nextRoofHover?.nOut;
+            if (pa == null && na == null) {
+              return true;
+            }
+            if (pa == null || na == null) {
+              return false;
+            }
+            return pa.x === na.x && pa.y === na.y;
+          })();
+          const hoverSame =
+            (prevRoofHover == null && nextRoofHover == null) ||
+            (prevRoofHover != null &&
+              nextRoofHover != null &&
+              prevRoofHover.planeId === nextRoofHover.planeId &&
+              prevRoofHover.kind === nextRoofHover.kind &&
+              prevRoofHover.edgeIndex === nextRoofHover.edgeIndex &&
+              prevRoofHover.cornerIndex === nextRoofHover.cornerIndex &&
+              nOutSame);
+          roofPlaneEditHoverRef.current = nextRoofHover;
+          if (!hoverSame) {
+            paint();
+          }
+
           const rect = canvas.getBoundingClientRect();
           const viewportW = typeof window !== "undefined" ? window.innerWidth : 1280;
           const viewportH = typeof window !== "undefined" ? window.innerHeight : 720;
@@ -3553,7 +4174,26 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             );
             canvas.style.cursor = hit ? "pointer" : "";
           } else if (!panning.active && activeTool !== "ruler" && activeTool !== "line" && activeTool !== "changeLength") {
-            canvas.style.cursor = "";
+            const stCur = useAppStore.getState();
+            let curRoof = "";
+            if (
+              activeTool === "select" &&
+              stCur.currentProject.viewState.editor2dPlanScope === "roof" &&
+              !stCur.roofContourJoinSession &&
+              !roofPlaneEditPointerRef.current &&
+              nextRoofHover
+            ) {
+              if (nextRoofHover.kind === "corner") {
+                curRoof = "nwse-resize";
+              } else if (nextRoofHover.nOut) {
+                const nx = nextRoofHover.nOut.x;
+                const ny = nextRoofHover.nOut.y;
+                curRoof = Math.abs(nx) >= Math.abs(ny) ? "ew-resize" : "ns-resize";
+              } else {
+                curRoof = "ns-resize";
+              }
+            }
+            canvas.style.cursor = curRoof;
           }
           const pendWinMv = useAppStore.getState().pendingWindowPlacement;
           const pendDoorMv = useAppStore.getState().pendingDoorPlacement;
@@ -4684,6 +5324,80 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             }
             setCoordHudRef.current(null);
             paint();
+          } else if (useAppStore.getState().roofPlanePlacementSession) {
+            const rpS = useAppStore.getState().roofPlanePlacementSession;
+            if (rpS && !isSceneCoordinateModalBlocking(useAppStore.getState())) {
+              const altRp = Boolean((ev as { altKey?: boolean }).altKey);
+              if (rpS.phase === "waitingFirstPoint") {
+                useAppStore.getState().roofPlanePlacementFirstPointHoverMove(p, t);
+              } else if (rpS.phase === "waitingSecondPoint") {
+                useAppStore.getState().roofPlanePlacementSecondPointPreviewMove(p, t, { altKey: altRp });
+              } else if (rpS.phase === "waitingDepth") {
+                useAppStore.getState().roofPlanePlacementDepthPreviewMove(p, t, { altKey: altRp });
+              }
+            }
+            const rp2 = useAppStore.getState().roofPlanePlacementSession;
+            let snapRp: string | null = null;
+            if (rp2?.lastSnapKind && rp2.lastSnapKind !== "none") {
+              snapRp =
+                rp2.lastSnapKind === "vertex"
+                  ? "Привязка: угол"
+                  : rp2.lastSnapKind === "edge"
+                    ? "Привязка: линия"
+                    : "Привязка: сетка";
+            }
+            const phaseRp =
+              rp2?.phase === "waitingFirstPoint"
+                ? "Первая точка базы (карниз) — ЛКМ"
+                : rp2?.phase === "waitingSecondPoint"
+                  ? "Вторая точка базы — ЛКМ · Shift — направление · Alt — без угловой привязки"
+                  : "Задайте глубину плоскости перпендикулярно базе — ЛКМ · Shift — фиксировать сторону · Alt — без привязки";
+            const layRp = computeEditorOverlayLayout({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
+            setWallHintRef.current({
+              left: layRp.instruction.left,
+              top: layRp.instruction.top,
+              snapLabel: snapRp,
+              lines: hintLines("Плоскость крыши", [
+                { text: phaseRp },
+                { text: "ПКМ / Esc — шаг назад или выход", variant: "muted" },
+              ]),
+            });
+            setCoordHudRef.current(null);
+            paint();
+          } else if (useAppStore.getState().roofContourJoinSession) {
+            const rj = useAppStore.getState().roofContourJoinSession;
+            if (rj && !isSceneCoordinateModalBlocking(useAppStore.getState())) {
+              useAppStore.getState().roofContourJoinPointerMove(p, t);
+            }
+            const rj2 = useAppStore.getState().roofContourJoinSession;
+            const titleRj = "Соединить контур";
+            const layRj = computeEditorOverlayLayout({
+              canvasRect: rect,
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              viewportWidth: viewportW,
+              viewportHeight: viewportH,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
+            setWallHintRef.current({
+              left: layRj.instruction.left,
+              top: layRj.instruction.top,
+              lines: hintLines(titleRj, [
+                { text: rj2?.hint ?? "" },
+                { text: "ЛКМ — подтвердить · ПКМ / Esc — шаг назад или выход", variant: "muted" },
+              ]),
+            });
+            setCoordHudRef.current(null);
+            paint();
           } else if (useAppStore.getState().slabPlacementSession) {
             const slabS = useAppStore.getState().slabPlacementSession;
             if (slabS && !isSceneCoordinateModalBlocking(useAppStore.getState())) {
@@ -4902,6 +5616,63 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           useAppStore.getState().slabPlacementPrimaryClick(worldMm, t, { clickDetail: ev.detail });
           paint();
           if (!useAppStore.getState().slabPlacementSession) {
+            setWallHintRef.current(null);
+            setCoordHudRef.current(null);
+          }
+          return;
+        }
+
+        const roofContourJoinPtr = useAppStore.getState().roofContourJoinSession;
+        if (roofContourJoinPtr && ev.button === 2) {
+          ev.preventDefault();
+          useAppStore.getState().roofContourJoinBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          paint();
+          return;
+        }
+        if (roofContourJoinPtr && ev.button === 0) {
+          useAppStore.getState().roofContourJoinPrimaryClick(worldMm, t);
+          const stillJoin = useAppStore.getState().roofContourJoinSession;
+          paint();
+          if (!stillJoin) {
+            const layOk = computeEditorOverlayLayout({
+              canvasRect: canvas.getBoundingClientRect(),
+              cursorCanvasX: ev.global.x,
+              cursorCanvasY: ev.global.y,
+              viewportWidth: w,
+              viewportHeight: h,
+              wallCoordinateModalOpen: false,
+              showCoordHud: false,
+            });
+            setWallHintRef.current({
+              left: layOk.instruction.left,
+              top: layOk.instruction.top,
+              lines: hintLines("Соединить контур", [{ text: "Контуры соединены" }]),
+            });
+            window.setTimeout(() => {
+              if (!useAppStore.getState().roofContourJoinSession) {
+                setWallHintRef.current(null);
+                paintWorkspaceRef.current?.();
+              }
+            }, 2200);
+          }
+          return;
+        }
+
+        const roofPlanePlacementSessionPtr = useAppStore.getState().roofPlanePlacementSession;
+        if (roofPlanePlacementSessionPtr && ev.button === 2) {
+          ev.preventDefault();
+          useAppStore.getState().roofPlanePlacementBackOrExit();
+          setWallHintRef.current(null);
+          setCoordHudRef.current(null);
+          paint();
+          return;
+        }
+        if (roofPlanePlacementSessionPtr && ev.button === 0) {
+          useAppStore.getState().roofPlanePlacementPrimaryClick(worldMm, t, { altKey: Boolean(ev.altKey) });
+          paint();
+          if (!useAppStore.getState().roofPlanePlacementSession) {
             setWallHintRef.current(null);
             setCoordHudRef.current(null);
           }
@@ -5189,6 +5960,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !useAppStore.getState().foundationStripPlacementSession &&
           !useAppStore.getState().foundationPilePlacementSession &&
           !useAppStore.getState().slabPlacementSession &&
+          !useAppStore.getState().roofPlanePlacementSession &&
+          !useAppStore.getState().roofContourJoinSession &&
           !useAppStore.getState().pendingWindowPlacement &&
           !useAppStore.getState().pendingDoorPlacement &&
           !useAppStore.getState().wallMoveCopySession &&
@@ -5340,6 +6113,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !useAppStore.getState().foundationStripPlacementSession &&
           !useAppStore.getState().foundationPilePlacementSession &&
           !useAppStore.getState().slabPlacementSession &&
+          !useAppStore.getState().roofPlanePlacementSession &&
+          !useAppStore.getState().roofContourJoinSession &&
           !useAppStore.getState().pendingWindowPlacement &&
           !useAppStore.getState().pendingDoorPlacement &&
           !useAppStore.getState().wallMoveCopySession &&
@@ -5376,6 +6151,71 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           }
           const cp = useAppStore.getState().currentProject;
           const layerView = narrowProjectToActiveLayer(cp);
+          const stRfDown = useAppStore.getState();
+          if (
+            stRfDown.activeTool === "select" &&
+            stRfDown.currentProject.viewState.editor2dPlanScope === "roof" &&
+            !stRfDown.roofContourJoinSession &&
+            stRfDown.selectedEntityIds.length === 1
+          ) {
+            const onlyRf = stRfDown.selectedEntityIds[0]!;
+            const rpRf = layerView.roofPlanes.find((r) => r.id === onlyRf);
+            const quadRf = rpRf ? roofPlaneQuad4OrNull(rpRf) : null;
+            if (quadRf) {
+              const hoverRf = roofPlaneEditHoverRef.current;
+              const stickyRf: RoofPlaneEditScreenSticky =
+                hoverRf != null && hoverRf.planeId === onlyRf
+                  ? {
+                      kind: hoverRf.kind,
+                      edgeIndex: hoverRf.edgeIndex,
+                      cornerIndex: hoverRf.cornerIndex,
+                    }
+                  : null;
+              const hitRf = pickRoofPlaneEditHandleScreen(ev.global.x, ev.global.y, quadRf, t, stickyRf);
+              if (hitRf) {
+                const projRf = stRfDown.currentProject;
+                const e2Rf = projRf.settings.editor2d;
+                const snapRf = resolveSnap2d({
+                  rawWorldMm: worldMm,
+                  viewport: t,
+                  project: projRf,
+                  snapSettings: {
+                    snapToVertex: e2Rf.snapToVertex,
+                    snapToEdge: e2Rf.snapToEdge,
+                    snapToGrid: e2Rf.snapToGrid,
+                  },
+                  gridStepMm: projRf.settings.gridStepMm,
+                });
+                roofPlaneEditPointerRef.current = {
+                  pointerId: ev.pointerId,
+                  sx: ev.global.x,
+                  sy: ev.global.y,
+                  planeId: onlyRf,
+                  kind: hitRf.kind,
+                  edgeIndex: hitRf.kind === "edge" ? hitRf.edgeIndex : undefined,
+                  cornerIndex: hitRf.kind === "corner" ? hitRf.cornerIndex : undefined,
+                  baseQuad: quadRf,
+                  anchorSnapMm: { x: snapRf.point.x, y: snapRf.point.y },
+                  anchorWorldMm: { x: worldMm.x, y: worldMm.y },
+                  nOut: hitRf.kind === "edge" ? hitRf.nOut : undefined,
+                  lastWorldMm:
+                    hitRf.kind === "edge"
+                      ? { x: worldMm.x, y: worldMm.y }
+                      : { x: snapRf.point.x, y: snapRf.point.y },
+                  dragActive: false,
+                  suspendedForModal: false,
+                  pointerReleasedWhileModalOpen: false,
+                };
+                try {
+                  canvas.setPointerCapture(ev.pointerId);
+                } catch {
+                  /* ignore */
+                }
+                paint();
+                return;
+              }
+            }
+          }
           const tol = openingPickTolerancesMm(viewport2d.zoomPixelsPerMm);
           const hitOp = pickPlacedOpeningOnLayerSlice(layerView, worldMm, tol.along, tol.perp);
           if (hitOp && hitOp.wallId != null) {
@@ -5505,6 +6345,27 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             }
             lastWallClickRef.current = null;
             lastFoundationStripClickRef.current = null;
+            paint();
+            return;
+          }
+          const roofHitSel = pickClosestRoofPlaneAtPoint(worldMm, layerView.roofPlanes, segTolSel);
+          if (roofHitSel) {
+            roofPlaneEditSelectedRef.current = null;
+            const storeRp = useAppStore.getState();
+            if (ev.shiftKey) {
+              const s = new Set(storeRp.selectedEntityIds);
+              if (s.has(roofHitSel.roofPlaneId)) {
+                s.delete(roofHitSel.roofPlaneId);
+              } else {
+                s.add(roofHitSel.roofPlaneId);
+              }
+              storeRp.setSelectedEntityIds([...s]);
+            } else {
+              storeRp.setSelectedEntityIds([roofHitSel.roofPlaneId]);
+            }
+            lastWallClickRef.current = null;
+            lastFoundationStripClickRef.current = null;
+            lastSlabClickRef.current = null;
             paint();
             return;
           }
@@ -5672,6 +6533,42 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           }
           paint();
         }
+        const rpPtrUp = roofPlaneEditPointerRef.current;
+        if (rpPtrUp && ev.pointerId === rpPtrUp.pointerId) {
+          if (useAppStore.getState().roofPlaneEdgeOffsetModal != null) {
+            rpPtrUp.pointerReleasedWhileModalOpen = true;
+            try {
+              canvas.releasePointerCapture(ev.pointerId);
+            } catch {
+              /* ignore */
+            }
+            paint();
+          } else {
+            roofPlaneEditPointerRef.current = null;
+            try {
+              canvas.releasePointerCapture(ev.pointerId);
+            } catch {
+              /* ignore */
+            }
+            const stRpUp = useAppStore.getState();
+            if (stRpUp.selectedEntityIds.length === 1 && stRpUp.selectedEntityIds[0] === rpPtrUp.planeId) {
+              roofPlaneEditSelectedRef.current = {
+                planeId: rpPtrUp.planeId,
+                kind: rpPtrUp.kind,
+                edgeIndex: rpPtrUp.edgeIndex,
+                cornerIndex: rpPtrUp.cornerIndex,
+              };
+            }
+            if (rpPtrUp.dragActive) {
+              const dragBaseRp = roofPlaneEditDragHistoryBaselineRef.current;
+              roofPlaneEditDragHistoryBaselineRef.current = null;
+              if (dragBaseRp) {
+                useAppStore.getState().recordUndoIfModelChangedSince(dragBaseRp);
+              }
+            }
+            paint();
+          }
+        }
         if (marquee) {
           finalizeMarquee();
           paint();
@@ -5748,6 +6645,33 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           lastSlabClickRef.current = null;
           paint();
         }
+        const rpPtrLeave = roofPlaneEditPointerRef.current;
+        if (rpPtrLeave) {
+          roofPlaneEditPointerRef.current = null;
+          try {
+            canvas.releasePointerCapture(rpPtrLeave.pointerId);
+          } catch {
+            /* ignore */
+          }
+          const stRpLeave = useAppStore.getState();
+          if (stRpLeave.selectedEntityIds.length === 1 && stRpLeave.selectedEntityIds[0] === rpPtrLeave.planeId) {
+            roofPlaneEditSelectedRef.current = {
+              planeId: rpPtrLeave.planeId,
+              kind: rpPtrLeave.kind,
+              edgeIndex: rpPtrLeave.edgeIndex,
+              cornerIndex: rpPtrLeave.cornerIndex,
+            };
+          }
+          if (rpPtrLeave.dragActive) {
+            const dragBaseRpLeave = roofPlaneEditDragHistoryBaselineRef.current;
+            roofPlaneEditDragHistoryBaselineRef.current = null;
+            if (dragBaseRpLeave) {
+              useAppStore.getState().recordUndoIfModelChangedSince(dragBaseRpLeave);
+            }
+          }
+          paint();
+        }
+        roofPlaneEditHoverRef.current = null;
         endPan();
         cursorCbRef.current(null);
         jointHoverRef.current = null;
@@ -5769,6 +6693,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !st.entityCopySession &&
           !st.foundationStripPlacementSession &&
           !st.foundationPilePlacementSession &&
+          !st.roofContourJoinSession &&
           st.activeTool !== "ruler" &&
           st.activeTool !== "line" &&
           st.activeTool !== "changeLength"
@@ -5787,6 +6712,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           st.entityCopySession ||
           st.foundationStripPlacementSession ||
           st.foundationPilePlacementSession ||
+          st.roofContourJoinSession ||
           st.activeTool === "ruler" ||
           st.activeTool === "line" ||
           st.activeTool === "changeLength"

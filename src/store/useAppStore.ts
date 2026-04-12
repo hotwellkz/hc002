@@ -76,6 +76,7 @@ import { resolveSnap2d, type SnapKind } from "@/core/geometry/snap2d";
 import {
   findWallPlacementShiftLockSnapHit,
   resolveWallPlacementToolSnap,
+  type WallToolSnapLayerBias,
 } from "@/core/geometry/wallPlacementSnap2d";
 import {
   computeLengthChangePreviewAlongAxis,
@@ -135,6 +136,28 @@ import { mergeFloorBeamPlacementPreviewFromRawWorldMm } from "@/core/domain/floo
 import { applyFloorBeamSplitInProject } from "@/core/domain/floorBeamSplit";
 import type { FloorBeamSplitMode } from "@/core/domain/floorBeamSplitMode";
 import { beamPlanThicknessAndVerticalMm, isProfileUsableForFloorBeam } from "@/core/domain/floorBeamSection";
+import {
+  initialRoofContourJoinSession,
+  type RoofContourJoinSession,
+} from "@/core/domain/roofContourJoin";
+import {
+  areRoofJoinEdgePairCompatibleMm,
+  joinTwoRoofPlaneContoursBySelectedEdgesMm,
+  roofJoinEdgeTangentsParallelMm,
+} from "@/core/domain/roofContourJoinGeometry";
+import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
+import {
+  isProfileUsableForRoofPlane,
+  nextRoofPlaneSlopeIndex,
+  roofPlaneEntityApplyPlanQuadMm,
+  roofPlaneNormalAndDepthFromCursorMm,
+  roofPlanePolygonMm,
+} from "@/core/domain/roofPlane";
+import {
+  clampRoofQuadEdgeDeltaMm,
+  tryMoveRoofQuadEdgeMm,
+  type RoofQuad4,
+} from "@/core/domain/roofPlaneQuadEditGeometry";
 import { applyCornerWallJoint, applyTeeWallJoint } from "@/core/domain/wallJointApply";
 import type { WallEndSide, WallJointKind } from "@/core/domain/wallJoint";
 import type { WallJointSession } from "@/core/domain/wallJointSession";
@@ -176,6 +199,10 @@ import {
   referenceWallIdFromSnapForFoundationStrip,
 } from "@/features/editor2d/foundationStripNormals2d";
 import { pickClosestFoundationPileHandle } from "@/features/editor2d/foundationPilePick2d";
+import {
+  pickRoofContourJoinHoverMm,
+  pickRoofContourJoinSecondEdgeHoverMm,
+} from "@/features/editor2d/roofContourJoinPick2d";
 import { snapFloorBeamMoveBasePoint } from "@/features/editor2d/floorBeamPick2d";
 import { buildWallCalculationForWall, SipWallLayoutError } from "@/core/domain/sipWallLayout";
 import type { WallShapeMode } from "@/core/domain/wallShapeMode";
@@ -250,6 +277,29 @@ export interface SlabPlacementSession {
   readonly polylineVerticesMm: readonly Point2D[];
   readonly previewEndMm: Point2D | null;
   readonly lastSnapKind: SnapKind | null;
+}
+
+export interface RoofPlanePlacementDraftPersisted {
+  readonly angleDeg: number;
+  readonly levelMm: number;
+  readonly profileId: string;
+}
+
+export type RoofPlanePlacementPhase = "waitingFirstPoint" | "waitingSecondPoint" | "waitingDepth";
+
+export interface RoofPlanePlacementSession {
+  readonly draft: RoofPlanePlacementDraftPersisted;
+  readonly phase: RoofPlanePlacementPhase;
+  readonly p1: Point2D | null;
+  readonly p2: Point2D | null;
+  readonly previewEndMm: Point2D | null;
+  readonly lastSnapKind: SnapKind | null;
+  readonly angleSnapLockedDeg: number | null;
+  readonly shiftDirectionLockUnit: Point2D | null;
+  readonly shiftLockReferenceMm: Point2D | null;
+  readonly depthShiftLockNormal: Point2D | null;
+  readonly previewDepthMm: number | null;
+  readonly previewSlopeNormal: Point2D | null;
 }
 
 export interface FoundationPilePlacementDraft {
@@ -362,6 +412,13 @@ interface AppState {
   readonly floorBeamSplitModalOpen: boolean;
   /** Активен режим «Разделить»: после «Применить» в модалке — клик по балке. */
   readonly floorBeamSplitSession: { readonly mode: FloorBeamSplitMode; readonly overlapMm: number } | null;
+  readonly addRoofPlaneModalOpen: boolean;
+  readonly lastRoofPlanePlacementParams: RoofPlanePlacementDraftPersisted | null;
+  readonly roofPlanePlacementSession: RoofPlanePlacementSession | null;
+  readonly roofPlanePlacementHistoryBaseline: Project | null;
+  /** Стыковка контуров скатов (режим «Крыша»). */
+  readonly roofContourJoinSession: RoofContourJoinSession | null;
+  readonly roofContourJoinHistoryBaseline: Project | null;
   readonly wallCoordinateModalOpen: boolean;
   /** Пробел: ручной ввод ΔX/ΔY второй точки балки перекрытия (только превью, без коммита). */
   readonly floorBeamPlacementCoordinateModalOpen: boolean;
@@ -443,6 +500,13 @@ interface AppState {
   readonly projectOriginCoordinateModalOpen: boolean;
   /** Пробел во время перетаскивания проёма: точный ввод смещения вдоль стены (мм). */
   readonly openingAlongMoveNumericModalOpen: boolean;
+  /** Точный ввод смещения ребра контура плоскости крыши (мм), режим «Крыша». */
+  readonly roofPlaneEdgeOffsetModal: {
+    readonly planeId: string;
+    readonly edgeIndex: number;
+    readonly baseQuad: RoofQuad4;
+    readonly initialValueStr: string;
+  } | null;
   /**
    * 2D: временно скрыть бейдж активного слоя, пока видна карточка подсказки инструмента
    * (исключение наложения в левом верхнем углу canvas).
@@ -630,6 +694,15 @@ interface AppActions {
   setOpeningMoveModeActive: (active: boolean) => void;
   toggleOpeningMoveMode: () => void;
   setOpeningAlongMoveNumericModalOpen: (open: boolean) => void;
+  openRoofPlaneEdgeOffsetModal: (input: {
+    planeId: string;
+    edgeIndex: number;
+    baseQuad: RoofQuad4;
+    initialValueStr: string;
+  }) => void;
+  closeRoofPlaneEdgeOffsetModal: () => void;
+  applyRoofPlaneEdgeOffsetModal: (offsetMm: number) => void;
+  applyRoofPlaneQuadLive: (planeId: string, quad: RoofQuad4, opts?: { readonly skipHistory?: boolean }) => void;
   toggleProjectOriginMoveTool: () => void;
   openProjectOriginCoordinateModal: () => void;
   closeProjectOriginCoordinateModal: () => void;
@@ -712,6 +785,36 @@ interface AppActions {
     readonly viewport: ViewportTransform;
   }) => void;
   setEditor2dPlanScope: (scope: Editor2dPlanScope) => void;
+  openAddRoofPlaneModal: () => void;
+  closeAddRoofPlaneModal: () => void;
+  applyAddRoofPlaneModal: (input: {
+    readonly angleDeg: number;
+    readonly levelMm: number;
+    readonly profileId: string;
+  }) => void;
+  cancelRoofPlanePlacement: () => void;
+  roofPlanePlacementBackOrExit: () => void;
+  roofPlanePlacementFirstPointHoverMove: (worldMm: Point2D, viewport: ViewportTransform) => void;
+  roofPlanePlacementSecondPointPreviewMove: (
+    worldMm: Point2D,
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
+  roofPlanePlacementDepthPreviewMove: (
+    worldMm: Point2D,
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
+  roofPlanePlacementPrimaryClick: (
+    worldMm: Point2D,
+    viewport: ViewportTransform,
+    opts?: { readonly altKey?: boolean },
+  ) => void;
+  startRoofContourJoinTool: () => void;
+  cancelRoofContourJoinTool: () => void;
+  roofContourJoinBackOrExit: () => void;
+  roofContourJoinPointerMove: (worldMm: Point2D, viewport: ViewportTransform) => void;
+  roofContourJoinPrimaryClick: (worldMm: Point2D, viewport: ViewportTransform) => void;
   setLinearPlacementMode: (mode: LinearProfilePlacementMode) => void;
   setWallShapeMode: (mode: WallShapeMode) => void;
   setSnapToVertex: (value: boolean) => void;
@@ -984,6 +1087,7 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     projectOriginMoveToolActive: false,
     projectOriginCoordinateModalOpen: false,
     openingAlongMoveNumericModalOpen: false,
+    roofPlaneEdgeOffsetModal: null,
     wallPlacementHistoryBaseline: null,
     pendingOpeningPlacementHistoryBaseline: null,
     wallMoveCopyHistoryBaseline: null,
@@ -1010,6 +1114,12 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     floorBeamPlacementHistoryBaseline: null,
     floorBeamSplitModalOpen: false,
     floorBeamSplitSession: null,
+    addRoofPlaneModalOpen: false,
+    lastRoofPlanePlacementParams: null,
+    roofPlanePlacementSession: null,
+    roofPlanePlacementHistoryBaseline: null,
+    roofContourJoinSession: null,
+    roofContourJoinHistoryBaseline: null,
     activeTool: "select",
     wallDetailWallId: wd,
     textureApply3dToolActive: false,
@@ -1070,6 +1180,7 @@ function resolveWallPlacementSnapFromStore(
   get: () => AppStore,
   rawWorldMm: { readonly x: number; readonly y: number },
   viewport: ViewportTransform | null,
+  opts?: { readonly snapLayerBias?: WallToolSnapLayerBias },
 ) {
   const p0 = get().currentProject;
   const e2 = p0.settings.editor2d;
@@ -1084,6 +1195,7 @@ function resolveWallPlacementSnapFromStore(
     },
     gridStepMm: p0.settings.gridStepMm,
     linearPlacementMode: e2.linearPlacementMode,
+    snapLayerBias: opts?.snapLayerBias,
   });
 }
 
@@ -1222,6 +1334,23 @@ function newSlabPlacementSession(project: Project, draft: SlabPlacementDraftPers
   };
 }
 
+function newRoofPlanePlacementSession(draft: RoofPlanePlacementDraftPersisted): RoofPlanePlacementSession {
+  return {
+    draft,
+    phase: "waitingFirstPoint",
+    p1: null,
+    p2: null,
+    previewEndMm: null,
+    lastSnapKind: null,
+    angleSnapLockedDeg: null,
+    shiftDirectionLockUnit: null,
+    shiftLockReferenceMm: null,
+    depthShiftLockNormal: null,
+    previewDepthMm: null,
+    previewSlopeNormal: null,
+  };
+}
+
 function tryCommitSlabOutline(
   project: Project,
   session: SlabPlacementSession,
@@ -1291,6 +1420,12 @@ export const useAppStore = create<AppStore>((set, get) => {
     floorBeamPlacementHistoryBaseline: null,
     floorBeamSplitModalOpen: false,
     floorBeamSplitSession: null,
+    addRoofPlaneModalOpen: false,
+    lastRoofPlanePlacementParams: null,
+    roofPlanePlacementSession: null,
+    roofPlanePlacementHistoryBaseline: null,
+    roofContourJoinSession: null,
+    roofContourJoinHistoryBaseline: null,
     wallCoordinateModalOpen: false,
     floorBeamPlacementCoordinateModalOpen: false,
     wallAnchorCoordinateModalOpen: false,
@@ -1336,6 +1471,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     projectOriginMoveToolActive: false,
     projectOriginCoordinateModalOpen: false,
     openingAlongMoveNumericModalOpen: false,
+    roofPlaneEdgeOffsetModal: null,
     textureApply3dToolActive: false,
     textureApply3dParamsModal: null,
     editor3dContextMenu: null,
@@ -1468,6 +1604,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           projectOriginMoveToolActive: false,
           projectOriginCoordinateModalOpen: false,
           openingAlongMoveNumericModalOpen: false,
+          roofPlaneEdgeOffsetModal: null,
           wallPlacementHistoryBaseline: null,
           addFoundationStripModalOpen: false,
           foundationStripPlacementSession: null,
@@ -1610,6 +1747,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           addFloorBeamModalOpen: tab === "2d" ? s.addFloorBeamModalOpen : false,
           floorBeamSplitModalOpen: tab === "2d" ? s.floorBeamSplitModalOpen : false,
           floorBeamSplitSession: tab === "2d" ? s.floorBeamSplitSession : null,
+          addRoofPlaneModalOpen: tab === "2d" ? s.addRoofPlaneModalOpen : false,
+          roofPlanePlacementSession: tab === "2d" ? s.roofPlanePlacementSession : null,
+          roofPlanePlacementHistoryBaseline: tab === "2d" ? s.roofPlanePlacementHistoryBaseline : null,
+          roofContourJoinSession: tab === "2d" ? s.roofContourJoinSession : null,
+          roofContourJoinHistoryBaseline: tab === "2d" ? s.roofContourJoinHistoryBaseline : null,
           wallJointSession: tab === "2d" ? s.wallJointSession : null,
           wallJointParamsModalOpen: tab === "2d" ? s.wallJointParamsModalOpen : false,
           addWallModalOpen: tab === "2d" ? s.addWallModalOpen : false,
@@ -1646,6 +1788,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           projectOriginMoveToolActive: tab === "2d" ? s.projectOriginMoveToolActive : false,
           projectOriginCoordinateModalOpen: tab === "2d" ? s.projectOriginCoordinateModalOpen : false,
           openingAlongMoveNumericModalOpen: tab === "2d" ? s.openingAlongMoveNumericModalOpen : false,
+          roofPlaneEdgeOffsetModal: tab === "2d" ? s.roofPlaneEdgeOffsetModal : null,
           wallDetailWallId:
             tab === "wall"
               ? s.wallDetailWallId ?? s.currentProject.walls.find((w) => s.selectedEntityIds.includes(w.id))?.id ?? null
@@ -3357,6 +3500,52 @@ export const useAppStore = create<AppStore>((set, get) => {
         };
       }),
     setOpeningAlongMoveNumericModalOpen: (open) => set({ openingAlongMoveNumericModalOpen: open }),
+    openRoofPlaneEdgeOffsetModal: (input) => set({ roofPlaneEdgeOffsetModal: input, lastError: null }),
+    closeRoofPlaneEdgeOffsetModal: () => set({ roofPlaneEdgeOffsetModal: null }),
+    applyRoofPlaneEdgeOffsetModal: (offsetMm) => {
+      const ctx = get().roofPlaneEdgeOffsetModal;
+      if (!ctx) {
+        return;
+      }
+      if (!Number.isFinite(offsetMm)) {
+        set({ roofPlaneEdgeOffsetModal: null });
+        return;
+      }
+      const p0 = get().currentProject;
+      const rp = p0.roofPlanes.find((r) => r.id === ctx.planeId);
+      if (!rp) {
+        set({ roofPlaneEdgeOffsetModal: null });
+        return;
+      }
+      const d = clampRoofQuadEdgeDeltaMm(ctx.baseQuad, ctx.edgeIndex, offsetMm);
+      const r = tryMoveRoofQuadEdgeMm(ctx.baseQuad, ctx.edgeIndex, d);
+      if (!r.ok) {
+        set({ roofPlaneEdgeOffsetModal: null });
+        return;
+      }
+      const nextEnt = roofPlaneEntityApplyPlanQuadMm(rp, r.quad);
+      const nextPlanes = p0.roofPlanes.map((x) => (x.id === ctx.planeId ? nextEnt : x));
+      const nextProj = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
+      set((s) => ({
+        ...buildProjectMutationState(s, nextProj, { dirty: true, lastError: null }),
+        roofPlaneEdgeOffsetModal: null,
+      }));
+    },
+    applyRoofPlaneQuadLive: (planeId, quad, opts) => {
+      const p0 = get().currentProject;
+      const rp = p0.roofPlanes.find((r) => r.id === planeId);
+      if (!rp) {
+        return;
+      }
+      const nextEnt = roofPlaneEntityApplyPlanQuadMm(rp, quad);
+      const nextPlanes = p0.roofPlanes.map((x) => (x.id === planeId ? nextEnt : x));
+      const nextProj = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
+      if (opts?.skipHistory) {
+        set({ currentProject: nextProj, dirty: true });
+      } else {
+        set((s) => buildProjectMutationState(s, nextProj, { dirty: true }));
+      }
+    },
     toggleProjectOriginMoveTool: () =>
       set((s) => {
         const next = !s.projectOriginMoveToolActive;
@@ -3756,6 +3945,57 @@ export const useAppStore = create<AppStore>((set, get) => {
       const e2 = p0.settings.editor2d;
       const snap = editor2dSnapSettings(p0);
 
+      const rps = get().roofPlanePlacementSession;
+      if (rps?.phase === "waitingSecondPoint" && rps.p1) {
+        const uRp = computeShiftDirectionLockUnit({
+          anchor: rps.p1,
+          previewEnd: rps.previewEndMm,
+          cursorWorldMm,
+          viewport,
+          project: p0,
+          snapSettings: snap,
+          gridStepMm: p0.settings.gridStepMm,
+          resolveRawSnap: (raw) =>
+            resolveWallPlacementToolSnap({
+              rawWorldMm: raw,
+              viewport,
+              project: p0,
+              snapSettings: snap,
+              gridStepMm: p0.settings.gridStepMm,
+              linearPlacementMode: e2.linearPlacementMode,
+              snapLayerBias: "preferActive",
+            }).point,
+        });
+        if (!uRp) {
+          return;
+        }
+        set({
+          roofPlanePlacementSession: {
+            ...rps,
+            shiftDirectionLockUnit: uRp,
+            shiftLockReferenceMm: null,
+          },
+        });
+        return;
+      }
+
+      if (rps?.phase === "waitingDepth" && rps.p1 && rps.p2) {
+        const fromCursor = roofPlaneNormalAndDepthFromCursorMm(rps.p1, rps.p2, cursorWorldMm, null);
+        const nLock = rps.previewSlopeNormal ?? fromCursor?.n;
+        if (!nLock) {
+          return;
+        }
+        const len = Math.hypot(nLock.x, nLock.y);
+        const nu = len > 1e-9 ? { x: nLock.x / len, y: nLock.y / len } : nLock;
+        set({
+          roofPlanePlacementSession: {
+            ...rps,
+            depthShiftLockNormal: nu,
+          },
+        });
+        return;
+      }
+
       const fbs = get().floorBeamPlacementSession;
       if (fbs?.phase === "waitingSecondPoint" && fbs.firstPointMm) {
         const uFb = computeShiftDirectionLockUnit({
@@ -3987,6 +4227,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     linearPlacementReleaseShiftDirectionLock: () => {
+      const rps = get().roofPlanePlacementSession;
       const fbs = get().floorBeamPlacementSession;
       const ws = get().wallPlacementSession;
       const rs = get().ruler2dSession;
@@ -3995,6 +4236,20 @@ export const useAppStore = create<AppStore>((set, get) => {
       const ec = get().entityCopySession;
       const lc = get().lengthChange2dSession;
       const fbMv = get().floorBeamMoveCopySession;
+      const rpClear =
+        rps &&
+        (rps.shiftDirectionLockUnit != null ||
+          rps.shiftLockReferenceMm != null ||
+          rps.depthShiftLockNormal != null)
+          ? {
+              roofPlanePlacementSession: {
+                ...rps,
+                shiftDirectionLockUnit: null,
+                shiftLockReferenceMm: null,
+                depthShiftLockNormal: null,
+              },
+            }
+          : {};
       const fbClear =
         fbs && (fbs.shiftDirectionLockUnit != null || fbs.shiftLockReferenceMm != null)
           ? {
@@ -4076,7 +4331,8 @@ export const useAppStore = create<AppStore>((set, get) => {
             }
           : {};
       if (
-        Object.keys(fbClear).length +
+        Object.keys(rpClear).length +
+          Object.keys(fbClear).length +
           Object.keys(wClear).length +
           Object.keys(rClear).length +
           Object.keys(lLineClear).length +
@@ -4087,6 +4343,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         0
       ) {
         set({
+          ...rpClear,
           ...fbClear,
           ...wClear,
           ...rClear,
@@ -4363,6 +4620,19 @@ export const useAppStore = create<AppStore>((set, get) => {
           }
         }
 
+        if (scope !== "roof") {
+          if (s.roofPlanePlacementSession != null || s.addRoofPlaneModalOpen) {
+            patch.roofPlanePlacementSession = null;
+            patch.roofPlanePlacementHistoryBaseline = null;
+            patch.addRoofPlaneModalOpen = false;
+          }
+          if (s.roofContourJoinSession != null) {
+            patch.roofContourJoinSession = null;
+            patch.roofContourJoinHistoryBaseline = null;
+          }
+          patch.roofPlaneEdgeOffsetModal = null;
+        }
+
         const slabAllowed = scope === "floorStructure" || scope === "foundation";
         if (!slabAllowed) {
           if (s.slabPlacementSession != null) {
@@ -4442,6 +4712,571 @@ export const useAppStore = create<AppStore>((set, get) => {
         addFloorBeamModalOpen: false,
         lastError: null,
       }),
+
+    openAddRoofPlaneModal: () =>
+      set({
+        addRoofPlaneModalOpen: true,
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
+        lastError: null,
+      }),
+
+    closeAddRoofPlaneModal: () => set({ addRoofPlaneModalOpen: false }),
+
+    applyAddRoofPlaneModal: (input) => {
+      const p = get().currentProject;
+      if (p.viewState.editor2dPlanScope !== "roof") {
+        set({ lastError: "Переключитесь в режим «Крыша»." });
+        return;
+      }
+      const profileId = String(input.profileId ?? "").trim();
+      if (!profileId) {
+        set({ lastError: "Выберите профиль кровли." });
+        return;
+      }
+      const profile = getProfileById(p, profileId);
+      if (!profile || !isProfileUsableForRoofPlane(profile)) {
+        set({ lastError: "Выберите профиль категории «крыша»." });
+        return;
+      }
+      const angleDeg = Number(input.angleDeg);
+      const levelMm = Number(input.levelMm);
+      if (!Number.isFinite(angleDeg)) {
+        set({ lastError: "Угол должен быть числом (градусы)." });
+        return;
+      }
+      if (!Number.isFinite(levelMm)) {
+        set({ lastError: "Уровень должен быть числом (мм)." });
+        return;
+      }
+      const draft: RoofPlanePlacementDraftPersisted = { angleDeg, levelMm, profileId };
+      const baseline = cloneProjectSnapshot(p);
+      set({
+        addRoofPlaneModalOpen: false,
+        roofPlanePlacementHistoryBaseline: baseline,
+        roofPlanePlacementSession: newRoofPlanePlacementSession(draft),
+        lastRoofPlanePlacementParams: draft,
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
+        selectedEntityIds: [],
+        lastError: null,
+      });
+    },
+
+    cancelRoofPlanePlacement: () =>
+      set({
+        roofPlanePlacementSession: null,
+        roofPlanePlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      }),
+
+    roofPlanePlacementBackOrExit: () => {
+      const s = get().roofPlanePlacementSession;
+      if (!s) {
+        return;
+      }
+      if (s.phase === "waitingDepth") {
+        set({
+          roofPlanePlacementSession: {
+            ...s,
+            phase: "waitingSecondPoint",
+            p2: null,
+            previewEndMm: s.p1,
+            depthShiftLockNormal: null,
+            previewDepthMm: null,
+            previewSlopeNormal: null,
+            angleSnapLockedDeg: null,
+            shiftDirectionLockUnit: null,
+            shiftLockReferenceMm: null,
+            lastSnapKind: null,
+          },
+          lastError: null,
+        });
+        return;
+      }
+      if (s.phase === "waitingSecondPoint") {
+        set({
+          roofPlanePlacementSession: {
+            ...s,
+            phase: "waitingFirstPoint",
+            p1: null,
+            p2: null,
+            previewEndMm: null,
+            lastSnapKind: null,
+            angleSnapLockedDeg: null,
+            shiftDirectionLockUnit: null,
+            shiftLockReferenceMm: null,
+            depthShiftLockNormal: null,
+            previewDepthMm: null,
+            previewSlopeNormal: null,
+          },
+          lastError: null,
+        });
+        return;
+      }
+      set({
+        roofPlanePlacementSession: null,
+        roofPlanePlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      });
+    },
+
+    roofPlanePlacementFirstPointHoverMove: (worldMm, viewport) => {
+      const s = get().roofPlanePlacementSession;
+      if (!s || s.phase !== "waitingFirstPoint") {
+        return;
+      }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
+      const snap = resolveWallPlacementSnapFromStore(get, worldMm, viewport, {
+        snapLayerBias: "preferActive",
+      });
+      set({
+        roofPlanePlacementSession: {
+          ...s,
+          previewEndMm: snap.point,
+          lastSnapKind: snap.kind,
+        },
+      });
+    },
+
+    roofPlanePlacementSecondPointPreviewMove: (worldMm, viewport, opts) => {
+      const s = get().roofPlanePlacementSession;
+      if (!s || s.phase !== "waitingSecondPoint" || !s.p1) {
+        return;
+      }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const e2 = p0.settings.editor2d;
+      const snapSet = editor2dSnapSettings(p0);
+      const resolveRoofSecondSnap = (raw: Point2D) =>
+        resolveWallPlacementToolSnap({
+          rawWorldMm: raw,
+          viewport,
+          project: p0,
+          snapSettings: snapSet,
+          gridStepMm: p0.settings.gridStepMm,
+          linearPlacementMode: e2.linearPlacementMode,
+          snapLayerBias: "preferActive",
+        });
+      const r = computeLinearSecondPointPreview({
+        anchor: s.p1,
+        rawWorldMm: worldMm,
+        viewport,
+        project: p0,
+        snapSettings: snapSet,
+        gridStepMm: p0.settings.gridStepMm,
+        shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        angleSnapLockedDeg: s.angleSnapLockedDeg,
+        skipAngleSnap: Boolean(opts?.altKey),
+        altKey: Boolean(opts?.altKey),
+        resolvePrimarySnap: resolveRoofSecondSnap,
+        shiftLockFindHit: (args) =>
+          findWallPlacementShiftLockSnapHit({
+            ...args,
+            linearPlacementMode: e2.linearPlacementMode,
+            snapLayerBias: "preferActive",
+          }),
+      });
+      set({
+        roofPlanePlacementSession: {
+          ...s,
+          previewEndMm: r.previewEnd,
+          lastSnapKind: r.lastSnapKind,
+          angleSnapLockedDeg: r.angleSnapLockedDeg,
+          shiftLockReferenceMm: r.shiftLockReferenceMm,
+        },
+      });
+    },
+
+    roofPlanePlacementDepthPreviewMove: (worldMm, viewport, opts) => {
+      const s = get().roofPlanePlacementSession;
+      if (!s || s.phase !== "waitingDepth" || !s.p1 || !s.p2) {
+        return;
+      }
+      if (isSceneCoordinateModalBlocking(get())) {
+        return;
+      }
+      const snap = opts?.altKey
+        ? ({ point: worldMm, kind: "none" as SnapKind } as const)
+        : resolveWallPlacementSnapFromStore(get, worldMm, viewport, { snapLayerBias: "preferActive" });
+      const nd = roofPlaneNormalAndDepthFromCursorMm(s.p1, s.p2, snap.point, s.depthShiftLockNormal);
+      if (!nd) {
+        return;
+      }
+      set({
+        roofPlanePlacementSession: {
+          ...s,
+          previewEndMm: snap.point,
+          previewDepthMm: nd.depthMm,
+          previewSlopeNormal: nd.n,
+          lastSnapKind: snap.kind,
+        },
+      });
+    },
+
+    roofPlanePlacementPrimaryClick: (worldMm, viewport, opts) => {
+      const s0 = get().roofPlanePlacementSession;
+      if (!s0) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const minLen = 10;
+
+      if (s0.phase === "waitingFirstPoint") {
+        const snap = resolveWallPlacementSnapFromStore(get, worldMm, viewport, {
+          snapLayerBias: "preferActive",
+        });
+        set({
+          roofPlanePlacementSession: {
+            ...s0,
+            phase: "waitingSecondPoint",
+            p1: snap.point,
+            previewEndMm: snap.point,
+            lastSnapKind: snap.kind,
+            angleSnapLockedDeg: null,
+            shiftDirectionLockUnit: null,
+            shiftLockReferenceMm: null,
+          },
+          lastError: null,
+        });
+        return;
+      }
+
+      if (s0.phase === "waitingSecondPoint" && s0.p1) {
+        const e2 = p0.settings.editor2d;
+        const snapSet2 = editor2dSnapSettings(p0);
+        const resolveRoofSecondSnap2 = (raw: Point2D) =>
+          resolveWallPlacementToolSnap({
+            rawWorldMm: raw,
+            viewport,
+            project: p0,
+            snapSettings: snapSet2,
+            gridStepMm: p0.settings.gridStepMm,
+            linearPlacementMode: e2.linearPlacementMode,
+            snapLayerBias: "preferActive",
+          });
+        const r = computeLinearSecondPointPreview({
+          anchor: s0.p1,
+          rawWorldMm: worldMm,
+          viewport,
+          project: p0,
+          snapSettings: snapSet2,
+          gridStepMm: p0.settings.gridStepMm,
+          shiftDirectionLockUnit: s0.shiftDirectionLockUnit,
+          angleSnapLockedDeg: s0.angleSnapLockedDeg,
+          skipAngleSnap: Boolean(opts?.altKey),
+          altKey: Boolean(opts?.altKey),
+          resolvePrimarySnap: resolveRoofSecondSnap2,
+          shiftLockFindHit: (args) =>
+            findWallPlacementShiftLockSnapHit({
+              ...args,
+              linearPlacementMode: e2.linearPlacementMode,
+              snapLayerBias: "preferActive",
+            }),
+        });
+        const p2 = r.previewEnd;
+        if (Math.hypot(p2.x - s0.p1.x, p2.y - s0.p1.y) < minLen) {
+          set({ lastError: "Базовая линия слишком короткая." });
+          return;
+        }
+        set({
+          roofPlanePlacementSession: {
+            ...s0,
+            phase: "waitingDepth",
+            p2,
+            previewEndMm: p2,
+            angleSnapLockedDeg: null,
+            shiftDirectionLockUnit: null,
+            shiftLockReferenceMm: null,
+            depthShiftLockNormal: null,
+            previewDepthMm: 0,
+            previewSlopeNormal: null,
+            lastSnapKind: r.lastSnapKind,
+          },
+          lastError: null,
+        });
+        return;
+      }
+
+      if (s0.phase === "waitingDepth" && s0.p1 && s0.p2) {
+        const snapD =
+          opts?.altKey
+            ? ({ point: worldMm, kind: "none" as SnapKind } as const)
+            : resolveWallPlacementSnapFromStore(get, worldMm, viewport, { snapLayerBias: "preferActive" });
+        const ndCommit = roofPlaneNormalAndDepthFromCursorMm(
+          s0.p1,
+          s0.p2,
+          snapD.point,
+          s0.depthShiftLockNormal,
+        );
+        if (!ndCommit) {
+          return;
+        }
+        const depthMm = ndCommit.depthMm;
+        const n = ndCommit.n;
+        if (depthMm < minLen) {
+          set({
+            lastError:
+              "Задайте глубину плоскости: отведите курсор перпендикулярно базовой линии, затем кликните.",
+          });
+          return;
+        }
+        const t = new Date().toISOString();
+        const entity: RoofPlaneEntity = {
+          id: newEntityId(),
+          type: "roofPlane",
+          layerId: p0.activeLayerId,
+          p1: s0.p1,
+          p2: s0.p2,
+          depthMm,
+          angleDeg: s0.draft.angleDeg,
+          levelMm: s0.draft.levelMm,
+          profileId: s0.draft.profileId,
+          slopeDirection: { x: -n.x, y: -n.y },
+          slopeIndex: nextRoofPlaneSlopeIndex(p0),
+          createdAt: t,
+          updatedAt: t,
+        };
+        const nextProject = touchProjectMeta({
+          ...p0,
+          roofPlanes: [...p0.roofPlanes, entity],
+        });
+        const nextSession = newRoofPlanePlacementSession(s0.draft);
+        set((st) =>
+          buildProjectMutationState(
+            st,
+            nextProject,
+            {
+              roofPlanePlacementSession: nextSession,
+              roofPlanePlacementHistoryBaseline: null,
+              selectedEntityIds: [entity.id],
+              dirty: true,
+              lastError: null,
+            },
+            st.roofPlanePlacementHistoryBaseline != null
+              ? { historyBefore: st.roofPlanePlacementHistoryBaseline }
+              : {},
+          ),
+        );
+      }
+    },
+
+    startRoofContourJoinTool: () => {
+      const p = get().currentProject;
+      if (p.viewState.editor2dPlanScope !== "roof") {
+        set({ lastError: "Переключитесь в режим «Крыша» на плане." });
+        return;
+      }
+      const baseline = cloneProjectSnapshot(get().currentProject);
+      set({
+        roofContourJoinSession: initialRoofContourJoinSession(),
+        roofContourJoinHistoryBaseline: baseline,
+        roofPlanePlacementSession: null,
+        roofPlanePlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        selectedEntityIds: [],
+        lastError: null,
+      });
+    },
+
+    cancelRoofContourJoinTool: () =>
+      set({
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
+        lastError: null,
+      }),
+
+    roofContourJoinBackOrExit: () => {
+      const s = get().roofContourJoinSession;
+      if (!s) {
+        return;
+      }
+      if (s.phase === "pickTargetEdge") {
+        set({
+          roofContourJoinSession: initialRoofContourJoinSession(),
+          lastError: null,
+        });
+        return;
+      }
+      set({
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
+        lastError: null,
+      });
+    },
+
+    roofContourJoinPointerMove: (worldMm, viewport) => {
+      const sess = get().roofContourJoinSession;
+      if (!sess) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const layerView = narrowProjectToActiveLayer(p0);
+      const planes = layerView.roofPlanes;
+      const tol = Math.max(14, 22 / viewport.zoomPixelsPerMm);
+      const hintFirst = "Выберите первое ребро для соединения";
+      const hintSecond = "Выберите второе ребро для соединения";
+      const hintBadSecond =
+        "Эти рёбра не образуют корректный стык — выберите другое ребро второго ската";
+      if (sess.phase === "pickSourceEdge") {
+        const h = pickRoofContourJoinHoverMm(
+          worldMm,
+          planes,
+          tol,
+          sess.hoverPlaneId,
+          sess.hoverEdgeIndex,
+        );
+        set({
+          roofContourJoinSession: {
+            ...sess,
+            hoverPlaneId: h?.planeId ?? null,
+            hoverEdgeIndex: h?.edgeIndex ?? null,
+            hint: hintFirst,
+          },
+        });
+        return;
+      }
+      if (sess.sourcePlaneId == null || sess.sourceEdgeIndex == null) {
+        return;
+      }
+      const source = planes.find((x) => x.id === sess.sourcePlaneId);
+      if (!source) {
+        return;
+      }
+      const polyS = roofPlanePolygonMm(source);
+      const h2 = pickRoofContourJoinSecondEdgeHoverMm(
+        worldMm,
+        planes,
+        sess.sourcePlaneId,
+        tol,
+        sess.targetHoverPlaneId,
+        sess.targetHoverEdgeIndex,
+      );
+      if (!h2) {
+        set({
+          roofContourJoinSession: {
+            ...sess,
+            targetHoverPlaneId: null,
+            targetHoverEdgeIndex: null,
+            hint: hintSecond,
+          },
+        });
+        return;
+      }
+      const target = planes.find((x) => x.id === h2.planeId);
+      if (!target) {
+        return;
+      }
+      const polyT = roofPlanePolygonMm(target);
+      const parallel = roofJoinEdgeTangentsParallelMm(polyS, sess.sourceEdgeIndex, polyT, h2.edgeIndex);
+      const pairOk =
+        !parallel || areRoofJoinEdgePairCompatibleMm(polyS, sess.sourceEdgeIndex, polyT, h2.edgeIndex);
+      set({
+        roofContourJoinSession: {
+          ...sess,
+          targetHoverPlaneId: h2.planeId,
+          targetHoverEdgeIndex: h2.edgeIndex,
+          hint: pairOk ? hintSecond : hintBadSecond,
+        },
+      });
+    },
+
+    roofContourJoinPrimaryClick: (worldMm, viewport) => {
+      const sess = get().roofContourJoinSession;
+      if (!sess) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const layerView = narrowProjectToActiveLayer(p0);
+      const planes = layerView.roofPlanes;
+      if (sess.phase === "pickSourceEdge") {
+        if (sess.hoverPlaneId == null || sess.hoverEdgeIndex == null) {
+          return;
+        }
+        set({
+          roofContourJoinSession: {
+            ...sess,
+            phase: "pickTargetEdge",
+            sourcePlaneId: sess.hoverPlaneId,
+            sourceEdgeIndex: sess.hoverEdgeIndex,
+            hoverPlaneId: null,
+            hoverEdgeIndex: null,
+            targetHoverPlaneId: null,
+            targetHoverEdgeIndex: null,
+            hint: "Выберите второе ребро для соединения",
+          },
+          lastError: null,
+        });
+        return;
+      }
+      const tol = Math.max(14, 22 / viewport.zoomPixelsPerMm);
+      if (sess.sourcePlaneId == null || sess.sourceEdgeIndex == null) {
+        return;
+      }
+      const h2 = pickRoofContourJoinSecondEdgeHoverMm(
+        worldMm,
+        planes,
+        sess.sourcePlaneId,
+        tol,
+        sess.targetHoverPlaneId,
+        sess.targetHoverEdgeIndex,
+      );
+      if (!h2) {
+        set({
+          lastError: "Наведите курсор на ребро второго ската и нажмите ЛКМ.",
+        });
+        return;
+      }
+      const a = planes.find((x) => x.id === sess.sourcePlaneId);
+      const b = planes.find((x) => x.id === h2.planeId);
+      if (!a || !b) {
+        return;
+      }
+      const polyS = roofPlanePolygonMm(a);
+      const polyT = roofPlanePolygonMm(b);
+      const parallel = roofJoinEdgeTangentsParallelMm(polyS, sess.sourceEdgeIndex, polyT, h2.edgeIndex);
+      if (parallel && !areRoofJoinEdgePairCompatibleMm(polyS, sess.sourceEdgeIndex, polyT, h2.edgeIndex)) {
+        set({
+          lastError:
+            "Соединение невозможно: выбранные рёбра не образуют корректный стык. Выберите другое ребро.",
+          roofContourJoinSession: { ...sess, hint: sess.hint },
+        });
+        return;
+      }
+      const beforeJoin = cloneProjectSnapshot(p0);
+      const r = joinTwoRoofPlaneContoursBySelectedEdgesMm(a, sess.sourceEdgeIndex, b, h2.edgeIndex);
+      if ("error" in r) {
+        set({
+          lastError: r.error,
+          roofContourJoinSession: { ...sess, hint: r.error },
+        });
+        return;
+      }
+      const nextPlanes = p0.roofPlanes.map((rp) =>
+        rp.id === r.a.id ? r.a : rp.id === r.b.id ? r.b : rp,
+      );
+      const nextProject = touchProjectMeta({ ...p0, roofPlanes: nextPlanes });
+      set((st) => ({
+        ...buildProjectMutationState(
+          st,
+          nextProject,
+          {
+            roofContourJoinSession: initialRoofContourJoinSession(),
+            roofContourJoinHistoryBaseline: st.roofContourJoinHistoryBaseline,
+            selectedEntityIds: [r.a.id, r.b.id],
+            dirty: true,
+            lastError: null,
+          },
+          { historyBefore: beforeJoin },
+        ),
+      }));
+    },
 
     openFloorBeamSplitModal: () =>
       set({
@@ -7191,6 +8026,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           addFoundationPileModalOpen: false,
           foundationPilePlacementSession: null,
           foundationPilePlacementHistoryBaseline: null,
+          addRoofPlaneModalOpen: false,
+          roofPlanePlacementSession: null,
+          roofPlanePlacementHistoryBaseline: null,
+          roofContourJoinSession: null,
+          roofContourJoinHistoryBaseline: null,
           textureApply3dToolActive: false,
           textureApply3dParamsModal: null,
           editor3dContextMenu: null,
@@ -7268,6 +8108,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           addFoundationPileModalOpen: false,
           foundationPilePlacementSession: null,
           foundationPilePlacementHistoryBaseline: null,
+          addRoofPlaneModalOpen: false,
+          roofPlanePlacementSession: null,
+          roofPlanePlacementHistoryBaseline: null,
+          roofContourJoinSession: null,
+          roofContourJoinHistoryBaseline: null,
           textureApply3dToolActive: false,
           textureApply3dParamsModal: null,
           editor3dContextMenu: null,
@@ -7340,6 +8185,11 @@ export const useAppStore = create<AppStore>((set, get) => {
         addFoundationPileModalOpen: false,
         foundationPilePlacementSession: null,
         foundationPilePlacementHistoryBaseline: null,
+        addRoofPlaneModalOpen: false,
+        roofPlanePlacementSession: null,
+        roofPlanePlacementHistoryBaseline: null,
+        roofContourJoinSession: null,
+        roofContourJoinHistoryBaseline: null,
         textureApply3dToolActive: false,
         textureApply3dParamsModal: null,
         editor3dContextMenu: null,
@@ -7445,6 +8295,11 @@ export const useAppStore = create<AppStore>((set, get) => {
           addFoundationPileModalOpen: false,
           foundationPilePlacementSession: null,
           foundationPilePlacementHistoryBaseline: null,
+          addRoofPlaneModalOpen: false,
+          roofPlanePlacementSession: null,
+          roofPlanePlacementHistoryBaseline: null,
+          roofContourJoinSession: null,
+          roofContourJoinHistoryBaseline: null,
           textureApply3dToolActive: false,
           textureApply3dParamsModal: null,
           editor3dContextMenu: null,

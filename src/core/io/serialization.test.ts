@@ -72,7 +72,7 @@ describe("project serialization", () => {
       },
     };
     const p = projectFromWire(v0);
-    expect(p.meta.schemaVersion).toBe(1);
+    expect(p.meta.schemaVersion).toBe(2);
     expect(p.layers[0]?.name).toBe("Стены 1 эт");
     expect(p.walls[0]?.layerId).toBe("lev1");
     expect(p.activeLayerId).toBe("lev1");

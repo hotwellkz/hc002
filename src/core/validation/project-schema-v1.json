@@ -29,7 +29,7 @@
     "profiles"
   ],
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
+    "schemaVersion": { "type": "integer", "enum": [1, 2] },
     "id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
     "createdAt": { "type": "string", "minLength": 1 },
@@ -77,6 +77,10 @@
     "floorBeams": {
       "type": "array",
       "items": { "$ref": "#/$defs/floorBeamEntity" }
+    },
+    "roofPlanes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofPlaneEntity" }
     },
     "wallCalculations": {
       "type": "array",
@@ -893,6 +897,45 @@
         "updatedAt": { "type": "string", "minLength": 1 }
       }
     },
+    "roofPlaneEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "layerId",
+        "p1",
+        "p2",
+        "depthMm",
+        "angleDeg",
+        "levelMm",
+        "profileId",
+        "slopeDirection",
+        "slopeIndex",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "const": "roofPlane" },
+        "layerId": { "type": "string", "minLength": 1 },
+        "p1": { "$ref": "#/$defs/point2d" },
+        "p2": { "$ref": "#/$defs/point2d" },
+        "depthMm": { "type": "number", "exclusiveMinimum": 0 },
+        "angleDeg": { "type": "number" },
+        "levelMm": { "type": "number" },
+        "profileId": { "type": "string", "minLength": 1 },
+        "slopeDirection": { "$ref": "#/$defs/point2d" },
+        "slopeIndex": { "type": "integer", "minimum": 1 },
+        "planContourMm": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/point2d" }
+        },
+        "createdAt": { "type": "string", "minLength": 1 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
     "dimension": {
       "type": "object",
       "additionalProperties": false,
@@ -966,7 +1009,10 @@
         "show3dLayerDoors": { "type": "boolean" },
         "show3dGrid": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall"] },
-        "editor2dPlanScope": { "type": "string", "enum": ["main", "floorStructure"] },
+        "editor2dPlanScope": {
+          "type": "string",
+          "enum": ["main", "floorStructure", "foundation", "roof"]
+        },
         "viewport2d": {
           "type": "object",
           "additionalProperties": false,

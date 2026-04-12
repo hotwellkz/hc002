@@ -7,7 +7,7 @@ export type EditorTab = "2d" | "3d" | "spec" | "wall";
 /**
  * Подрежим 2D: план этажа, перекрытие (балки и плиты перекрытия) или фундамент (лента, сваи, плита).
  */
-export type Editor2dPlanScope = "main" | "floorStructure" | "foundation";
+export type Editor2dPlanScope = "main" | "floorStructure" | "foundation" | "roof";
 
 export interface ViewportState2D {
   readonly panXMm: number;
@@ -121,7 +121,7 @@ export function normalizeViewState(
   const tab = VALID_TABS.includes(input.activeTab as EditorTab) ? input.activeTab : "2d";
   const rawScope = input.editor2dPlanScope;
   const scope: Editor2dPlanScope =
-    rawScope === "floorStructure" || rawScope === "foundation" ? rawScope : "main";
+    rawScope === "floorStructure" || rawScope === "foundation" || rawScope === "roof" ? rawScope : "main";
   return {
     activeTab: tab,
     editor2dPlanScope: scope,

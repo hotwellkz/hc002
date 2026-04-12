@@ -1,4 +1,5 @@
 import type { Project } from "@/core/domain/project";
+import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
 import {
   foundationStripOrthoRingOuterBoundsMm,
   foundationStripSegmentFootprintQuadMm,
@@ -63,6 +64,26 @@ export function computeMarqueeSelection(
     }
     if (rectsIntersectMm({ minX, maxX, minY, maxY }, rect)) {
       ids.push(bm.id);
+    }
+  }
+
+  for (const rp of project.roofPlanes) {
+    const pts = roofPlanePolygonMm(rp);
+    if (pts.length === 0) {
+      continue;
+    }
+    let minX = pts[0]!.x;
+    let maxX = pts[0]!.x;
+    let minY = pts[0]!.y;
+    let maxY = pts[0]!.y;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (rectsIntersectMm({ minX, maxX, minY, maxY }, rect)) {
+      ids.push(rp.id);
     }
   }
 

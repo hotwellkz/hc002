@@ -13,6 +13,7 @@ export interface EditorToolHotkeyAppSnapshot {
   readonly addFoundationStripModalOpen: boolean;
   readonly addFoundationPileModalOpen: boolean;
   readonly addSlabModalOpen: boolean;
+  readonly addRoofPlaneModalOpen: boolean;
   readonly addWindowModalOpen: boolean;
   readonly addDoorModalOpen: boolean;
   readonly windowEditModal: unknown;
@@ -30,6 +31,8 @@ export interface EditorToolHotkeyAppSnapshot {
   readonly lengthChangeCoordinateModalOpen: boolean;
   readonly projectOriginCoordinateModalOpen: boolean;
   readonly openingAlongMoveNumericModalOpen: boolean;
+  /** Точное смещение ребра контура плоскости крыши (мм). */
+  readonly roofPlaneEdgeOffsetModal: unknown | null;
   /** Ручной ввод смещения при универсальном копировании (вторая точка). */
   readonly entityCopyCoordinateModalOpen: boolean;
   /** Модалка «Авто-сваи» для ленты фундамента. */
@@ -60,6 +63,7 @@ export function hasBlockingEditorOverlayModal(app: EditorToolHotkeyAppSnapshot):
     app.addFoundationStripModalOpen ||
     app.addFoundationPileModalOpen ||
     app.addSlabModalOpen ||
+    app.addRoofPlaneModalOpen ||
     app.addWindowModalOpen ||
     app.addDoorModalOpen ||
     app.windowEditModal != null ||

@@ -7,7 +7,17 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
+  box-sizing: border-box;
+  overscroll-behavior: contain;
   animation: lm-backdrop-in var(--t-normal) var(--ease-out-soft) both;
+}
+
+/**
+ * Рендер через createPortal(document.body): поверх шапки (overflow:hidden),
+ * mobile bottom sheet (transform) и остальных lm-модалок.
+ */
+.lm-backdrop--root {
+  z-index: 5000;
 }
 
 @supports (backdrop-filter: blur(8px)) {
@@ -35,6 +45,12 @@
   background: var(--color-glass-modal-fill, var(--color-glass-fill-strong));
   box-shadow: var(--shadow-modal);
   animation: lm-dialog-in var(--t-normal) var(--ease-out-soft) both;
+}
+
+.lm-dialog--scrollable {
+  max-height: min(90dvh, calc(100dvh - 2 * var(--space-lg)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @supports (backdrop-filter: blur(8px)) {

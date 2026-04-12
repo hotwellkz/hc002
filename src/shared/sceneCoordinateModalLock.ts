@@ -14,6 +14,7 @@ export function isSceneCoordinateModalBlocking(store: {
   readonly slabCoordinateModalOpen: boolean;
   readonly entityCopyCoordinateModalOpen: boolean;
   readonly entityCopyParamsModal: unknown | null;
+  readonly roofPlaneEdgeOffsetModal: unknown | null;
 }): boolean {
   return (
     store.wallCoordinateModalOpen ||
@@ -26,6 +27,7 @@ export function isSceneCoordinateModalBlocking(store: {
     store.openingAlongMoveNumericModalOpen ||
     store.slabCoordinateModalOpen ||
     store.entityCopyCoordinateModalOpen ||
-    store.entityCopyParamsModal != null
+    store.entityCopyParamsModal != null ||
+    store.roofPlaneEdgeOffsetModal != null
   );
 }

@@ -7,6 +7,7 @@ import { useOpeningPropertiesKeyboard } from "@/features/project/useOpeningPrope
 import { useProjectUndoRedoHotkeys } from "@/features/project/useProjectUndoRedoHotkeys";
 import { AddFoundationPileModal } from "@/features/ui/AddFoundationPileModal";
 import { FoundationStripAutoPilesModal } from "@/features/ui/FoundationStripAutoPilesModal";
+import { AddRoofPlaneModal } from "@/features/ui/AddRoofPlaneModal";
 import { AddSlabModal } from "@/features/ui/AddSlabModal";
 import { AddFoundationStripModal } from "@/features/ui/AddFoundationStripModal";
 import { AddWallModal } from "@/features/ui/AddWallModal";
@@ -18,6 +19,7 @@ import { WindowParamsModal } from "@/features/ui/window-modal/WindowParamsModal"
 import { DoorParamsModal } from "@/features/ui/window-modal/DoorParamsModal";
 import { WallAnchorCoordinateModal } from "@/features/ui/WallAnchorCoordinateModal";
 import { ProjectOriginCoordinateModal } from "@/features/ui/ProjectOriginCoordinateModal";
+import { RoofPlaneEdgeOffsetModal } from "@/features/ui/RoofPlaneEdgeOffsetModal";
 import { WallCoordinateModal } from "@/features/ui/WallCoordinateModal";
 import { EntityCopyParamsModal } from "@/features/ui/EntityCopyParamsModal";
 import { TextureApply3dParamsModal } from "@/features/ui/TextureApply3dParamsModal";
@@ -105,11 +107,13 @@ export function AppShell() {
       <FloorBeamSplitModal />
       <AddFoundationStripModal />
       <AddSlabModal />
+      <AddRoofPlaneModal />
       <SlabEditModal />
       <AddFoundationPileModal />
       <FoundationStripAutoPilesModal />
       <WallJointParamsModal />
       <WallCoordinateModal />
+      <RoofPlaneEdgeOffsetModal />
       <EntityCopyParamsModal />
       <TextureApply3dParamsModal />
       <ProjectOriginCoordinateModal />

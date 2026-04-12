@@ -17,6 +17,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         slabCoordinateModalOpen: false,
         entityCopyCoordinateModalOpen: false,
         entityCopyParamsModal: null,
+        roofPlaneEdgeOffsetModal: null,
       }),
     ).toBe(false);
   });
@@ -35,6 +36,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         slabCoordinateModalOpen: false,
         entityCopyCoordinateModalOpen: false,
         entityCopyParamsModal: null,
+        roofPlaneEdgeOffsetModal: null,
       }),
     ).toBe(true);
   });
@@ -53,6 +55,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         slabCoordinateModalOpen: false,
         entityCopyCoordinateModalOpen: false,
         entityCopyParamsModal: null,
+        roofPlaneEdgeOffsetModal: null,
       }),
     ).toBe(true);
   });
@@ -71,6 +74,7 @@ describe("isSceneCoordinateModalBlocking", () => {
         slabCoordinateModalOpen: false,
         entityCopyCoordinateModalOpen: true,
         entityCopyParamsModal: null,
+        roofPlaneEdgeOffsetModal: null,
       }),
     ).toBe(true);
   });
@@ -89,6 +93,26 @@ describe("isSceneCoordinateModalBlocking", () => {
         slabCoordinateModalOpen: false,
         entityCopyCoordinateModalOpen: false,
         entityCopyParamsModal: {},
+        roofPlaneEdgeOffsetModal: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("true если открыта модалка смещения ребра ската", () => {
+    expect(
+      isSceneCoordinateModalBlocking({
+        wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
+        wallAnchorCoordinateModalOpen: false,
+        wallMoveCopyCoordinateModalOpen: false,
+        floorBeamMoveCopyCoordinateModalOpen: false,
+        lengthChangeCoordinateModalOpen: false,
+        projectOriginCoordinateModalOpen: false,
+        openingAlongMoveNumericModalOpen: false,
+        slabCoordinateModalOpen: false,
+        entityCopyCoordinateModalOpen: false,
+        entityCopyParamsModal: null,
+        roofPlaneEdgeOffsetModal: { planeId: "x", edgeIndex: 0, baseQuad: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }], initialValueStr: "0" },
       }),
     ).toBe(true);
   });

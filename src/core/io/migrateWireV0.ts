@@ -81,6 +81,7 @@ export function migrateWireV0ToProject(data: Record<string, unknown>): Project {
     foundationPiles: [],
     slabs: [],
     floorBeams: [],
+    roofPlanes: [],
     wallCalculations: [],
     wallJoints: [],
     openings: data["openings"] as Project["openings"],
