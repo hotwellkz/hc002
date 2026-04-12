@@ -21,6 +21,7 @@ export function Editor3dVisibilityPanel() {
 
   const windowsReady = hasWindowGeometry3d(project);
   const doorsReady = hasDoorGeometry3d(project);
+  const hasRoofAssembly3d = project.roofAssemblyCalculations.length > 0;
 
   useEffect(() => {
     if (!open) {
@@ -121,6 +122,59 @@ export function Editor3dVisibilityPanel() {
               checked={vs.show3dLayerDoors !== false}
               onChange={(e) => set3dLayerVisibility({ show3dLayerDoors: e.target.checked })}
             />
+          </div>
+          <p className="ed3-vis-hint" style={{ marginTop: 10, marginBottom: 4 }}>
+            Крыша (после «Рассчитать» в режиме крыши)
+          </p>
+          <div
+            className={`ed3-vis-row${!hasRoofAssembly3d ? " ed3-vis-row--disabled" : ""}`}
+            title={!hasRoofAssembly3d ? "Сначала выполните расчёт крыши" : undefined}
+          >
+            <label htmlFor={`${idBase}-roof-all`}>Крыша целиком</label>
+            <input
+              id={`${idBase}-roof-all`}
+              type="checkbox"
+              disabled={!hasRoofAssembly3d}
+              checked={vs.show3dRoof !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dRoof: e.target.checked })}
+            />
+          </div>
+          <div className={`ed3-vis-row${!hasRoofAssembly3d ? " ed3-vis-row--disabled" : ""}`}>
+            <label htmlFor={`${idBase}-roof-cov`}>Покрытие крыши</label>
+            <input
+              id={`${idBase}-roof-cov`}
+              type="checkbox"
+              disabled={!hasRoofAssembly3d}
+              checked={vs.show3dRoofCovering !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dRoofCovering: e.target.checked })}
+            />
+          </div>
+          <div className={`ed3-vis-row${!hasRoofAssembly3d ? " ed3-vis-row--disabled" : ""}`}>
+            <label htmlFor={`${idBase}-roof-bat`}>Обрешётка</label>
+            <input
+              id={`${idBase}-roof-bat`}
+              type="checkbox"
+              disabled={!hasRoofAssembly3d}
+              checked={vs.show3dRoofBattens !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dRoofBattens: e.target.checked })}
+            />
+          </div>
+          <div
+            className={`ed3-vis-row${!hasRoofAssembly3d ? " ed3-vis-row--disabled" : ""}`}
+            title={!hasRoofAssembly3d ? undefined : "Под обрешёткой"}
+          >
+            <label htmlFor={`${idBase}-roof-mem`}>Мембрана / ветрозащита</label>
+            <input
+              id={`${idBase}-roof-mem`}
+              type="checkbox"
+              disabled={!hasRoofAssembly3d}
+              checked={vs.show3dRoofMembrane !== false}
+              onChange={(e) => set3dLayerVisibility({ show3dRoofMembrane: e.target.checked })}
+            />
+          </div>
+          <div className={`ed3-vis-row ed3-vis-row--disabled`} title="Геометрия будет добавлена позже">
+            <label htmlFor={`${idBase}-roof-soff`}>Подшивка свесов</label>
+            <input id={`${idBase}-roof-soff`} type="checkbox" disabled checked={false} readOnly />
           </div>
         </div>
       ) : null}

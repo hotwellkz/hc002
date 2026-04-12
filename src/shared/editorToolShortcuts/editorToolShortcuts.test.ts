@@ -23,6 +23,7 @@ const baseApp = {
   slabEditModal: null,
   wallJointParamsModalOpen: false,
   wallCalculationModalOpen: false,
+  roofCalculationModalOpen: false,
   wallCoordinateModalOpen: false,
   floorBeamPlacementCoordinateModalOpen: false,
   slabCoordinateModalOpen: false,

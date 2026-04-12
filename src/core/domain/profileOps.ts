@@ -1,5 +1,6 @@
 import type { Profile, ProfileCategory, ProfileCompositionMode, ProfileLayer } from "./profile";
 import type { Project } from "./project";
+import { resolveRoofProfileAssembly } from "./roofProfileAssembly";
 
 export function getProfileById(project: Project, id: string): Profile | undefined {
   return project.profiles.find((p) => p.id === id);
@@ -27,6 +28,17 @@ export function computeProfileTotalThicknessMm(profile: Profile): number {
 }
 
 export function formatProfileSummary(profile: Profile): string {
+  if (profile.category === "roof") {
+    const ra = resolveRoofProfileAssembly(profile);
+    const labels: Record<string, string> = {
+      metal_tile: "металлочерепица",
+      profiled_sheet: "профлист",
+      soft: "мягкая",
+      standing_seam: "фальц",
+      other: "кровля",
+    };
+    return labels[ra.coveringKind] ?? "кровля";
+  }
   const t = computeProfileTotalThicknessMm(profile);
   if (t <= 0) {
     return "—";

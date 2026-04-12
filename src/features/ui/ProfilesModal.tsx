@@ -21,6 +21,13 @@ import {
   type WindowOpeningFramingPreset,
 } from "@/core/domain/wallManufacturing";
 import { validateProfile } from "@/core/domain/profileValidation";
+import {
+  DEFAULT_ROOF_PROFILE_ASSEMBLY,
+  migrateRoofProfileAssemblyWire,
+  type RoofBattenLayoutDir,
+  type RoofCoveringKind,
+  type RoofProfileAssembly,
+} from "@/core/domain/roofProfileAssembly";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./profiles-modal.css";
@@ -35,7 +42,15 @@ const CATEGORY_LABELS: Record<ProfileCategory, string> = {
   custom: "Другое",
 };
 
-const LINEAR_STOCK_PROFILE_CATEGORIES = new Set<ProfileCategory>(["beam", "board", "pipe", "slab", "roof", "custom"]);
+const LINEAR_STOCK_PROFILE_CATEGORIES = new Set<ProfileCategory>(["beam", "board", "pipe", "slab", "custom"]);
+
+const ROOF_COVER_KIND_OPTIONS: { readonly value: RoofCoveringKind; readonly label: string }[] = [
+  { value: "metal_tile", label: "Металлочерепица" },
+  { value: "profiled_sheet", label: "Профлист" },
+  { value: "soft", label: "Мягкая кровля" },
+  { value: "standing_seam", label: "Фальц" },
+  { value: "other", label: "Другое" },
+];
 
 const MATERIAL_OPTIONS: { value: ProfileMaterialType; label: string }[] = [
   { value: "osb", label: "OSB" },
@@ -126,7 +141,15 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
   const syncDraftFromId = useCallback(
     (id: string) => {
       const p = project.profiles.find((x) => x.id === id);
-      setDraft(p ? cloneProfile(p) : null);
+      if (!p) {
+        setDraft(null);
+        setLocalErrors([]);
+        return;
+      }
+      const c = cloneProfile(p);
+      setDraft(
+        c.category === "roof" ? { ...c, roofAssembly: migrateRoofProfileAssemblyWire(c.roofAssembly) } : c,
+      );
       setLocalErrors([]);
     },
     [project.profiles],
@@ -143,7 +166,10 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
     if (sorted.length === 0) {
       setDraft(createEmptyDraft());
     } else {
-      setDraft(cloneProfile(sorted[0]!));
+      const f = cloneProfile(sorted[0]!);
+      setDraft(
+        f.category === "roof" ? { ...f, roofAssembly: migrateRoofProfileAssemblyWire(f.roofAssembly) } : f,
+      );
     }
     setLocalErrors([]);
   }, [open]);
@@ -177,10 +203,30 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
     if (!draft) {
       return;
     }
-    const toSave: Profile = {
+    let toSave: Profile = {
       ...draft,
       wallManufacturing: normalizeWallManufacturing(draft.wallManufacturing, draft),
     };
+    if (toSave.category === "roof") {
+      const stub =
+        toSave.layers.length > 0
+          ? [sortProfileLayersByOrder([...toSave.layers])[0]!]
+          : [
+              {
+                id: newEntityId(),
+                orderIndex: 0,
+                materialName: "—",
+                materialType: "custom" as ProfileMaterialType,
+                thicknessMm: 1,
+              },
+            ];
+      toSave = {
+        ...toSave,
+        compositionMode: "solid",
+        layers: stub,
+        roofAssembly: migrateRoofProfileAssemblyWire(toSave.roofAssembly),
+      };
+    }
     const errs = validateProfile(toSave);
     if (errs.length > 0) {
       setLocalErrors(errs);
@@ -415,9 +461,34 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                       id="pm-cat"
                       className="pm-select"
                       value={draft.category}
-                      onChange={(e) =>
-                        updateDraft({ ...draft, category: e.target.value as ProfileCategory })
-                      }
+                      onChange={(e) => {
+                        const c = e.target.value as ProfileCategory;
+                        if (c === "roof") {
+                          const stub =
+                            draft.layers.length > 0
+                              ? [sortProfileLayersByOrder([...draft.layers])[0]!]
+                              : [
+                                  {
+                                    id: newEntityId(),
+                                    orderIndex: 0,
+                                    materialName: "—",
+                                    materialType: "custom" as ProfileMaterialType,
+                                    thicknessMm: 1,
+                                  },
+                                ];
+                          updateDraft({
+                            ...draft,
+                            category: c,
+                            compositionMode: "solid",
+                            layers: stub,
+                            roofAssembly: migrateRoofProfileAssemblyWire(
+                              draft.roofAssembly ?? { ...DEFAULT_ROOF_PROFILE_ASSEMBLY },
+                            ),
+                          });
+                        } else {
+                          updateDraft({ ...draft, category: c });
+                        }
+                      }}
                     >
                       {(Object.keys(CATEGORY_LABELS) as ProfileCategory[]).map((c) => (
                         <option key={c} value={c}>
@@ -426,20 +497,28 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                       ))}
                     </select>
                   </div>
-                  <div className="pm-field">
-                    <label className="pm-label" htmlFor="pm-mode">
-                      Режим
-                    </label>
-                    <select
-                      id="pm-mode"
-                      className="pm-select"
-                      value={draft.compositionMode}
-                      onChange={(e) => setCompositionMode(e.target.value as ProfileCompositionMode)}
-                    >
-                      <option value="layered">Составной (слои)</option>
-                      <option value="solid">Цельный / сечение</option>
-                    </select>
-                  </div>
+                  {draft.category !== "roof" ? (
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-mode">
+                        Режим
+                      </label>
+                      <select
+                        id="pm-mode"
+                        className="pm-select"
+                        value={draft.compositionMode}
+                        onChange={(e) => setCompositionMode(e.target.value as ProfileCompositionMode)}
+                      >
+                        <option value="layered">Составной (слои)</option>
+                        <option value="solid">Цельный / сечение</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="pm-field" style={{ alignSelf: "flex-end" }}>
+                      <p className="muted" style={{ margin: 0, fontSize: 12, lineHeight: 1.45 }}>
+                        Конструкция кровли задаётся блоками ниже; слои SIP для этой категории не используются.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {draft.category === "wall" ? (
@@ -461,66 +540,71 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   </div>
                 ) : null}
 
-                <div className="pm-row2">
-                  <div className="pm-field">
-                    <label className="pm-label" htmlFor="pm-h">
-                      Высота по умолчанию, мм
-                    </label>
-                    <input
-                      id="pm-h"
-                      className="pm-input"
-                      type="number"
-                      value={draft.defaultHeightMm ?? ""}
-                      placeholder="—"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateDraft({
-                          ...draft,
-                          defaultHeightMm: v === "" ? undefined : Number(v),
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="pm-field">
-                    <label className="pm-label" htmlFor="pm-w">
-                      Ширина по умолчанию, мм
-                    </label>
-                    <input
-                      id="pm-w"
-                      className="pm-input"
-                      type="number"
-                      value={draft.defaultWidthMm ?? ""}
-                      placeholder="—"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateDraft({
-                          ...draft,
-                          defaultWidthMm: v === "" ? undefined : Number(v),
-                        });
-                      }}
-                    />
-                  </div>
-                </div>
+                {draft.category !== "roof" ? (
+                  <>
+                    <div className="pm-row2">
+                      <div className="pm-field">
+                        <label className="pm-label" htmlFor="pm-h">
+                          Высота по умолчанию, мм
+                        </label>
+                        <input
+                          id="pm-h"
+                          className="pm-input"
+                          type="number"
+                          value={draft.defaultHeightMm ?? ""}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateDraft({
+                              ...draft,
+                              defaultHeightMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                      </div>
+                      <div className="pm-field">
+                        <label className="pm-label" htmlFor="pm-w">
+                          Ширина по умолчанию, мм
+                        </label>
+                        <input
+                          id="pm-w"
+                          className="pm-input"
+                          type="number"
+                          value={draft.defaultWidthMm ?? ""}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateDraft({
+                              ...draft,
+                              defaultWidthMm: v === "" ? undefined : Number(v),
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
 
-                <div className="pm-field">
-                  <label className="pm-label" htmlFor="pm-d">
-                    Толщина/глубина по умолчанию, мм {draft.compositionMode === "solid" ? "(если без слоёв)" : ""}
-                  </label>
-                  <input
-                    id="pm-d"
-                    className="pm-input"
-                    type="number"
-                    value={draft.defaultThicknessMm ?? ""}
-                    placeholder="—"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      updateDraft({
-                        ...draft,
-                        defaultThicknessMm: v === "" ? undefined : Number(v),
-                      });
-                    }}
-                  />
-                </div>
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-d">
+                        Толщина/глубина по умолчанию, мм{" "}
+                        {draft.compositionMode === "solid" ? "(если без слоёв)" : ""}
+                      </label>
+                      <input
+                        id="pm-d"
+                        className="pm-input"
+                        type="number"
+                        value={draft.defaultThicknessMm ?? ""}
+                        placeholder="—"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateDraft({
+                            ...draft,
+                            defaultThicknessMm: v === "" ? undefined : Number(v),
+                          });
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : null}
 
                 {LINEAR_STOCK_PROFILE_CATEGORIES.has(draft.category) ? (
                   <div className="pm-field">
@@ -548,6 +632,309 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                       6000 мм (или число из производственных настроек профиля, если оно задано).
                     </p>
                   </div>
+                ) : null}
+
+                {draft.category === "roof" ? (
+                  <>
+                    {(() => {
+                      const ra = migrateRoofProfileAssemblyWire(draft.roofAssembly);
+                      const patchRa = (patch: Partial<RoofProfileAssembly>) =>
+                        updateDraft({
+                          ...draft,
+                          roofAssembly: { ...ra, ...patch },
+                        });
+                      return (
+                        <>
+                          <p className="muted" style={{ margin: "10px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Основное
+                          </p>
+                          <p className="muted" style={{ margin: "0 0 10px", fontSize: 12, lineHeight: 1.45 }}>
+                            Категория «Кровля»: расчёт 3D и спецификация идут из узла кровли ниже.
+                          </p>
+
+                          <p className="muted" style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Покрытие
+                          </p>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-cover-kind">
+                              Тип / технология покрытия
+                            </label>
+                            <select
+                              id="pm-roof-cover-kind"
+                              className="pm-select"
+                              value={ra.coveringKind}
+                              onChange={(e) => patchRa({ coveringKind: e.target.value as RoofCoveringKind })}
+                            >
+                              {ROOF_COVER_KIND_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-cover-mat">
+                              Материал покрытия
+                            </label>
+                            <input
+                              id="pm-roof-cover-mat"
+                              className="pm-input"
+                              value={ra.coveringMaterial}
+                              onChange={(e) => patchRa({ coveringMaterial: e.target.value })}
+                            />
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-cover-th">
+                              Толщина покрытия, мм
+                            </label>
+                            <input
+                              id="pm-roof-cover-th"
+                              className="pm-input"
+                              type="number"
+                              min={0.1}
+                              step={0.1}
+                              value={ra.coveringThicknessMm}
+                              onChange={(e) => patchRa({ coveringThicknessMm: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-cover-appear">
+                              Внешний вид в 3D
+                            </label>
+                            <select
+                              id="pm-roof-cover-appear"
+                              className="pm-select"
+                              value={ra.coveringAppearance3d}
+                              onChange={(e) =>
+                                patchRa({
+                                  coveringAppearance3d: e.target.value === "texture" ? "texture" : "color",
+                                })
+                              }
+                            >
+                              <option value="color">Только цвет</option>
+                              <option value="texture">Текстура (в 3D пока заглушка)</option>
+                            </select>
+                          </div>
+                          {ra.coveringAppearance3d === "color" ? (
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-cover-col">
+                                Цвет покрытия в 3D
+                              </label>
+                              <input
+                                id="pm-roof-cover-col"
+                                className="pm-input"
+                                type="color"
+                                value={
+                                  /^#[0-9a-fA-F]{6}$/.test(ra.coveringColorHex) ? ra.coveringColorHex : "#6b7a8f"
+                                }
+                                onChange={(e) => patchRa({ coveringColorHex: e.target.value })}
+                              />
+                            </div>
+                          ) : (
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-cover-tex">
+                                Идентификатор текстуры
+                              </label>
+                              <input
+                                id="pm-roof-cover-tex"
+                                className="pm-input"
+                                placeholder="Каталог текстур — в разработке"
+                                value={ra.coveringTextureId ?? ""}
+                                onChange={(e) => patchRa({ coveringTextureId: e.target.value.trim() || null })}
+                              />
+                              <p className="muted" style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.45 }}>
+                                Пока в 3D используется нейтральная заглушка; поле сохраняется для будущего каталога.
+                              </p>
+                            </div>
+                          )}
+
+                          <p className="muted" style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Мембрана / ветрозащита
+                          </p>
+                          <div className="pm-field">
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={ra.membraneUse}
+                                onChange={(e) => patchRa({ membraneUse: e.target.checked })}
+                              />
+                              <span>Использовать мембрану (ветрозащиту)</span>
+                            </label>
+                          </div>
+                          <div className="pm-row2">
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-mem-th">
+                                Толщина, мм
+                              </label>
+                              <input
+                                id="pm-roof-mem-th"
+                                className="pm-input"
+                                type="number"
+                                min={0.1}
+                                step={0.1}
+                                disabled={!ra.membraneUse}
+                                value={ra.membraneThicknessMm}
+                                onChange={(e) => patchRa({ membraneThicknessMm: Number(e.target.value) })}
+                              />
+                            </div>
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-mem-type">
+                                Тип / название
+                              </label>
+                              <input
+                                id="pm-roof-mem-type"
+                                className="pm-input"
+                                disabled={!ra.membraneUse}
+                                value={ra.membraneTypeName}
+                                onChange={(e) => patchRa({ membraneTypeName: e.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                          <p className="muted" style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Обрешётка
+                          </p>
+                          <div className="pm-field">
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={ra.battenUse}
+                                onChange={(e) => patchRa({ battenUse: e.target.checked })}
+                              />
+                              <span>Использовать обрешётку</span>
+                            </label>
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-bat-mat">
+                              Материал
+                            </label>
+                            <input
+                              id="pm-roof-bat-mat"
+                              className="pm-input"
+                              disabled={!ra.battenUse}
+                              value={ra.battenMaterial}
+                              onChange={(e) => patchRa({ battenMaterial: e.target.value })}
+                            />
+                          </div>
+                          <div className="pm-row2">
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-bat-w">
+                                Ширина доски, мм
+                              </label>
+                              <input
+                                id="pm-roof-bat-w"
+                                className="pm-input"
+                                type="number"
+                                min={1}
+                                disabled={!ra.battenUse}
+                                value={ra.battenWidthMm}
+                                onChange={(e) => patchRa({ battenWidthMm: Number(e.target.value) })}
+                              />
+                            </div>
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-bat-h">
+                                Высота доски, мм
+                              </label>
+                              <input
+                                id="pm-roof-bat-h"
+                                className="pm-input"
+                                type="number"
+                                min={1}
+                                disabled={!ra.battenUse}
+                                value={ra.battenHeightMm}
+                                onChange={(e) => patchRa({ battenHeightMm: Number(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-bat-step">
+                              Шаг обрешётки, мм
+                            </label>
+                            <input
+                              id="pm-roof-bat-step"
+                              className="pm-input"
+                              type="number"
+                              min={50}
+                              disabled={!ra.battenUse}
+                              value={ra.battenStepMm}
+                              onChange={(e) => patchRa({ battenStepMm: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div className="pm-field">
+                            <label className="pm-label" htmlFor="pm-roof-bat-dir">
+                              Направление досок на скате
+                            </label>
+                            <select
+                              id="pm-roof-bat-dir"
+                              className="pm-select"
+                              disabled={!ra.battenUse}
+                              value={ra.battenLayoutDir}
+                              onChange={(e) =>
+                                patchRa({ battenLayoutDir: e.target.value as RoofBattenLayoutDir })
+                              }
+                            >
+                              <option value="perpendicular_to_fall">Поперёк стока (вдоль карниза)</option>
+                              <option value="parallel_to_fall">Вдоль стока</option>
+                            </select>
+                          </div>
+
+                          <p className="muted" style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Свесы
+                          </p>
+                          <div className="pm-row2">
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-eave">
+                                Свес по карнизу, мм
+                              </label>
+                              <input
+                                id="pm-roof-eave"
+                                className="pm-input"
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={ra.eaveOverhangMm}
+                                onChange={(e) => patchRa({ eaveOverhangMm: Math.max(0, Number(e.target.value)) })}
+                              />
+                            </div>
+                            <div className="pm-field">
+                              <label className="pm-label" htmlFor="pm-roof-side">
+                                Боковой свес, мм
+                              </label>
+                              <input
+                                id="pm-roof-side"
+                                className="pm-input"
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={ra.sideOverhangMm}
+                                onChange={(e) => patchRa({ sideOverhangMm: Math.max(0, Number(e.target.value)) })}
+                              />
+                            </div>
+                          </div>
+
+                          <p className="muted" style={{ margin: "14px 0 6px", fontSize: 13, fontWeight: 600 }}>
+                            Дополнительно
+                          </p>
+                          <div className="pm-field">
+                            <label
+                              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={ra.soffitReserved}
+                                onChange={(e) => patchRa({ soffitReserved: e.target.checked })}
+                              />
+                              <span>Подшивка свесов (зарезервировано, без 3D)</span>
+                            </label>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
                 ) : null}
 
                 {draft.category === "wall" ? (
@@ -762,7 +1149,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   />
                 </div>
 
-                {draft.compositionMode === "layered" && (
+                {draft.category !== "roof" && draft.compositionMode === "layered" && (
                   <>
                     <div className="pm-label" style={{ marginBottom: 8 }}>
                       Слои (снизу вверх по порядку)
@@ -835,7 +1222,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   </>
                 )}
 
-                {draft.compositionMode === "solid" && (
+                {draft.category !== "roof" && draft.compositionMode === "solid" && (
                   <div>
                     <div className="pm-label" style={{ marginBottom: 8 }}>
                       Сечение (один материал)
@@ -889,7 +1276,9 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   </div>
                 )}
 
-                <div className="pm-badge-total">Итоговая толщина: {totalMm > 0 ? `${Math.round(totalMm)} мм` : "—"}</div>
+                {draft.category !== "roof" ? (
+                  <div className="pm-badge-total">Итоговая толщина: {totalMm > 0 ? `${Math.round(totalMm)} мм` : "—"}</div>
+                ) : null}
 
                 {localErrors.length > 0 && (
                   <div className="pm-err" role="alert">

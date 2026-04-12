@@ -11,6 +11,7 @@ import { normalizeViewState, projectWithViewport3dTargetAlignedToOriginIfDefault
 import { normalizeWallCalculationsInProject } from "../domain/wallCalculationNormalize";
 import { normalizeSurfaceTextureState } from "../domain/surfaceTextureOps";
 import { normalizeLayer, type Layer } from "../domain/layer";
+import { migrateRoofProfileAssemblyWire } from "../domain/roofProfileAssembly";
 import { migrateWireV0ToProject } from "./migrateWireV0";
 
 /** schema v1: slopeDirection хранил направление выдавливания; в v2 — направление стока (инверсия). */
@@ -24,6 +25,9 @@ function migrateRoofPlanesSlopeSemanticsV1ToV2(roofPlanes: Project["roofPlanes"]
 /** Старые проекты без markPrefix у профилей «стена». */
 function normalizeProfilesImported(profiles: readonly Profile[]): Profile[] {
   return profiles.map((p) => {
+    if (p.category === "roof") {
+      return { ...p, roofAssembly: migrateRoofProfileAssemblyWire(p.roofAssembly) };
+    }
     if (p.category !== "wall") {
       return p;
     }
@@ -58,6 +62,7 @@ export interface ProjectFileV1 {
   readonly slabs?: Project["slabs"];
   readonly floorBeams?: Project["floorBeams"];
   readonly roofPlanes?: Project["roofPlanes"];
+  readonly roofAssemblyCalculations?: Project["roofAssemblyCalculations"];
   /** В старых файлах может отсутствовать — []. */
   readonly wallCalculations?: Project["wallCalculations"];
   /** В старых файлах может отсутствовать — []. */
@@ -129,6 +134,7 @@ export function projectFromWireV1(wire: ProjectFileV1): Project {
     slabs: wire.slabs ?? [],
     floorBeams: wire.floorBeams ?? [],
     roofPlanes,
+    roofAssemblyCalculations: wire.roofAssemblyCalculations ?? [],
     wallCalculations: wire.wallCalculations ?? [],
     wallJoints: wire.wallJoints ?? [],
     openings: wire.openings,

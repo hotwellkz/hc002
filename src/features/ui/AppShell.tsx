@@ -14,6 +14,7 @@ import { AddWallModal } from "@/features/ui/AddWallModal";
 import { AddFloorBeamModal } from "@/features/ui/AddFloorBeamModal";
 import { FloorBeamSplitModal } from "@/features/ui/FloorBeamSplitModal";
 import { WallJointParamsModal } from "@/features/ui/WallJointParamsModal";
+import { RoofCalculationModal } from "@/features/ui/RoofCalculationModal";
 import { WallCalculationModal } from "@/features/ui/WallCalculationModal";
 import { WindowParamsModal } from "@/features/ui/window-modal/WindowParamsModal";
 import { DoorParamsModal } from "@/features/ui/window-modal/DoorParamsModal";
@@ -119,6 +120,7 @@ export function AppShell() {
       <ProjectOriginCoordinateModal />
       <WallAnchorCoordinateModal />
       <WallCalculationModal />
+      <RoofCalculationModal />
       <WindowParamsModal />
       <DoorParamsModal />
       <EditorHotkeysHost />

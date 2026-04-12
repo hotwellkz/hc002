@@ -82,6 +82,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/roofPlaneEntity" }
     },
+    "roofAssemblyCalculations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofAssemblyCalculation" }
+    },
     "wallCalculations": {
       "type": "array",
       "items": { "$ref": "#/$defs/wallCalculationResult" }
@@ -442,8 +446,59 @@
           "type": "array",
           "items": { "$ref": "#/$defs/profileLayer" }
         },
+        "roofAssembly": { "$ref": "#/$defs/roofProfileAssembly" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
+      }
+    },
+    "roofProfileAssembly": {
+      "type": "object",
+      "description": "Узел кровли; допускаются устаревшие ключи для мягкой миграции.",
+      "additionalProperties": true,
+      "properties": {
+        "coveringKind": {
+          "type": "string",
+          "enum": ["metal_tile", "profiled_sheet", "soft", "standing_seam", "other"]
+        },
+        "coveringMaterial": { "type": "string" },
+        "coveringThicknessMm": { "type": "number" },
+        "coveringAppearance3d": { "type": "string", "enum": ["color", "texture"] },
+        "coveringColorHex": { "type": "string" },
+        "coveringTextureId": { "type": ["string", "null"] },
+        "membraneUse": { "type": "boolean" },
+        "membraneThicknessMm": { "type": "number" },
+        "membraneTypeName": { "type": "string" },
+        "battenUse": { "type": "boolean" },
+        "battenMaterial": { "type": "string" },
+        "battenWidthMm": { "type": "number" },
+        "battenHeightMm": { "type": "number" },
+        "battenStepMm": { "type": "number" },
+        "battenLayoutDir": {
+          "type": "string",
+          "enum": ["perpendicular_to_fall", "parallel_to_fall"]
+        },
+        "eaveOverhangMm": { "type": "number" },
+        "sideOverhangMm": { "type": "number" },
+        "soffitReserved": { "type": "boolean" },
+        "coveringMaterialName": { "type": "string" },
+        "membraneEnabled": { "type": "boolean" },
+        "battenEnabled": { "type": "boolean" },
+        "battenMaterialName": { "type": "string" },
+        "soffitPlanned": { "type": "boolean" }
+      }
+    },
+    "roofAssemblyCalculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "createdAt", "updatedAt", "roofPlaneIds"],
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "roofPlaneIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "wallManufacturingSettings": {
@@ -1008,6 +1063,11 @@
         "show3dLayerWindows": { "type": "boolean" },
         "show3dLayerDoors": { "type": "boolean" },
         "show3dGrid": { "type": "boolean" },
+        "show3dRoof": { "type": "boolean" },
+        "show3dRoofMembrane": { "type": "boolean" },
+        "show3dRoofBattens": { "type": "boolean" },
+        "show3dRoofCovering": { "type": "boolean" },
+        "show3dRoofSoffit": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall"] },
         "editor2dPlanScope": {
           "type": "string",

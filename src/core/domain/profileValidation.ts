@@ -1,4 +1,5 @@
 import type { Profile } from "./profile";
+import { resolveRoofProfileAssembly, validateRoofProfileAssemblyForCalculation } from "./roofProfileAssembly";
 
 /** Сообщения об ошибках для UI (без alert). */
 export function validateProfile(p: Profile): string[] {
@@ -8,6 +9,11 @@ export function validateProfile(p: Profile): string[] {
   }
 
   const num = (v: number | undefined) => v != null && Number.isFinite(v);
+
+  if (p.category === "roof") {
+    errors.push(...validateRoofProfileAssemblyForCalculation(resolveRoofProfileAssembly(p)));
+    return errors;
+  }
 
   if (p.compositionMode === "layered") {
     if (p.layers.length < 1) {

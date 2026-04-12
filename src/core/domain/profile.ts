@@ -4,6 +4,7 @@
  */
 
 import type { WallManufacturingSettings } from "./wallManufacturing";
+import type { RoofProfileAssembly } from "./roofProfileAssembly";
 
 export type ProfileCategory =
   | "wall"
@@ -63,6 +64,8 @@ export interface Profile {
    */
   readonly markPrefix?: string;
   readonly layers: readonly ProfileLayer[];
+  /** Параметры узла кровли (категория roof); не ломает остальные категории. */
+  readonly roofAssembly?: RoofProfileAssembly;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

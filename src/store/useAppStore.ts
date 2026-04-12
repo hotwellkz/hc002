@@ -64,6 +64,7 @@ import {
 } from "@/core/domain/openingWindowGeometry";
 import { editor3dPickSupportsContextDelete } from "@/core/domain/editor3dContextMenuPolicy";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
+import { applyRoofCalculationToProject } from "@/core/domain/roofCalculationPipeline";
 import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
 import {
@@ -457,6 +458,7 @@ interface AppState {
   /** Какое поле X/Y сфокусировать при открытии модалки координат (горячие клавиши X/Y). */
   readonly sceneCoordModalDesiredFocus: "x" | "y" | null;
   readonly wallCalculationModalOpen: boolean;
+  readonly roofCalculationModalOpen: boolean;
   readonly dirty: boolean;
   readonly lastError: string | null;
   readonly history: UndoRedoSkeleton;
@@ -560,6 +562,11 @@ interface AppActions {
         | "show3dLayerWindows"
         | "show3dLayerDoors"
         | "show3dGrid"
+        | "show3dRoof"
+        | "show3dRoofMembrane"
+        | "show3dRoofBattens"
+        | "show3dRoofCovering"
+        | "show3dRoofSoffit"
       >
     >,
   ) => void;
@@ -999,6 +1006,9 @@ interface AppActions {
     readonly clearWallFirst: boolean;
     readonly stage3Options?: Partial<WallCalculationStage3Options>;
   }) => void;
+  openRoofCalculationModal: () => void;
+  closeRoofCalculationModal: () => void;
+  applyRoofCalculationModal: () => void;
   /** После серии правок без истории (например drag проёма) — одна запись undo, если модель изменилась. */
   recordUndoIfModelChangedSince: (baseline: Project) => void;
 }
@@ -1059,6 +1069,7 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     floorBeamMoveCopyCoordinateModalOpen: false,
     sceneCoordModalDesiredFocus: null,
     wallCalculationModalOpen: false,
+    roofCalculationModalOpen: false,
     wallCoordinateModalOpen: false,
     floorBeamPlacementCoordinateModalOpen: false,
     wallAnchorCoordinateModalOpen: false,
@@ -1445,6 +1456,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     floorBeamMoveCopyCoordinateModalOpen: false,
     sceneCoordModalDesiredFocus: null,
     wallCalculationModalOpen: false,
+    roofCalculationModalOpen: false,
     dirty: false,
     lastError: null,
     history: initialProjectHistory,
@@ -7848,6 +7860,39 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallCalculationModalOpen: false,
           dirty: true,
           lastError: errors.length ? errors.join(" ") : null,
+        }),
+      );
+    },
+
+    openRoofCalculationModal: () => {
+      const { selectedEntityIds, currentProject } = get();
+      const sel = new Set(selectedEntityIds);
+      if (!currentProject.roofPlanes.some((r) => sel.has(r.id))) {
+        return;
+      }
+      set({ roofCalculationModalOpen: true, lastError: null });
+    },
+
+    closeRoofCalculationModal: () => set({ roofCalculationModalOpen: false }),
+
+    applyRoofCalculationModal: () => {
+      const { selectedEntityIds, currentProject } = get();
+      const sel = new Set(selectedEntityIds);
+      const roofIds = currentProject.roofPlanes.filter((r) => sel.has(r.id)).map((r) => r.id);
+      if (roofIds.length === 0) {
+        set({ roofCalculationModalOpen: false, lastError: "Выберите скаты для расчёта." });
+        return;
+      }
+      const r = applyRoofCalculationToProject({ project: currentProject, roofPlaneIds: roofIds });
+      if (!r.ok) {
+        set({ lastError: r.errors.join(" ") });
+        return;
+      }
+      set((s) =>
+        buildProjectMutationState(s, r.project, {
+          roofCalculationModalOpen: false,
+          dirty: true,
+          lastError: null,
         }),
       );
     },

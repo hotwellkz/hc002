@@ -9,6 +9,7 @@ import type { OpeningFramingPiece } from "./openingFramingPiece";
 import type { ProjectMeta } from "./projectMeta";
 import type { Room } from "./room";
 import type { Roof } from "./roof";
+import type { RoofAssemblyCalculation } from "./roofAssemblyCalculation";
 import type { RoofPlaneEntity } from "./roofPlane";
 import type { Sheet } from "./sheet";
 import type { SlabEntity } from "./slab";
@@ -44,6 +45,8 @@ export interface Project {
   readonly floorBeams: readonly FloorBeamEntity[];
   /** Плоскости скатов крыши на плане (режим «Крыша»). */
   readonly roofPlanes: readonly RoofPlaneEntity[];
+  /** Расчёт кровли для 3D: какие скаты включены в сборку (геометрия строится из roofPlanes). */
+  readonly roofAssemblyCalculations: readonly RoofAssemblyCalculation[];
   /** Результаты производственного расчёта по стенам (SIP-раскладка, пиломатериалы). */
   readonly wallCalculations: readonly WallCalculationResult[];
   /** Узлы соединения стен (углы, примыкания); персистится в snapshot. */

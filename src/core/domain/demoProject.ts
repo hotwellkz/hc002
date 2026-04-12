@@ -118,6 +118,7 @@ export function createDemoProject(): Project {
     slabs: [],
     floorBeams: [],
     roofPlanes: [],
+    roofAssemblyCalculations: [],
     openingFramingPieces: [],
     openings: [
       {
@@ -186,6 +187,11 @@ export function createDemoProject(): Project {
       show3dLayerWindows: true,
       show3dLayerDoors: true,
       show3dGrid: true,
+      show3dRoof: true,
+      show3dRoofMembrane: true,
+      show3dRoofBattens: true,
+      show3dRoofCovering: true,
+      show3dRoofSoffit: false,
     },
   };
 

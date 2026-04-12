@@ -97,6 +97,13 @@ export interface ViewState {
   readonly show3dLayerDoors: boolean;
   /** Видимость фоновой сетки пола в 3D (не влияет на 2D-план). */
   readonly show3dGrid: boolean;
+  /** Вся расчётная крыша в 3D (подслои ниже — только если эта опция включена). */
+  readonly show3dRoof: boolean;
+  readonly show3dRoofMembrane: boolean;
+  readonly show3dRoofBattens: boolean;
+  readonly show3dRoofCovering: boolean;
+  /** Подшивка свесов — заготовка (геометрия позже). */
+  readonly show3dRoofSoffit: boolean;
 }
 
 /** Нормализация viewState из файла (старые проекты без поля). */
@@ -116,6 +123,11 @@ export function normalizeViewState(
     readonly show3dLayerWindows?: boolean;
     readonly show3dLayerDoors?: boolean;
     readonly show3dGrid?: boolean;
+    readonly show3dRoof?: boolean;
+    readonly show3dRoofMembrane?: boolean;
+    readonly show3dRoofBattens?: boolean;
+    readonly show3dRoofCovering?: boolean;
+    readonly show3dRoofSoffit?: boolean;
   },
 ): ViewState {
   const tab = VALID_TABS.includes(input.activeTab as EditorTab) ? input.activeTab : "2d";
@@ -138,5 +150,10 @@ export function normalizeViewState(
     show3dLayerWindows: input.show3dLayerWindows !== false,
     show3dLayerDoors: input.show3dLayerDoors !== false,
     show3dGrid: input.show3dGrid !== false,
+    show3dRoof: input.show3dRoof !== false,
+    show3dRoofMembrane: input.show3dRoofMembrane !== false,
+    show3dRoofBattens: input.show3dRoofBattens !== false,
+    show3dRoofCovering: input.show3dRoofCovering !== false,
+    show3dRoofSoffit: input.show3dRoofSoffit === true,
   };
 }

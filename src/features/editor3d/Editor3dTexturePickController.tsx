@@ -32,6 +32,7 @@ function editorHotkeySnapshot() {
     slabEditModal: s.slabEditModal,
     wallJointParamsModalOpen: s.wallJointParamsModalOpen,
     wallCalculationModalOpen: s.wallCalculationModalOpen,
+    roofCalculationModalOpen: s.roofCalculationModalOpen,
     wallCoordinateModalOpen: s.wallCoordinateModalOpen,
     floorBeamPlacementCoordinateModalOpen: s.floorBeamPlacementCoordinateModalOpen,
     slabCoordinateModalOpen: s.slabCoordinateModalOpen,

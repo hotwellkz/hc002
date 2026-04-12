@@ -28,6 +28,7 @@ import { ProjectSipSeamLines } from "./ProjectSipSeamLines";
 import { ProjectSlabs } from "./ProjectSlabs";
 import { ProjectWalls } from "./ProjectWalls";
 import { ProjectFloorBeams } from "./ProjectFloorBeams";
+import { ProjectRoofAssembly } from "./ProjectRoofAssembly";
 import { useEditor3dThemeColors } from "./useEditor3dThemeColors";
 
 type CalcFocus = { readonly wallId: string; readonly reactKey: string };
@@ -80,6 +81,7 @@ function editorOverlaySnapshot() {
     slabEditModal: s.slabEditModal,
     wallJointParamsModalOpen: s.wallJointParamsModalOpen,
     wallCalculationModalOpen: s.wallCalculationModalOpen,
+    roofCalculationModalOpen: s.roofCalculationModalOpen,
     wallCoordinateModalOpen: s.wallCoordinateModalOpen,
     floorBeamPlacementCoordinateModalOpen: s.floorBeamPlacementCoordinateModalOpen,
     slabCoordinateModalOpen: s.slabCoordinateModalOpen,
@@ -189,6 +191,7 @@ function SceneFromProject({
         texturePickHover={texturePickHover}
         texturePickLocked={texturePickLocked}
       />
+      <ProjectRoofAssembly project={project} />
     </>
   );
 }

@@ -55,6 +55,7 @@ export function createEmptyProject(): Project {
     slabs: [],
     floorBeams: [],
     roofPlanes: [],
+    roofAssemblyCalculations: [],
     wallCalculations: [],
     wallJoints: [],
     openings: [],
@@ -98,6 +99,11 @@ export function createEmptyProject(): Project {
       show3dLayerWindows: true,
       show3dLayerDoors: true,
       show3dGrid: true,
+      show3dRoof: true,
+      show3dRoofMembrane: true,
+      show3dRoofBattens: true,
+      show3dRoofCovering: true,
+      show3dRoofSoffit: false,
     },
   };
 }
