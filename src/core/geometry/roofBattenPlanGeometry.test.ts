@@ -76,9 +76,22 @@ describe("buildRoofBattenPlanSegmentsMm", () => {
     const segs = buildRoofBattenPlanSegmentsMm(rp, 0, asm, 0);
     expect(segs.length).toBeGreaterThan(2);
     const midY = segs.map((s) => (s.y1 + s.y2) * 0.5).sort((a, b) => a - b);
+    const gaps: number[] = [];
     for (let i = 1; i < midY.length; i++) {
-      expect(midY[i]! - midY[i - 1]!).toBeCloseTo(350, 0);
+      gaps.push(midY[i]! - midY[i - 1]!);
     }
+    /** Один интервал может быть короче шага — остаток до коньковой оси; остальные ≈ battenStepMm. */
+    let nonFull = 0;
+    for (const gap of gaps) {
+      expect(gap).toBeGreaterThan(0);
+      if (Math.abs(gap - 350) > 2) {
+        expect(gap).toBeLessThan(350);
+        nonFull += 1;
+      } else {
+        expect(gap).toBeCloseTo(350, 0);
+      }
+    }
+    expect(nonFull).toBeLessThanOrEqual(1);
   });
 
   it("parallel_to_fall меняет ориентацию линий относительно perpendicular_to_fall", () => {
@@ -124,6 +137,26 @@ describe("buildRoofBattenPlanSegmentsMm", () => {
       expect(Math.abs(ez.dot(d))).toBeGreaterThan(0.999);
       expect(ey.dot(n3)).toBeGreaterThan(0.999);
     }
+  });
+
+  it("перпендикулярно стоку: первая ось у карниза (низ), у конька всегда есть опорная ось при остатке < шага", () => {
+    const rp = testRoofPlane();
+    const asm = {
+      ...DEFAULT_ROOF_PROFILE_ASSEMBLY,
+      battenUse: true,
+      battenStepMm: 350,
+      battenWidthMm: 100,
+      battenLayoutDir: "perpendicular_to_fall" as const,
+    };
+    const segs = buildRoofBattenPlanSegmentsMm(rp, 0, asm, 0);
+    expect(segs.length).toBeGreaterThan(1);
+    const midY = segs.map((s) => (s.y1 + s.y2) * 0.5);
+    const maxMid = Math.max(...midY);
+    const minMid = Math.min(...midY);
+    /** Сток (0,1): карниз — максимальный Y плана у прямоугольника теста. */
+    expect(maxMid).toBeGreaterThan(2900);
+    /** Конёк — минимальный Y; доска у конька не отбрасывается из‑за малого остатка. */
+    expect(minMid).toBeLessThan(200);
   });
 
   it("при обратном обходе контура план-отрезки остаются валидными (исправление координаты s после отражения)", () => {

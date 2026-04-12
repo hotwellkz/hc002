@@ -320,9 +320,73 @@ function planPointFromStMm(
 }
 
 /**
+ * Оси досок вдоль координаты `s` (полосы x = const в polySt): старт у карниза (низ по стоку),
+ * шаг в сторону конька, отдельная финальная ось у конька при остатке меньше шага.
+ */
+function collectBattenAxisCoordsAlongDrainMm(
+  cStart: number,
+  cRidgeTarget: number,
+  step: number,
+): number[] {
+  const out: number[] = [];
+  if (step < 1) {
+    return out;
+  }
+  if (Math.abs(cRidgeTarget - cStart) < 1e-9) {
+    out.push(cStart);
+    return out;
+  }
+  const delta = Math.sign(cRidgeTarget - cStart) * step;
+  if (Math.abs(delta) < 1e-18) {
+    return out;
+  }
+  if ((delta > 0 && cStart > cRidgeTarget + 1e-9) || (delta < 0 && cStart < cRidgeTarget - 1e-9)) {
+    out.push(cRidgeTarget);
+    return out;
+  }
+  let c = cStart;
+  for (;;) {
+    out.push(c);
+    if (Math.abs(c - cRidgeTarget) < 1e-6) {
+      break;
+    }
+    const next = c + delta;
+    if ((delta > 0 && next > cRidgeTarget + 1e-9) || (delta < 0 && next < cRidgeTarget - 1e-9)) {
+      const last = out[out.length - 1]!;
+      if (Math.abs(last - cRidgeTarget) > 1e-3) {
+        out.push(cRidgeTarget);
+      }
+      break;
+    }
+    c = next;
+  }
+  return out;
+}
+
+/** Шаг вдоль ширины ската (ось ⟂ стоку): нижняя граница + шаг, затем при необходимости верхняя опорная ось. */
+function collectBattenAxisCoordsSpanMm(lo: number, hi: number, step: number): number[] {
+  const out: number[] = [];
+  if (lo > hi + 1e-9) {
+    return out;
+  }
+  for (let c = lo; c <= hi + 1e-9; c += step) {
+    out.push(c);
+  }
+  const last = out[out.length - 1];
+  if (last !== undefined && hi - last > 1e-3) {
+    out.push(hi);
+  }
+  return out;
+}
+
+/**
  * Обрешётка: сетка в координатах **плана** (мм на чертеже).
  * Шаг `battenStepMm` — расстояние между осями досок по горизонтали перпендикулярно длинной стороне доски на плане
  * (center-to-center); совпадает с измерением линейкой на 2D и с тем же подъёмом точек на наклонную плоскость в 3D.
+ *
+ * При раскладке **перпендикулярно стоку** (ось шага = направление стока): оси считаются снизу вверх по скату —
+ * первая ось у карниза (нижняя рабочая граница), далее с фиксированным шагом к коньку; если после шагов до коньковой
+ * оси остаётся остаток меньше шага, добавляется отдельная коньковая ось (без растягивания шага по скату).
  */
 function buildRoofBattenStripPackMm(
   rp: RoofPlaneEntity,
@@ -378,10 +442,49 @@ function buildRoofBattenStripPackMm(
   /** От края контура до первой/последней оси: половина ширины доски (от грани до оси). */
   const inset = Math.max(1, asm.battenWidthMm * 0.5);
 
+  /** Шаг перпендикулярно доске совпадает с направлением стока — раскладка строго с карниза к коньку. */
+  const wAlignsDrain = Math.abs(wSpace.x * fall.x + wSpace.y * fall.y) > 1 - 1e-6;
+
+  let axisCoords: number[];
+  if (wAlignsDrain) {
+    let drainMax = Number.NEGATIVE_INFINITY;
+    let drainMin = Number.POSITIVE_INFINITY;
+    for (const p of polyPlan) {
+      const d = p.x * fall.x + p.y * fall.y;
+      drainMax = Math.max(drainMax, d);
+      drainMin = Math.min(drainMin, d);
+    }
+    let sEave = Number.NEGATIVE_INFINITY;
+    let sRidge = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < polyPlan.length; i++) {
+      const p = polyPlan[i]!;
+      const d = p.x * fall.x + p.y * fall.y;
+      const sx = polySt[i]!.x;
+      if (Math.abs(d - drainMax) < 1e-3) {
+        sEave = Math.max(sEave, sx);
+      }
+      if (Math.abs(d - drainMin) < 1e-3) {
+        sRidge = Math.min(sRidge, sx);
+      }
+    }
+    if (!Number.isFinite(sEave)) {
+      sEave = maxS;
+    }
+    if (!Number.isFinite(sRidge)) {
+      sRidge = minS;
+    }
+    const stepSign = Math.sign(sRidge - sEave) || 1;
+    const cStart = sEave + stepSign * inset;
+    const cRidgeTarget = sRidge - stepSign * inset;
+    axisCoords = collectBattenAxisCoordsAlongDrainMm(cStart, cRidgeTarget, step);
+  } else {
+    axisCoords = collectBattenAxisCoordsSpanMm(minS + inset, maxS - inset, step);
+  }
+
   const strips: { readonly a: RoofThreeMm; readonly b: RoofThreeMm }[] = [];
   const nLine = new Vector2(1, 0);
 
-  for (let c = minS + inset; c <= maxS - inset + 1e-6; c += step) {
+  for (const c of axisCoords) {
     const seg = convexPolygonLineClipSegment2D(polySt, nLine, c);
     if (!seg) {
       continue;
