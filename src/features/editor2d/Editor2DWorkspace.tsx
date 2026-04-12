@@ -180,6 +180,7 @@ import {
   tryMoveRoofQuadEdgeMm,
   type RoofQuad4,
 } from "@/core/domain/roofPlaneQuadEditGeometry";
+import { drawRoofBattensPlan2d } from "./drawRoofBattensPlan2d";
 import { drawRoofPlanePlacementPreview2d, drawRoofPlanes2d } from "./drawRoofPlanes2d";
 import { appendRoofPlaneLabels2d } from "./roofPlaneLabels2dPixi";
 import { computeRoofLabelLayouts2d } from "./roofPlaneLabelLayout2d";
@@ -1557,6 +1558,8 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
     slabsG.eventMode = "none";
     const slabPreviewG = new Graphics();
     slabPreviewG.eventMode = "none";
+    const roofBattens2dG = new Graphics();
+    roofBattens2dG.eventMode = "none";
     const roofPlanesG = new Graphics();
     roofPlanesG.eventMode = "none";
     const roofPlanePreviewG = new Graphics();
@@ -2359,6 +2362,26 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         style: { fontSizePx: 11, lineHeightFactor: 1.28 },
       });
       const roofLabelLayoutByPlaneId = new Map(roofLabelLayouts.map((l) => [l.planeId, l]));
+
+      const calculatedRoofPlaneIds = new Set<string>();
+      for (const c of currentProject.roofAssemblyCalculations) {
+        for (const id of c.roofPlaneIds) {
+          calculatedRoofPlaneIds.add(id);
+        }
+      }
+
+      roofBattens2dG.clear();
+      let firstBattenDraw = true;
+      for (const lid of contextIds) {
+        const ctxRoof = narrowProjectToLayerSet(currentProject, new Set([lid]));
+        drawRoofBattensPlan2d(roofBattens2dG, currentProject, ctxRoof.roofPlanes, calculatedRoofPlaneIds, t, {
+          clear: firstBattenDraw,
+        });
+        firstBattenDraw = false;
+      }
+      drawRoofBattensPlan2d(roofBattens2dG, currentProject, layerView.roofPlanes, calculatedRoofPlaneIds, t, {
+        clear: firstBattenDraw,
+      });
 
       roofPlanesG.clear();
       let firstRoofDraw = true;
@@ -3680,6 +3703,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       worldRoot.addChild(foundationPilesG);
       worldRoot.addChild(slabsG);
       worldRoot.addChild(slabPreviewG);
+      worldRoot.addChild(roofBattens2dG);
       worldRoot.addChild(roofPlanesG);
       worldRoot.addChild(roofPlanePreviewG);
       worldRoot.addChild(wallsG);

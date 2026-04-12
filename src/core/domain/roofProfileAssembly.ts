@@ -31,8 +31,14 @@ export interface RoofProfileAssembly {
 
   readonly battenUse: boolean;
   readonly battenMaterial: string;
+  /** Ширина доски в плане (поперёк оси доски), мм. */
   readonly battenWidthMm: number;
   readonly battenHeightMm: number;
+  /**
+   * Расстояние между осями соседних досок (center-to-center), мм.
+   * На 2D-плане шаг откладывается по горизонтали чертежа перпендикулярно длинной стороне доски (как линейка на плане).
+   * Просвет между гранями соседних досок ≈ battenStepMm − battenWidthMm (при параллельных осях).
+   */
   readonly battenStepMm: number;
   readonly battenLayoutDir: RoofBattenLayoutDir;
 

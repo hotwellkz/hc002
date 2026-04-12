@@ -3,11 +3,15 @@ import type { Project } from "./project";
 import { getProfileById } from "./profileOps";
 import { countRoofPlaneConnectivityComponents } from "./roofCalculationConnectivity";
 import type { RoofAssemblyCalculation } from "./roofAssemblyCalculation";
+import { updateRoofPlaneEntityAfterContourEdit } from "./roofContourJoin";
+import { applyRoofProfileOverhangToPlanPolygonMm } from "./roofOverhangGeometry";
 import type { RoofPlaneEntity } from "./roofPlane";
+import { roofPlaneCalculationBasePolygonMm } from "./roofPlane";
 import {
   resolveRoofProfileAssembly,
   validateRoofProfileAssemblyForCalculation,
 } from "./roofProfileAssembly";
+import type { RoofProfileAssembly } from "./roofProfileAssembly";
 import { touchProjectMeta } from "./projectFactory";
 
 export interface ApplyRoofCalculationInput {
@@ -19,6 +23,42 @@ export interface ApplyRoofCalculationInput {
 export type ApplyRoofCalculationResult =
   | { readonly ok: true; readonly project: Project }
   | { readonly ok: false; readonly errors: readonly string[] };
+
+function roofPlaneWithProfileOverhangMm(rp: RoofPlaneEntity, asm: RoofProfileAssembly): RoofPlaneEntity | null {
+  const base = roofPlaneCalculationBasePolygonMm(rp);
+  const rpWithFrozenBase: RoofPlaneEntity = { ...rp, planContourBaseMm: base };
+  const expanded = applyRoofProfileOverhangToPlanPolygonMm(
+    base,
+    rp.slopeDirection,
+    asm.eaveOverhangMm,
+    asm.sideOverhangMm,
+  );
+  return updateRoofPlaneEntityAfterContourEdit(rpWithFrozenBase, expanded, { updateBaseContour: false });
+}
+
+/** Пересобрать расчётный контур (свесы) по профилю для ската, уже попавшего в расчёт крыши. */
+export function refreshCalculatedRoofPlaneOverhangMm(project: Project, rp: RoofPlaneEntity): RoofPlaneEntity {
+  const inCalc = project.roofAssemblyCalculations.some((c) => c.roofPlaneIds.includes(rp.id));
+  if (!inCalc) {
+    return rp;
+  }
+  const profile = getProfileById(project, rp.profileId);
+  if (!profile || profile.category !== "roof") {
+    return rp;
+  }
+  const asm = resolveRoofProfileAssembly(profile);
+  return roofPlaneWithProfileOverhangMm(rp, asm) ?? rp;
+}
+
+/** Обновить свесы у всех скатов, участвующих в любом расчёте крыши (после правки базового контура). */
+export function refreshAllCalculatedRoofPlaneOverhangsInProject(project: Project): Project {
+  const ids = new Set(project.roofAssemblyCalculations.flatMap((c) => [...c.roofPlaneIds]));
+  if (ids.size === 0) {
+    return project;
+  }
+  const nextPlanes = project.roofPlanes.map((p) => (ids.has(p.id) ? refreshCalculatedRoofPlaneOverhangMm(project, p) : p));
+  return { ...project, roofPlanes: nextPlanes };
+}
 
 /**
  * Добавляет запись расчёта кровли по выбранным скатам: удаляет старые записи, пересекающиеся с выбором, затем добавляет новую.
@@ -80,8 +120,13 @@ export function applyRoofCalculationToProject(input: ApplyRoofCalculationInput):
     roofPlaneIds: ids,
   };
 
+  const roofPlanes = project.roofPlanes.map((rp) =>
+    sel.has(rp.id) ? roofPlaneWithProfileOverhangMm(rp, asm) ?? rp : rp,
+  );
+
   const next: Project = {
     ...project,
+    roofPlanes,
     roofAssemblyCalculations: [...kept, entry],
   };
   return { ok: true, project: touchProjectMeta(next) };

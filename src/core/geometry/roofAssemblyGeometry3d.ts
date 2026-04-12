@@ -1,5 +1,6 @@
 import { Matrix4, Quaternion, ShapeUtils, Vector2, Vector3 } from "three";
 
+import { computeAllRoofPlanesZAdjustMmByPlaneIdInProject } from "@/core/domain/roofGroupHeightAdjust";
 import { computeLayerVerticalStack } from "@/core/domain/layerVerticalStack";
 import type { Project } from "@/core/domain/project";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
@@ -48,12 +49,6 @@ function cross3(a: RoofThreeMm, b: RoofThreeMm): RoofThreeMm {
     a[2] * b[0] - a[0] * b[2],
     a[0] * b[1] - a[1] * b[0],
   ];
-}
-
-/** Проекция вектора на плоскость с нормалью n (единичной). */
-function projectOnPlaneVec(v: RoofThreeMm, n: RoofThreeMm): RoofThreeMm {
-  const k = dot3(v, n);
-  return [v[0] - n[0] * k, v[1] - n[1] * k, v[2] - n[2] * k];
 }
 
 /** План (мм) → координаты как у стен: X, вертикаль Y, Z = −планY. */
@@ -186,55 +181,229 @@ export interface RoofBattenBoxSpecMm {
   readonly quaternion: readonly [number, number, number, number];
 }
 
-function intersectLineWithPolygon2D(
+/** Отрезок оси доски в координатах плана (мм): ортогональная проекция линии на плоскость XY. */
+export interface RoofBattenPlanSegmentMm {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+}
+
+/**
+ * Отрезок пересечения выпуклого многоугольника с прямой n·x = c (n — единичная), в 2D.
+ * Вершины poly в CCW; для выпуклого и секущей линии внутри — ровно один отрезок.
+ */
+function convexPolygonLineClipSegment2D(
   poly: readonly Vector2[],
   n: Vector2,
   c: number,
 ): { readonly a: Vector2; readonly b: Vector2 } | null {
-  const pts: Vector2[] = [];
-  const nn = n.length();
-  if (nn < 1e-12) {
+  const n0 = n.clone();
+  if (n0.lengthSq() < 1e-18) {
     return null;
   }
-  const n0 = n.clone().multiplyScalar(1 / nn);
+  n0.normalize();
+  const tang = new Vector2(-n0.y, n0.x);
+  const eps = 1e-5;
+  const hits: { readonly t: number; readonly p: Vector2 }[] = [];
   for (let i = 0; i < poly.length; i++) {
     const p0 = poly[i]!;
     const p1 = poly[(i + 1) % poly.length]!;
     const d0 = n0.dot(p0) - c;
     const d1 = n0.dot(p1) - c;
-    if (Math.abs(d0) < 1e-6) {
-      pts.push(p0.clone());
+    if (Math.abs(d0) < eps) {
+      hits.push({ t: tang.dot(p0), p: p0.clone() });
     }
-    if (d0 * d1 < -1e-12) {
-      const t = d0 / (d0 - d1);
-      pts.push(new Vector2(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t));
+    if (Math.abs(d1) < eps && Math.abs(d0) >= eps) {
+      hits.push({ t: tang.dot(p1), p: p1.clone() });
+    }
+    if (d0 * d1 < -eps) {
+      const u = d0 / (d0 - d1);
+      const px = p0.x + (p1.x - p0.x) * u;
+      const py = p0.y + (p1.y - p0.y) * u;
+      const p = new Vector2(px, py);
+      hits.push({ t: tang.dot(p), p });
     }
   }
-  if (pts.length < 2) {
+  if (hits.length < 2) {
     return null;
   }
-  const axis = new Vector2(-n0.y, n0.x);
-  pts.sort((pa, pb) => axis.dot(pa) - axis.dot(pb));
-  const a = pts[0]!;
-  const b = pts[pts.length - 1]!;
-  if (a.distanceToSquared(b) < 1) {
+  hits.sort((ha, hb) => ha.t - hb.t);
+  const uniq: Vector2[] = [];
+  for (const h of hits) {
+    const last = uniq[uniq.length - 1];
+    if (!last || last.distanceToSquared(h.p) > eps * eps) {
+      uniq.push(h.p);
+    }
+  }
+  if (uniq.length < 2) {
+    return null;
+  }
+  const a = uniq[0]!;
+  const b = uniq[uniq.length - 1]!;
+  if (a.distanceToSquared(b) < 4) {
     return null;
   }
   return { a, b };
 }
 
-function orthonormalPlaneBasisFromVerts(verts: RoofThreeMm[], n: RoofThreeMm): { readonly o: RoofThreeMm; readonly e1: RoofThreeMm; readonly e2: RoofThreeMm } {
-  const o = verts[0]!;
-  const edge = sub3(verts[1]!, o);
-  let e1 = projectOnPlaneVec(edge, n);
-  const len1 = Math.hypot(e1[0], e1[1], e1[2]);
-  if (len1 < 1e-6) {
-    e1 = projectOnPlaneVec([1, 0, 0], n);
+interface RoofBattenStripPack {
+  readonly strips: readonly { readonly a: RoofThreeMm; readonly b: RoofThreeMm }[];
+  readonly outwardNormal: RoofThreeMm;
+}
+
+function unitPlan2(x: number, y: number): { readonly x: number; readonly y: number } {
+  const l = Math.hypot(x, y);
+  if (l < 1e-12) {
+    return { x: 1, y: 0 };
   }
-  e1 = unit3(e1[0], e1[1], e1[2]);
-  const e2raw = cross3(n, e1);
-  const e2 = unit3(e2raw[0], e2raw[1], e2raw[2]);
-  return { o, e1, e2 };
+  return { x: x / l, y: y / l };
+}
+
+/** Высота точки (мм вверх) на плоскости ската над планом — та же формула, что в `roofSlopeVerticesThreeMm`. */
+function roofZUpAtPlanPointMm(
+  rp: RoofPlaneEntity,
+  layerBaseMm: number,
+  zAdjustMm: number,
+  px: number,
+  py: number,
+): number {
+  const poly = roofPlanePolygonMm(rp);
+  const ux = rp.slopeDirection.x;
+  const uy = rp.slopeDirection.y;
+  const ulen = Math.hypot(ux, uy);
+  const uxn = ulen > 1e-9 ? ux / ulen : 1;
+  const uyn = ulen > 1e-9 ? uy / ulen : 0;
+  let maxDot = Number.NEGATIVE_INFINITY;
+  for (const p of poly) {
+    maxDot = Math.max(maxDot, p.x * uxn + p.y * uyn);
+  }
+  const d = px * uxn + py * uyn;
+  const tanP = Math.tan((rp.angleDeg * Math.PI) / 180);
+  return layerBaseMm + rp.levelMm + zAdjustMm + (maxDot - d) * tanP;
+}
+
+function planPointFromStMm(
+  s: number,
+  t: number,
+  w: { readonly x: number; readonly y: number },
+  uRun: { readonly x: number; readonly y: number },
+): { readonly x: number; readonly y: number } {
+  return { x: s * w.x + t * uRun.x, y: s * w.y + t * uRun.y };
+}
+
+/**
+ * Обрешётка: сетка в координатах **плана** (мм на чертеже).
+ * Шаг `battenStepMm` — расстояние между осями досок по горизонтали перпендикулярно длинной стороне доски на плане
+ * (center-to-center); совпадает с измерением линейкой на 2D и с тем же подъёмом точек на наклонную плоскость в 3D.
+ */
+function buildRoofBattenStripPackMm(
+  rp: RoofPlaneEntity,
+  layerBaseMm: number,
+  asm: RoofProfileAssembly,
+  zAdjustMm: number,
+): RoofBattenStripPack | null {
+  if (!asm.battenUse) {
+    return null;
+  }
+  const { outwardNormal: n } = roofSlopeVerticesThreeMm(rp, layerBaseMm, zAdjustMm);
+  const polyPlan = roofPlanePolygonMm(rp);
+  if (polyPlan.length < 3) {
+    return null;
+  }
+
+  const fall = unitPlan2(rp.slopeDirection.x, rp.slopeDirection.y);
+  /** Длинная сторона доски в плане; шаг откладывается вдоль `wSpace` (перпендикуляр к доске на плане). */
+  let uRun: { readonly x: number; readonly y: number };
+  let wSpace: { readonly x: number; readonly y: number };
+  if (asm.battenLayoutDir === "parallel_to_fall") {
+    uRun = fall;
+    wSpace = { x: -fall.y, y: fall.x };
+  } else {
+    uRun = { x: -fall.y, y: fall.x };
+    wSpace = fall;
+  }
+
+  const polySt: Vector2[] = polyPlan.map(
+    (p) => new Vector2(p.x * wSpace.x + p.y * wSpace.y, p.x * uRun.x + p.y * uRun.y),
+  );
+  let area2 = 0;
+  for (let i = 0; i < polySt.length; i++) {
+    const p0 = polySt[i]!;
+    const p1 = polySt[(i + 1) % polySt.length]!;
+    area2 += p0.x * p1.y - p1.x * p0.y;
+  }
+  if (area2 < 0) {
+    for (const p of polySt) {
+      p.x = -p.x;
+    }
+  }
+
+  let minS = Number.POSITIVE_INFINITY;
+  let maxS = Number.NEGATIVE_INFINITY;
+  for (const p of polySt) {
+    minS = Math.min(minS, p.x);
+    maxS = Math.max(maxS, p.x);
+  }
+  const step = Math.max(1, asm.battenStepMm);
+  /** От края контура до первой/последней оси: половина ширины доски (от грани до оси). */
+  const inset = Math.max(1, asm.battenWidthMm * 0.5);
+
+  const strips: { readonly a: RoofThreeMm; readonly b: RoofThreeMm }[] = [];
+  const nLine = new Vector2(1, 0);
+
+  for (let c = minS + inset; c <= maxS - inset + 1e-6; c += step) {
+    const seg = convexPolygonLineClipSegment2D(polySt, nLine, c);
+    if (!seg) {
+      continue;
+    }
+    const pa = planPointFromStMm(seg.a.x, seg.a.y, wSpace, uRun);
+    const pb = planPointFromStMm(seg.b.x, seg.b.y, wSpace, uRun);
+    const zA = roofZUpAtPlanPointMm(rp, layerBaseMm, zAdjustMm, pa.x, pa.y);
+    const zB = roofZUpAtPlanPointMm(rp, layerBaseMm, zAdjustMm, pb.x, pb.y);
+    const pA = roofPlanVertexToThreeMm(pa.x, pa.y, zA);
+    const pB = roofPlanVertexToThreeMm(pb.x, pb.y, zB);
+    const len = Math.hypot(pB[0] - pA[0], pB[1] - pA[1], pB[2] - pA[2]);
+    if (len < 10) {
+      continue;
+    }
+    strips.push({ a: pA, b: pB });
+  }
+  return { strips, outwardNormal: n };
+}
+
+/**
+ * Линии обрешётки на поверхности ската в мм-Three (без смещения вдоль нормали к доскам).
+ * Та же сетка, что и для 3D-боксов; для плана — `buildRoofBattenPlanSegmentsMm`.
+ */
+export function buildRoofBattenStripSegmentsOnSlopeThreeMm(
+  rp: RoofPlaneEntity,
+  layerBaseMm: number,
+  asm: RoofProfileAssembly,
+  zAdjustMm = 0,
+): readonly { readonly a: RoofThreeMm; readonly b: RoofThreeMm }[] {
+  return buildRoofBattenStripPackMm(rp, layerBaseMm, asm, zAdjustMm)?.strips ?? [];
+}
+
+/**
+ * Обрешётка в 2D-плане (мм): ортогональная проекция тех же отрезков, что и в 3D (`roofPlanVertexToThreeMm`: py = −Z_three).
+ */
+export function buildRoofBattenPlanSegmentsMm(
+  rp: RoofPlaneEntity,
+  layerBaseMm: number,
+  asm: RoofProfileAssembly,
+  zAdjustMm = 0,
+): readonly RoofBattenPlanSegmentMm[] {
+  const pack = buildRoofBattenStripPackMm(rp, layerBaseMm, asm, zAdjustMm);
+  if (!pack) {
+    return [];
+  }
+  return pack.strips.map(({ a, b }) => ({
+    x1: a[0],
+    y1: -a[2],
+    x2: b[0],
+    y2: -b[2],
+  }));
 }
 
 /**
@@ -246,63 +415,15 @@ export function buildRoofBattenBoxSpecsMm(
   asm: RoofProfileAssembly,
   zAdjustMm = 0,
 ): readonly RoofBattenBoxSpecMm[] {
-  if (!asm.battenUse) {
+  const pack = buildRoofBattenStripPackMm(rp, layerBaseMm, asm, zAdjustMm);
+  if (!pack) {
     return [];
   }
-  const { verts, outwardNormal: n } = roofSlopeVerticesThreeMm(rp, layerBaseMm, zAdjustMm);
-  if (verts.length < 3) {
-    return [];
-  }
-  const { o, e1, e2 } = orthonormalPlaneBasisFromVerts(verts, n);
-
-  const ux = rp.slopeDirection.x;
-  const uy = rp.slopeDirection.y;
-  const ulen = Math.hypot(ux, uy);
-  const uxn = ulen > 1e-9 ? ux / ulen : 1;
-  const uyn = ulen > 1e-9 ? uy / ulen : 0;
-  const tEaveHoriz: RoofThreeMm = [-uyn, 0, -uxn];
-  const tDownHoriz: RoofThreeMm = [uxn, 0, -uyn];
-
-  const longHoriz = asm.battenLayoutDir === "parallel_to_fall" ? tDownHoriz : tEaveHoriz;
-  let long3 = projectOnPlaneVec(longHoriz, n);
-  const ll = Math.hypot(long3[0], long3[1], long3[2]);
-  if (ll < 1e-9) {
-    long3 = e1;
-  } else {
-    long3 = unit3(long3[0] / ll, long3[1] / ll, long3[2] / ll);
-  }
-
-  const spacing3raw = cross3(long3, n);
-  const spacing3 = unit3(spacing3raw[0], spacing3raw[1], spacing3raw[2]);
-
-  const poly2: Vector2[] = verts.map((p) => {
-    const d = sub3(p, o);
-    return new Vector2(dot3(d, e1), dot3(d, e2));
-  });
-  const n2 = new Vector2(dot3(spacing3, e1), dot3(spacing3, e2));
-
-  let minC = Number.POSITIVE_INFINITY;
-  let maxC = Number.NEGATIVE_INFINITY;
-  for (const p of poly2) {
-    const c = n2.dot(p);
-    minC = Math.min(minC, c);
-    maxC = Math.max(maxC, c);
-  }
-  const span = maxC - minC;
-  const step = asm.battenStepMm;
-  const inset = Math.min(step * 0.5, Math.max(8, span * 0.015));
-
-  const out: RoofBattenBoxSpecMm[] = [];
+  const { strips, outwardNormal: n } = pack;
   const memThk = asm.membraneUse ? asm.membraneThicknessMm : 0;
   const battenCenterAlongN = memThk + asm.battenHeightMm * 0.5;
-
-  for (let c = minC + inset; c <= maxC - inset + 1e-6; c += step) {
-    const seg = intersectLineWithPolygon2D(poly2, n2, c);
-    if (!seg) {
-      continue;
-    }
-    const pA = add3(o, add3(scale3(e1, seg.a.x), scale3(e2, seg.a.y)));
-    const pB = add3(o, add3(scale3(e1, seg.b.x), scale3(e2, seg.b.y)));
+  const out: RoofBattenBoxSpecMm[] = [];
+  for (const { a: pA, b: pB } of strips) {
     const mid = scale3(add3(pA, pB), 0.5);
     const dir = sub3(pB, pA);
     const len = Math.hypot(dir[0], dir[1], dir[2]);
@@ -339,6 +460,16 @@ export function battenBoxQuaternionWorld(longAxis: RoofThreeMm, outwardNormal: R
 export function roofLayerBaseMmForPlane(project: Project, layerId: string): number {
   const map = computeLayerVerticalStack(project);
   return map.get(layerId)?.computedBaseMm ?? 0;
+}
+
+/**
+ * Поправка Z по стыкам для всех скатов: связные в плане группы (общая кромка / близкие контуры),
+ * не только скаты из одной записи «Рассчитать крышу».
+ */
+export function roofAssemblyZAdjustMmByPlaneIdForProject(project: Project): ReadonlyMap<string, number> {
+  return computeAllRoofPlanesZAdjustMmByPlaneIdInProject(project, (layerId) =>
+    roofLayerBaseMmForPlane(project, layerId),
+  );
 }
 
 export function roofMeshToWorldMeters(mesh: RoofSlopeSurfaceMeshMm): { positions: Float32Array; indices: Uint32Array } {

@@ -4,12 +4,12 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Quaternion } from "three";
 import { getProfileById } from "@/core/domain/profileOps";
 import type { Project } from "@/core/domain/project";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
-import { computeRoofGroupZAdjustMmByPlaneId } from "@/core/domain/roofGroupHeightAdjust";
 import { resolveRoofProfileAssembly } from "@/core/domain/roofProfileAssembly";
 import {
   buildRoofBattenBoxSpecsMm,
   buildRoofSlopeSurfaceMeshMm,
   offsetRoofMeshMm,
+  roofAssemblyZAdjustMmByPlaneIdForProject,
   roofBattenCenterWorldM,
   roofLayerBaseMmForPlane,
   roofMeshToWorldMeters,
@@ -172,26 +172,7 @@ export function ProjectRoofAssembly({ project }: ProjectRoofAssemblyProps) {
     [project.roofPlanes, calculatedIds],
   );
 
-  const zAdjustByPlaneId = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const c of project.roofAssemblyCalculations) {
-      const group: RoofPlaneEntity[] = [];
-      for (const id of c.roofPlaneIds) {
-        const rp = project.roofPlanes.find((p) => p.id === id);
-        if (rp) {
-          group.push(rp);
-        }
-      }
-      if (group.length === 0) {
-        continue;
-      }
-      const adj = computeRoofGroupZAdjustMmByPlaneId(group, (layerId) => roofLayerBaseMmForPlane(project, layerId));
-      for (const [id, z] of adj) {
-        m.set(id, z);
-      }
-    }
-    return m;
-  }, [project]);
+  const zAdjustByPlaneId = useMemo(() => roofAssemblyZAdjustMmByPlaneIdForProject(project), [project]);
 
   if (planes.length === 0) {
     return null;

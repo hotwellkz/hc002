@@ -30,8 +30,14 @@ export interface RoofPlaneEntity {
   /**
    * Явный контур ската в плане (мм), ≥3 вершины по периметру против часовой стрелки.
    * Если не задан — контур строится как прямоугольник из p1, p2, depthMm и slopeDirection.
+   * После «Рассчитать» сюда попадает **расчётный** контур (база + свесы профиля).
    */
   readonly planContourMm?: readonly Point2D[] | null;
+  /**
+   * Базовый контур без свесов профиля (то, что задал пользователь: стены, соединения, сдвиги).
+   * Свесы при расчёте накладываются поверх него идемпотентно.
+   */
+  readonly planContourBaseMm?: readonly Point2D[] | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -90,6 +96,34 @@ export function roofPlaneExtrusionDirectionMm(rp: RoofPlaneEntity): Point2D {
   return { x: -rp.slopeDirection.x, y: -rp.slopeDirection.y };
 }
 
+/**
+ * Прямоугольник ската только из p1, p2, depthMm и slopeDirection (без planContourMm).
+ * Используется как база при первом расчёте, если planContourBaseMm ещё не зафиксирован.
+ */
+export function roofPlaneImplicitQuadVerticesMm(rp: RoofPlaneEntity): Point2D[] {
+  const e = roofPlaneExtrusionDirectionMm(rp);
+  const d = rp.depthMm;
+  const p3 = { x: rp.p2.x + e.x * d, y: rp.p2.y + e.y * d };
+  const p4 = { x: rp.p1.x + e.x * d, y: rp.p1.y + e.y * d };
+  return [
+    { x: rp.p1.x, y: rp.p1.y },
+    { x: rp.p2.x, y: rp.p2.y },
+    p3,
+    p4,
+  ];
+}
+
+/**
+ * Базовый контур для идемпотентного расчёта свесов:
+ * приоритет у `planContourBaseMm`, иначе текущий контур ската (в т.ч. имплицитный прямоугольник).
+ */
+export function roofPlaneCalculationBasePolygonMm(rp: RoofPlaneEntity): Point2D[] {
+  if (rp.planContourBaseMm && rp.planContourBaseMm.length >= 3) {
+    return rp.planContourBaseMm.map((p) => ({ x: p.x, y: p.y }));
+  }
+  return [...roofPlanePolygonMm(rp)].map((p) => ({ x: p.x, y: p.y }));
+}
+
 /** Контур ската в плане: кастомный или прямоугольник по базовым параметрам. */
 export function roofPlanePolygonMm(rp: RoofPlaneEntity): readonly Point2D[] {
   if (rp.planContourMm && rp.planContourMm.length >= 3) {
@@ -124,13 +158,15 @@ export function roofPlaneEntityApplyPlanQuadMm(rp: RoofPlaneEntity, quad: RoofQu
   const depthMm = Math.max(ROOF_PLANE_QUAD_EDIT_MIN_EDGE_MM, dLen);
   const slopeDirection = { x: -e.x, y: -e.y };
   const now = new Date().toISOString();
+  const contour = [quad[0]!, quad[1]!, quad[2]!, quad[3]!] as const;
   return {
     ...rp,
     p1,
     p2,
     depthMm,
     slopeDirection,
-    planContourMm: [quad[0]!, quad[1]!, quad[2]!, quad[3]!],
+    planContourMm: [...contour],
+    planContourBaseMm: [...contour],
     updatedAt: now,
   };
 }

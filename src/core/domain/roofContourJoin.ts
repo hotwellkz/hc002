@@ -306,10 +306,12 @@ export function tryJoinTwoRoofPlaneContoursMm(
 
 /**
  * После правки planContourMm восстанавливаем p1,p2,depthMm по направлению уклона (slopeDirection не меняем).
+ * `updateBaseContour: false` — только расчётный контур (свесы), базовый `planContourBaseMm` не трогаем.
  */
 export function updateRoofPlaneEntityAfterContourEdit(
   rp: RoofPlaneEntity,
   contourCcW: Point2D[],
+  opts?: { readonly updateBaseContour?: boolean },
 ): RoofPlaneEntity | null {
   if (contourCcW.length < 3) {
     return null;
@@ -352,12 +354,15 @@ export function updateRoofPlaneEntityAfterContourEdit(
     return null;
   }
   const t = new Date().toISOString();
+  const updateBase = opts?.updateBaseContour !== false;
+  const baseCopy = contourCcW.map((p) => ({ x: p.x, y: p.y }));
   return {
     ...rp,
     p1,
     p2,
     depthMm: maxAlong,
-    planContourMm: contourCcW,
+    planContourMm: baseCopy,
+    ...(updateBase ? { planContourBaseMm: baseCopy } : {}),
     updatedAt: t,
   };
 }
