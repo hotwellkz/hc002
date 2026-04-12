@@ -295,8 +295,16 @@ function sliceBeamToInterval(beam: FloorBeamEntity, t0: number, t1: number): Flo
   return created;
 }
 
+export type FloorBeamSplitApplyResult =
+  | { readonly kind: "applied"; readonly project: Project; readonly newBeamIds: readonly string[] }
+  | { readonly kind: "noop"; readonly message: string }
+  | { readonly kind: "error"; readonly error: string };
+
+const NOOP_MAX_LENGTH_MESSAGE =
+  "Длина не превышает максимальную длину сегмента из профиля — разделение не требуется (остаётся один элемент).";
+
 /**
- * Удаляет исходную балку и добавляет сегменты. Возвращает новый проект или ошибку.
+ * Удаляет исходную балку и добавляет сегменты. `noop` — для пакетного режима (короче лимита).
  */
 export function applyFloorBeamSplitInProject(
   project: Project,
@@ -304,14 +312,14 @@ export function applyFloorBeamSplitInProject(
   mode: FloorBeamSplitMode,
   overlapMm: number,
   worldPickMm: Point2D | null,
-): { readonly ok: true; readonly project: Project; readonly newBeamIds: readonly string[] } | { readonly ok: false; readonly error: string } {
+): FloorBeamSplitApplyResult {
   const beam = project.floorBeams.find((b) => b.id === beamId);
   if (!beam) {
-    return { ok: false, error: "Балка не найдена." };
+    return { kind: "error", error: "Балка не найдена." };
   }
   const profile = getProfileById(project, beam.profileId);
   if (!profile) {
-    return { ok: false, error: "Профиль балки не найден." };
+    return { kind: "error", error: "Профиль балки не найден." };
   }
 
   const { L } = floorBeamRefAxisUnitStartToEnd(beam);
@@ -321,21 +329,17 @@ export function applyFloorBeamSplitInProject(
 
   const plan = computeFloorBeamSplitIntervals(mode, L, overlapMm, maxStock, along);
   if (!plan.ok) {
-    return { ok: false, error: plan.error };
+    return { kind: "error", error: plan.error };
   }
   if (plan.noop) {
-    return {
-      ok: false,
-      error:
-        "Длина не превышает максимальную длину сегмента из профиля — разделение не требуется (остаётся один элемент).",
-    };
+    return { kind: "noop", message: NOOP_MAX_LENGTH_MESSAGE };
   }
 
   const newBeams: FloorBeamEntity[] = [];
   for (const iv of plan.intervals) {
     const nb = sliceBeamToInterval(beam, iv.t0, iv.t1);
     if (!nb) {
-      return { ok: false, error: "Не удалось построить сегмент (проверьте длины)." };
+      return { kind: "error", error: "Не удалось построить сегмент (проверьте длины)." };
     }
     newBeams.push(nb);
   }
@@ -352,5 +356,5 @@ export function applyFloorBeamSplitInProject(
     floorBeams: [...next.floorBeams, ...withBeams],
   });
 
-  return { ok: true, project: next, newBeamIds: withBeams.map((b) => b.id) };
+  return { kind: "applied", project: next, newBeamIds: withBeams.map((b) => b.id) };
 }

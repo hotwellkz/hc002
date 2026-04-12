@@ -4306,11 +4306,101 @@ export const useAppStore = create<AppStore>((set, get) => {
       const overlapRaw = input.overlapMm;
       const overlapMm =
         !Number.isFinite(overlapRaw) || overlapRaw < 0 ? 0 : Math.round(overlapRaw * 1000) / 1000;
-      set({
-        floorBeamSplitModalOpen: false,
-        floorBeamSplitSession: { mode: input.mode, overlapMm },
-        lastError: null,
-      });
+      const s = get();
+      const p0 = s.currentProject;
+      const selected = s.selectedEntityIds;
+      const beamIdSet = new Set(p0.floorBeams.map((b) => b.id));
+      const beamIds = selected.filter((id) => beamIdSet.has(id));
+      const skippedNonBeam = selected.length - beamIds.length;
+
+      if (input.mode === "atPoint" && beamIds.length > 1) {
+        set({
+          lastError:
+            "Режим «по указанному месту» нельзя применить сразу к нескольким балкам. Оставьте в выборке одну балку или снимите выделение и укажите место кликом.",
+        });
+        return;
+      }
+
+      const useHoverPick = beamIds.length === 0 || input.mode === "atPoint";
+      if (useHoverPick) {
+        const hoverMsg =
+          beamIds.length === 0 && selected.length > 0
+            ? `В выборке нет балок перекрытия (${selected.length} объектов). Укажите балку кликом на плане.`
+            : null;
+        set({
+          floorBeamSplitModalOpen: false,
+          floorBeamSplitSession: { mode: input.mode, overlapMm },
+          lastError: hoverMsg,
+        });
+        return;
+      }
+
+      if (p0.viewState.editor2dPlanScope !== "floorStructure") {
+        set({ lastError: "Переключитесь в режим «Перекрытие» на плане." });
+        return;
+      }
+
+      const before = cloneProjectSnapshot(p0);
+      let next = p0;
+      let applied = 0;
+      let noop = 0;
+      let errCount = 0;
+      const allNewIds: string[] = [];
+      const errSamples: string[] = [];
+      for (const id of beamIds) {
+        const r = applyFloorBeamSplitInProject(next, id, input.mode, overlapMm, null);
+        if (r.kind === "applied") {
+          next = r.project;
+          applied += 1;
+          allNewIds.push(...r.newBeamIds);
+        } else if (r.kind === "noop") {
+          noop += 1;
+        } else {
+          errCount += 1;
+          if (errSamples.length < 2) {
+            errSamples.push(r.error);
+          }
+        }
+      }
+
+      const parts: string[] = [];
+      if (applied > 0) {
+        parts.push(`Разделено балок: ${applied}`);
+      }
+      if (noop > 0) {
+        parts.push(`без изменений (короче лимита): ${noop}`);
+      }
+      if (skippedNonBeam > 0) {
+        parts.push(`не балки перекрытия в выборке: ${skippedNonBeam}`);
+      }
+      if (errCount > 0) {
+        parts.push(`ошибок: ${errCount}${errSamples.length ? ` (${errSamples.join("; ")})` : ""}`);
+      }
+      const summary = parts.join(" · ");
+
+      if (applied === 0) {
+        set({
+          floorBeamSplitModalOpen: false,
+          floorBeamSplitSession: null,
+          lastError: summary || "Ни одна балка не была разделена.",
+        });
+        return;
+      }
+
+      set((st) =>
+        buildProjectMutationState(
+          st,
+          next,
+          {
+            floorBeamSplitModalOpen: false,
+            floorBeamSplitSession: null,
+            selectedEntityIds: allNewIds,
+            dirty: true,
+            lastError: summary || null,
+          },
+          { historyBefore: before },
+        ),
+      );
     },
 
     cancelFloorBeamSplitTool: () => set({ floorBeamSplitSession: null, lastError: null }),
@@ -4334,22 +4424,26 @@ export const useAppStore = create<AppStore>((set, get) => {
       const worldPick = sess.mode === "atPoint" ? snap.point : null;
       const before = cloneProjectSnapshot(p0);
       const r = applyFloorBeamSplitInProject(p0, beam.id, sess.mode, sess.overlapMm, worldPick);
-      if (!r.ok) {
-        set({ lastError: r.error });
+      if (r.kind === "applied") {
+        set((st) =>
+          buildProjectMutationState(
+            st,
+            r.project,
+            {
+              selectedEntityIds: [...r.newBeamIds],
+              dirty: true,
+              lastError: null,
+            },
+            { historyBefore: before },
+          ),
+        );
         return;
       }
-      set((s) =>
-        buildProjectMutationState(
-          s,
-          r.project,
-          {
-            selectedEntityIds: [...r.newBeamIds],
-            dirty: true,
-            lastError: null,
-          },
-          { historyBefore: before },
-        ),
-      );
+      if (r.kind === "noop") {
+        set({ lastError: r.message });
+        return;
+      }
+      set({ lastError: r.error });
     },
 
     floorBeamPlacementBackOrExit: () => {

@@ -1873,18 +1873,21 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       });
 
       floorBeamsG.clear();
+      const highlightBeamOverStock = currentProject.viewState.editor2dPlanScope === "floorStructure";
       let firstBeamDraw = true;
       for (const lid of contextIds) {
         const ctxBeams = narrowProjectToLayerSet(currentProject, new Set([lid]));
         drawFloorBeams2d(floorBeamsG, currentProject, ctxBeams.floorBeams, t, selected, {
           appearance: "context",
           clear: firstBeamDraw,
+          highlightOverLinearStock: highlightBeamOverStock,
         });
         firstBeamDraw = false;
       }
       drawFloorBeams2d(floorBeamsG, currentProject, layerView.floorBeams, t, selected, {
         appearance: "active",
         clear: firstBeamDraw,
+        highlightOverLinearStock: highlightBeamOverStock,
       });
 
       planLinesG.clear();
