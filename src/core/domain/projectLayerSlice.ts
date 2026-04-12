@@ -28,6 +28,9 @@ export function narrowProjectToLayerSet(project: Project, layerIds: ReadonlySet<
   const roofPlanes = project.roofPlanes.filter((r) => layerIds.has(r.layerId));
   const roofSystems = project.roofSystems.filter((s) => layerIds.has(s.layerId));
   const roofRafters = project.roofRafters.filter((r) => layerIds.has(r.layerId));
+  const roofPurlins = project.roofPurlins.filter((p) => layerIds.has(p.layerId));
+  const roofPosts = project.roofPosts.filter((p) => layerIds.has(p.layerId));
+  const roofStruts = project.roofStruts.filter((p) => layerIds.has(p.layerId));
   const openings = project.openings.filter((o) => o.wallId != null && wallIds.has(o.wallId));
   const openingFramingPieces = project.openingFramingPieces.filter((p) => wallIds.has(p.wallId));
   const rooms = project.rooms.filter((r) => layerIds.has(r.layerId));
@@ -43,6 +46,9 @@ export function narrowProjectToLayerSet(project: Project, layerIds: ReadonlySet<
     roofPlanes,
     roofSystems,
     roofRafters,
+    roofPurlins,
+    roofPosts,
+    roofStruts,
     openings,
     openingFramingPieces,
     rooms,

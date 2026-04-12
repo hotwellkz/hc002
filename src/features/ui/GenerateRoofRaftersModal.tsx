@@ -33,8 +33,8 @@ export function GenerateRoofRaftersModal() {
   const [ridgeBeamEnabled, setRidgeBeamEnabled] = useState(false);
   const [pairBothSlopes, setPairBothSlopes] = useState(true);
   const [beamStep, setBeamStep] = useState<RoofRafterBeamStepMode>("everyBoard");
-  const [enablePosts, setEnablePosts] = useState(false);
-  const [enablePurlin, setEnablePurlin] = useState(false);
+  /** Прогон и стойки генерируются парно (одинаковые флаги в вызове). */
+  const [enablePurlinAndPosts, setEnablePurlinAndPosts] = useState(false);
   const [enableStruts, setEnableStruts] = useState(false);
 
   useEffect(() => {
@@ -104,8 +104,8 @@ export function GenerateRoofRaftersModal() {
         ridgeBeamEnabled,
         pairBothSlopes,
         beamStep,
-        enablePosts,
-        enablePurlin,
+        enablePosts: enablePurlinAndPosts,
+        enablePurlin: enablePurlinAndPosts,
         enableStruts,
       });
       const s = useAppStore.getState();
@@ -200,22 +200,45 @@ export function GenerateRoofRaftersModal() {
           </select>
         </div>
 
-        <p className="lm-muted" style={{ marginTop: 12, fontSize: 12 }}>
-          Задел: стойки, прогон, подкосы — только флаги, геометрия в следующих версиях.
+        <p className="lm-muted" style={{ marginTop: 12, fontSize: 12, lineHeight: 1.45 }}>
+          Прогон вдоль конька и вертикальные стойки на балках перекрытия строятся вместе: прогон ниже линии опирания
+          стропил на коньке, стойки с шагом по балкам (см. константу в коде). Включение одного пункта ниже включает оба.
+          Подкосы — от уровня перекрытия к стропилам; при их включении автоматически включаются стойки и прогон.
         </p>
         <div className="lm-field" style={{ marginTop: 6 }}>
           <label className="lm-label">
-            <input type="checkbox" checked={enablePosts} onChange={(e) => setEnablePosts(e.target.checked)} /> Стойки
+            <input
+              type="checkbox"
+              checked={enablePurlinAndPosts}
+              onChange={(e) => setEnablePurlinAndPosts(e.target.checked)}
+            />{" "}
+            Стойки
           </label>
         </div>
         <div className="lm-field">
           <label className="lm-label">
-            <input type="checkbox" checked={enablePurlin} onChange={(e) => setEnablePurlin(e.target.checked)} /> Прогон
+            <input
+              type="checkbox"
+              checked={enablePurlinAndPosts}
+              onChange={(e) => setEnablePurlinAndPosts(e.target.checked)}
+            />{" "}
+            Прогон
           </label>
         </div>
         <div className="lm-field">
           <label className="lm-label">
-            <input type="checkbox" checked={enableStruts} onChange={(e) => setEnableStruts(e.target.checked)} /> Подкосы
+            <input
+              type="checkbox"
+              checked={enableStruts}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setEnableStruts(v);
+                if (v) {
+                  setEnablePurlinAndPosts(true);
+                }
+              }}
+            />{" "}
+            Подкосы
           </label>
         </div>
 

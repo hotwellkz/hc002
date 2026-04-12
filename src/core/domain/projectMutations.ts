@@ -63,6 +63,19 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
     return r;
   });
 
+  const roofPostsKept = project.roofPosts.filter(
+    (p) => !selectedIds.has(p.id) && !removedFloorBeamIds.has(p.supportingFloorBeamId),
+  );
+  const roofPurlinsKept = project.roofPurlins.filter((p) => !selectedIds.has(p.id));
+  const keptPostIds = new Set(roofPostsKept.map((p) => p.id));
+  const keptRafterIds = new Set(roofRaftersPaired.map((r) => r.id));
+  const roofStrutsKept = project.roofStruts.filter(
+    (s) =>
+      !selectedIds.has(s.id) &&
+      keptPostIds.has(s.roofPostId) &&
+      keptRafterIds.has(s.roofRafterId),
+  );
+
   return touchProjectMeta({
     ...project,
     walls: wallsKept,
@@ -76,6 +89,9 @@ export function deleteEntitiesFromProject(project: Project, selectedIds: Readonl
     roofSystems: roofSystemsKept,
     roofAssemblyCalculations: roofAssemblyCalculationsKept,
     roofRafters: roofRaftersPaired,
+    roofPurlins: roofPurlinsKept,
+    roofPosts: roofPostsKept,
+    roofStruts: roofStrutsKept,
     wallCalculations: wallCalculationsKept,
     wallJoints: wallJointsKept,
     openings: openingsKept,

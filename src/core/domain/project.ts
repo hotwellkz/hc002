@@ -25,7 +25,10 @@ import type { WallCalculationResult } from "./wallCalculation";
 import type { WallJoint } from "./wallJoint";
 import type { FloorBeamEntity } from "./floorBeam";
 import type { FloorInsulationPiece } from "./floorInsulation";
+import type { RoofPurlinEntity } from "./roofPurlin";
+import type { RoofPostEntity } from "./roofPost";
 import type { RoofRafterEntity } from "./roofRafter";
+import type { RoofStrutEntity } from "./roofStrut";
 
 export interface Project {
   readonly meta: ProjectMeta;
@@ -56,6 +59,12 @@ export interface Project {
   readonly roofAssemblyCalculations: readonly RoofAssemblyCalculation[];
   /** Сгенерированные стропила (конструктивные объекты). */
   readonly roofRafters: readonly RoofRafterEntity[];
+  /** Прогон вдоль конька (генератор крыши). */
+  readonly roofPurlins: readonly RoofPurlinEntity[];
+  /** Стойки под прогоном (генератор крыши). */
+  readonly roofPosts: readonly RoofPostEntity[];
+  /** Подкосы (генератор крыши). */
+  readonly roofStruts: readonly RoofStrutEntity[];
   /** Результаты производственного расчёта по стенам (SIP-раскладка, пиломатериалы). */
   readonly wallCalculations: readonly WallCalculationResult[];
   /** Узлы соединения стен (углы, примыкания); персистится в snapshot. */

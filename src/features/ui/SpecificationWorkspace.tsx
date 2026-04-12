@@ -6,6 +6,7 @@ import {
   buildFloorInsulationSpecificationRows,
   summarizeFloorInsulationSpec,
 } from "@/core/domain/floorInsulationSpecification";
+import { buildRoofStrutSpecificationRows } from "@/core/domain/roofFramingSpecification";
 import {
   buildOpeningFramingSpecificationRows,
   buildOpeningSpecificationRows,
@@ -29,6 +30,7 @@ export function SpecificationWorkspace() {
   const cutCount = useMemo(() => buildCutListCandidates(project).length, [project]);
   const floorInsRows = useMemo(() => buildFloorInsulationSpecificationRows(project), [project]);
   const floorInsSum = useMemo(() => summarizeFloorInsulationSpec(project), [project]);
+  const roofStrutRows = useMemo(() => buildRoofStrutSpecificationRows(project), [project]);
 
   return (
     <div className="spec-workspace">
@@ -92,6 +94,36 @@ export function SpecificationWorkspace() {
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section className="spec-workspace__section" aria-labelledby="spec-roof-struts-heading">
+        <h3 id="spec-roof-struts-heading" className="spec-workspace__h3">
+          Подкосы (генератор крыши)
+        </h3>
+        {roofStrutRows.length === 0 ? (
+          <p className="spec-workspace__empty">Нет сгенерированных подкосов.</p>
+        ) : (
+          <div className="spec-workspace__table-wrap">
+            <table className="spec-workspace__table spec-workspace__table--compact">
+              <thead>
+                <tr>
+                  <th>Наименование</th>
+                  <th>Профиль / сечение</th>
+                  <th>Длина, мм</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roofStrutRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.name}</td>
+                    <td>{r.profileLabel}</td>
+                    <td>{Math.round(r.lengthMm)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

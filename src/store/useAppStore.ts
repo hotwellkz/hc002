@@ -8797,21 +8797,32 @@ export const useAppStore = create<AppStore>((set, get) => {
     applyGenerateRoofRafters: (input: RoofRafterGeneratorParams) => {
       const nowIso = new Date().toISOString();
       const { currentProject } = get();
-      const { entities, warnings } = generateRoofRaftersForProject(currentProject, input, nowIso);
+      const pairedInput =
+        input.enablePurlin || input.enablePosts || input.enableStruts
+          ? { ...input, enablePurlin: true, enablePosts: true }
+          : input;
+      const { entities, purlins, posts, struts, warnings } = generateRoofRaftersForProject(currentProject, pairedInput, nowIso);
       const kept = currentProject.roofRafters.filter((r) => r.roofSystemId !== input.roofSystemId);
+      const keptPurlins = currentProject.roofPurlins.filter((p) => p.roofSystemId !== input.roofSystemId);
+      const keptPosts = currentProject.roofPosts.filter((p) => p.roofSystemId !== input.roofSystemId);
+      const keptStruts = currentProject.roofStruts.filter((p) => p.roofSystemId !== input.roofSystemId);
       const next = touchProjectMeta({
         ...currentProject,
         roofRafters: [...kept, ...entities],
+        roofPurlins: [...keptPurlins, ...purlins],
+        roofPosts: [...keptPosts, ...posts],
+        roofStruts: [...keptStruts, ...struts],
       });
       const warnText = warnings.length ? warnings.join(" ") : null;
+      const added = entities.length + purlins.length + posts.length + struts.length;
       set((s) =>
         buildProjectMutationState(s, next, {
           generateRoofRaftersModalOpen: false,
           dirty: true,
-          lastError: entities.length === 0 && warnText ? warnText : null,
+          lastError: added === 0 && warnText ? warnText : null,
           infoMessage:
-            entities.length > 0
-              ? `Добавлено стропил: ${entities.length}${warnText ? `. ${warnText}` : ""}`
+            added > 0
+              ? `Стропила: ${entities.length}, прогон: ${purlins.length}, стойки: ${posts.length}, подкосы: ${struts.length}${warnText ? `. ${warnText}` : ""}`
               : null,
         }),
       );

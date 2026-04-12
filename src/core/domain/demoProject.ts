@@ -125,6 +125,9 @@ export function createDemoProject(): Project {
     roofSystems: [],
     roofAssemblyCalculations: [],
     roofRafters: [],
+    roofPurlins: [],
+    roofPosts: [],
+    roofStruts: [],
     openingFramingPieces: [],
     openings: [
       {

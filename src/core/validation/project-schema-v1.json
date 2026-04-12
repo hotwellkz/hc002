@@ -98,6 +98,18 @@
       "type": "array",
       "items": { "$ref": "#/$defs/roofRafterEntity" }
     },
+    "roofPurlins": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofPurlinEntity" }
+    },
+    "roofPosts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofPostEntity" }
+    },
+    "roofStruts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/roofStrutEntity" }
+    },
     "wallCalculations": {
       "type": "array",
       "items": { "$ref": "#/$defs/wallCalculationResult" }
@@ -1028,6 +1040,110 @@
         "ridgeElevationMm": { "type": "number" },
         "sectionOrientation": { "type": "string", "enum": ["flat", "edge"] },
         "sectionRolled": { "type": "boolean" },
+        "createdAt": { "type": "string", "minLength": 1 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roofPurlinEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "layerId",
+        "roofSystemId",
+        "profileId",
+        "polylinePlanMm",
+        "vertexAxisElevationMm",
+        "sectionOrientation",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "const": "roofPurlin" },
+        "layerId": { "type": "string", "minLength": 1 },
+        "roofSystemId": { "type": "string", "minLength": 1 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "polylinePlanMm": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/point2d" }
+        },
+        "vertexAxisElevationMm": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "number" }
+        },
+        "sectionOrientation": { "type": "string", "enum": ["edge"] },
+        "createdAt": { "type": "string", "minLength": 1 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roofPostEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "layerId",
+        "roofSystemId",
+        "profileId",
+        "planCenterMm",
+        "bottomElevationMm",
+        "topElevationMm",
+        "supportingFloorBeamId",
+        "sectionOrientation",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "const": "roofPost" },
+        "layerId": { "type": "string", "minLength": 1 },
+        "roofSystemId": { "type": "string", "minLength": 1 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "planCenterMm": { "$ref": "#/$defs/point2d" },
+        "bottomElevationMm": { "type": "number" },
+        "topElevationMm": { "type": "number" },
+        "supportingFloorBeamId": { "type": "string", "minLength": 1 },
+        "sectionOrientation": { "type": "string", "enum": ["edge"] },
+        "createdAt": { "type": "string", "minLength": 1 },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "roofStrutEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "layerId",
+        "roofSystemId",
+        "profileId",
+        "startPlanMm",
+        "startElevationMm",
+        "endPlanMm",
+        "endElevationMm",
+        "roofPostId",
+        "roofRafterId",
+        "sectionOrientation",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "const": "roofStrut" },
+        "layerId": { "type": "string", "minLength": 1 },
+        "roofSystemId": { "type": "string", "minLength": 1 },
+        "profileId": { "type": "string", "minLength": 1 },
+        "startPlanMm": { "$ref": "#/$defs/point2d" },
+        "startElevationMm": { "type": "number" },
+        "endPlanMm": { "$ref": "#/$defs/point2d" },
+        "endElevationMm": { "type": "number" },
+        "roofPostId": { "type": "string", "minLength": 1 },
+        "roofRafterId": { "type": "string", "minLength": 1 },
+        "sectionOrientation": { "type": "string", "enum": ["edge"] },
         "createdAt": { "type": "string", "minLength": 1 },
         "updatedAt": { "type": "string", "minLength": 1 }
       }

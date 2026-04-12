@@ -37,6 +37,7 @@ import { ProjectWalls } from "./ProjectWalls";
 import { ProjectFloorBeams } from "./ProjectFloorBeams";
 import { ProjectFloorInsulation } from "./ProjectFloorInsulation";
 import { ProjectRoofAssembly } from "./ProjectRoofAssembly";
+import { ProjectRoofFramingWood } from "./ProjectRoofFramingWood";
 import { ProjectRoofRafters } from "./ProjectRoofRafters";
 import { useEditor3dThemeColors } from "./useEditor3dThemeColors";
 
@@ -237,6 +238,7 @@ function SceneFromProject({
         selectedRafterEntityId={selectedRoofRafterEntityId}
         hoverRafterEntityId={hoverRoofRafterEntityId}
       />
+      <ProjectRoofFramingWood project={project} />
     </>
   );
 }

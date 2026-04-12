@@ -11,7 +11,12 @@ import { getProfileById } from "@/core/domain/profileOps";
 import type { Project } from "@/core/domain/project";
 import type { RoofPlaneEntity } from "@/core/domain/roofPlane";
 import { roofPlanePolygonMm } from "@/core/domain/roofPlane";
+import type { RoofPurlinEntity } from "@/core/domain/roofPurlin";
+import type { RoofPostEntity } from "@/core/domain/roofPost";
 import type { RoofRafterEntity } from "@/core/domain/roofRafter";
+import type { RoofStrutEntity } from "@/core/domain/roofStrut";
+import { generateRoofPurlinAndPosts } from "@/core/domain/roofPurlinPostGenerator";
+import { generateRoofStrutsForPosts } from "@/core/domain/roofStrutGenerator";
 
 import {
   clipSegmentToPolygon2dMm,
@@ -26,7 +31,7 @@ import {
 export type RoofRafterBeamStepMode = "everyBoard" | "everyOtherBoard" | "allBoards";
 
 /**
- * Параметры генерации (расширяемо: стойки / прогон / подкосы — пока флаги-задел).
+ * Параметры генерации (прогон и стойки; подкосы требуют стойки + прогон — включаются автоматически в UI).
  */
 export interface RoofRafterGeneratorParams {
   readonly roofSystemId: string;
@@ -42,6 +47,9 @@ export interface RoofRafterGeneratorParams {
 
 export interface RoofRafterGeneratorResult {
   readonly entities: readonly RoofRafterEntity[];
+  readonly purlins: readonly RoofPurlinEntity[];
+  readonly posts: readonly RoofPostEntity[];
+  readonly struts: readonly RoofStrutEntity[];
   readonly warnings: readonly string[];
 }
 
@@ -110,7 +118,7 @@ export function generateRoofRaftersForProject(
   const sys = project.roofSystems.find((s) => s.id === params.roofSystemId);
   if (!sys || sys.roofKind !== "gable") {
     warnings.push("Выберите двускатную крышу из генератора (roofKind=gable).");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
 
   const planes = sys.generatedPlaneIds
@@ -118,7 +126,7 @@ export function generateRoofRaftersForProject(
     .filter((p): p is RoofPlaneEntity => p != null);
   if (planes.length < 2) {
     warnings.push("У крыши должно быть два ската (generatedPlaneIds).");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
   const planeA = planes[0]!;
   const planeB = planes[1]!;
@@ -126,13 +134,13 @@ export function generateRoofRaftersForProject(
   const rafterProfile = getProfileById(project, params.rafterProfileId);
   if (!rafterProfile) {
     warnings.push("Не найден профиль стропил.");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
 
   const footprint = sys.footprintMm;
   if (footprint.length < 3) {
     warnings.push("Некорректный контур основания крыши.");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
 
   const ridgeSegs = sys.ridgeSegmentsPlanMm.map((s) => ({
@@ -143,7 +151,7 @@ export function generateRoofRaftersForProject(
   }));
   if (ridgeSegs.length === 0) {
     warnings.push("Нет отрезков конька в данных крыши.");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
 
   const stack = computeLayerVerticalStack(project);
@@ -168,7 +176,7 @@ export function generateRoofRaftersForProject(
 
   if (floorBeams.length === 0) {
     warnings.push("Нет досок перекрытия в контуре крыши (по центру балки).");
-    return { entities: [], warnings };
+    return { entities: [], purlins: [], posts: [], struts: [], warnings };
   }
 
   const layerId = sys.layerId;
@@ -307,9 +315,33 @@ export function generateRoofRaftersForProject(
     }
   }
 
-  if (params.enablePosts || params.enablePurlin || params.enableStruts) {
-    warnings.push("Стойки / прогон / подкосы: параметры сохранены в задел, геометрия не строится.");
+  let purlins: RoofPurlinEntity[] = [];
+  let posts: RoofPostEntity[] = [];
+  let struts: RoofStrutEntity[] = [];
+  const wantPurlinPosts = params.enablePurlin || params.enablePosts;
+  if (wantPurlinPosts) {
+    const pp = generateRoofPurlinAndPosts(project, sys, planeA, planeB, stack, zAdjMap, floorBeams, params, nowIso);
+    purlins = [...pp.purlins];
+    posts = [...pp.posts];
+    warnings.push(...pp.warnings);
   }
 
-  return { entities: out, warnings };
+  if (params.enableStruts && posts.length > 0) {
+    const st = generateRoofStrutsForPosts(
+      project,
+      sys,
+      planeA,
+      planeB,
+      stack,
+      zAdjMap,
+      posts,
+      out,
+      params,
+      nowIso,
+    );
+    struts = [...st.struts];
+    warnings.push(...st.warnings);
+  }
+
+  return { entities: out, purlins, posts, struts, warnings };
 }
