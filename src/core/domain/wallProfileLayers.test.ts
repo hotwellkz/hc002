@@ -28,7 +28,7 @@ describe("resolveWallProfileLayerStripsMm", () => {
 });
 
 describe("resolveWallProfileLayerStripsForWallVisualization", () => {
-  it("режим sheet: без слоёв EPS/XPS/insulation, две оболочки на полную толщину стены", () => {
+  it("режим sheet: без EPS/XPS/insulation, одна полоса на полную толщину (не сэндвич из двух оболочек)", () => {
     const p = createDemoProject();
     const base = p.profiles[0]!;
     const sheetProfile = {
@@ -38,9 +38,10 @@ describe("resolveWallProfileLayerStripsForWallVisualization", () => {
     const w = p.walls[0]!;
     const v = resolveWallProfileLayerStripsForWallVisualization(w.thicknessMm, sheetProfile);
     expect(v).not.toBeNull();
-    expect(v!.map((s) => s.materialType)).toEqual(["osb", "osb"]);
+    expect(v!.length).toBe(1);
+    expect(v![0]!.materialType).toBe("osb");
     expect(v!.some((s) => s.materialType === "eps")).toBe(false);
-    expect(v!.reduce((a, s) => a + s.thicknessMm, 0)).toBeCloseTo(w.thicknessMm, 4);
+    expect(v![0]!.thicknessMm).toBeCloseTo(w.thicknessMm, 4);
   });
 
   it("не sheet — совпадает с resolveWallProfileLayerStripsMm (SIP демо)", () => {

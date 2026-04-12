@@ -161,7 +161,7 @@ export function drawWallPlacementPreview(
   }
 
   const strips = resolvePreviewStrips(layeredOpts);
-  if (strips && strips.length >= 2) {
+  if (strips && strips.length >= 1) {
     drawWallBandLayeredFromCenterline(g, centerStart, centerEnd, thicknessMm, strips, t);
   } else {
     drawWallBandFromCenterline(g, centerStart, centerEnd, thicknessMm, t);
@@ -213,7 +213,7 @@ export function drawRectangleWallPlacementPreview(
     return;
   }
   const strips = resolvePreviewStrips(layeredOpts);
-  const useLayered = strips && strips.length >= 2;
+  const useLayered = strips && strips.length >= 1;
   for (const seg of segs) {
     if (useLayered) {
       drawWallBandLayeredFromCenterline(g, seg.start, seg.end, thicknessMm, strips, t);

@@ -56,7 +56,7 @@ describe("wallToRenderSpecs (послойно)", () => {
     expect(specs[0]!.width).toBeCloseTo(w.thicknessMm * 0.001, 6);
   });
 
-  it("листовый материал (sheet): послойно только без EPS", () => {
+  it("листовый материал (sheet): один меш оболочки без EPS (не послойный SIP-сэндвич)", () => {
     const p = createDemoProject();
     const w = p.walls[0]!;
     const profile = {
@@ -72,7 +72,8 @@ describe("wallToRenderSpecs (послойно)", () => {
     };
     const specs = wallToRenderSpecs(w, proj, true);
     expect(specs.some((s) => s.materialType === "eps")).toBe(false);
-    expect(specs.filter((s) => s.materialType === "osb").length).toBe(2);
+    expect(specs.length).toBeGreaterThanOrEqual(1);
+    expect(specs.every((s) => s.materialType === "osb")).toBe(true);
     const sumMm = specs.reduce((acc, s) => acc + s.width / 0.001, 0);
     expect(sumMm).toBeCloseTo(w.thicknessMm, 3);
   });

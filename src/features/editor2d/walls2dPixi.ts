@@ -307,7 +307,7 @@ export function drawWallsAndOpenings2d(
     const strips =
       show2dProfileLayers && profile ? resolveWallProfileLayerStripsForWallVisualization(w.thicknessMm, profile) : null;
 
-    if (strips && strips.length >= 2) {
+    if (strips && strips.length >= 1) {
       drawWallLayeredPlan(wallsG, openingsG, w, strips, t, showSel, ctx);
     } else {
       drawWallStrokeSimple(wallsG, openingsG, w, project, t, showSel, ctx);

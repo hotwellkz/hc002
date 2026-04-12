@@ -65,21 +65,19 @@ export function resolveWallProfileLayerStripsForWallVisualization(
   const sorted = sortProfileLayersByOrder([...profile.layers]).filter(
     (l) => !isInsulationCoreMaterial(l.materialType),
   );
-  if (sorted.length < 2) {
+  if (sorted.length === 0) {
     return null;
   }
   const T = wallThicknessMm;
-  let raw = sorted.map((l) => Math.max(0, l.thicknessMm));
-  const sum = raw.reduce((a, b) => a + b, 0);
-  if (sum < 1e-6) {
-    return null;
-  }
-  raw = raw.map((t) => t * (T / sum));
-  return sorted.map((l, i) => ({
-    layerId: l.id,
-    materialType: l.materialType,
-    thicknessMm: raw[i]!,
-  }));
+  /** Одна визуальная полоса на всю толщину — без «двух оболочек», как у SIP-сэндвича. */
+  const first = sorted[0]!;
+  return [
+    {
+      layerId: first.id,
+      materialType: first.materialType,
+      thicknessMm: T,
+    },
+  ];
 }
 
 export function isInsulationCoreMaterial(materialType: ProfileMaterialType): boolean {

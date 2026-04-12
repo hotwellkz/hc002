@@ -104,7 +104,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
     ? resolveWallProfileLayerStripsForWallVisualization(T, profile)
     : null;
 
-  const layered = stripsResolved != null && stripsResolved.length >= 2;
+  const layered = stripsResolved != null && stripsResolved.length >= 1;
 
   const seamAlpha = 0.26;
   const edgeAlpha = 0.18;
