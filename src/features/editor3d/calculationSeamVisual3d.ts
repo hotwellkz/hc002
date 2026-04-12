@@ -38,7 +38,8 @@ export const TEXTURE_TOOL_LOCKED_OUTLINE_3D = {
 } as const;
 
 /**
- * Рёбра бруса каркаса (`Edges` на той же boxGeometry, что и solid) — границы досок без 1 мм seam-mesh.
+ * Рёбра бруса каркаса и линейных профилей перекрытия (`Edges` на той же boxGeometry, что и solid) —
+ * границы досок / балок без грубой обводки, в одном визуальном языке.
  */
 export const LUMBER_FRAME_VISUAL_3D = {
   edges: {
@@ -49,3 +50,6 @@ export const LUMBER_FRAME_VISUAL_3D = {
     threshold: 15,
   },
 } as const;
+
+/** Балки перекрытия в 3D: те же параметры рёбер, что у расчётного бруса каркаса стен. */
+export const FLOOR_BEAM_PROFILE_EDGES_3D = LUMBER_FRAME_VISUAL_3D;

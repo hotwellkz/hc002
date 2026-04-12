@@ -1,9 +1,14 @@
+import { Edges } from "@react-three/drei";
 import { useMemo } from "react";
 import { DoubleSide } from "three";
 
 import type { Project } from "@/core/domain/project";
 
-import { HOVER_BOX_OUTLINE_3D, SELECTION_BOX_OUTLINE_3D } from "./calculationSeamVisual3d";
+import {
+  FLOOR_BEAM_PROFILE_EDGES_3D,
+  HOVER_BOX_OUTLINE_3D,
+  SELECTION_BOX_OUTLINE_3D,
+} from "./calculationSeamVisual3d";
 import { editor3dPickUserData } from "./editor3dPick";
 import { ExactBoxSelectionOutline } from "./ExactBoxSelectionOutline";
 import { meshStandardPresetForLayerOrDefault } from "./materials3d";
@@ -26,6 +31,7 @@ function FloorBeamMesh3d({
 }) {
   const preset = meshStandardPresetForLayerOrDefault(s.materialType);
   const pick = editor3dPickUserData({ kind: "floorBeam", entityId: s.beamId, reactKey: s.reactKey });
+  const edgeV = FLOOR_BEAM_PROFILE_EDGES_3D.edges;
 
   return (
     <group>
@@ -42,6 +48,17 @@ function FloorBeamMesh3d({
           roughness={preset.roughness}
           metalness={preset.metalness}
           side={DoubleSide}
+        />
+        <Edges
+          threshold={edgeV.threshold}
+          color={edgeV.color}
+          lineWidth={edgeV.lineWidthPx}
+          transparent
+          opacity={edgeV.opacity}
+          depthTest
+          depthWrite={false}
+          renderOrder={2}
+          raycast={() => null}
         />
       </mesh>
       {selected ? (
