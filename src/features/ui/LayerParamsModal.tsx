@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 
 import type { LayerLevelMode } from "@/core/domain/layer";
-import { getLayerById, sortLayersByOrder } from "@/core/domain/layerOps";
+import { LAYER_DOMAIN_LABELS, editor2dPlanScopeToLayerDomain, type LayerDomain } from "@/core/domain/layerDomain";
+import {
+  getAdjacentLayerIdInDomain,
+  getLayerById,
+  sortLayersByOrder,
+  sortLayersForDomain,
+} from "@/core/domain/layerOps";
 import { normalizeVisibleLayerIds } from "@/core/domain/layerVisibility";
 import { computeLayerVerticalStack, getLayerVerticalSlice } from "@/core/domain/layerVerticalStack";
 import { useAppStore } from "@/store/useAppStore";
@@ -33,6 +39,8 @@ function topHint(slice: ReturnType<typeof getLayerVerticalSlice>, manualHeightMm
 
 export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
   const project = useAppStore((s) => s.currentProject);
+  const listMode = useAppStore((s) => s.layerListDisplayMode);
+  const setListMode = useAppStore((s) => s.setLayerListDisplayMode);
   const updateLayer = useAppStore((s) => s.updateLayer);
   const toggleVisibleLayer = useAppStore((s) => s.toggleVisibleLayer);
   const reorderLayerUp = useAppStore((s) => s.reorderLayerUp);
@@ -41,6 +49,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
 
   const [tab, setTab] = useState<TabId>("current");
   const [name, setName] = useState("");
+  const [domain, setDomain] = useState<LayerDomain>("floorPlan");
   const [elevationMm, setElevationMm] = useState(0);
   const [levelMode, setLevelMode] = useState<LayerLevelMode>("absolute");
   const [offsetFromBelowMm, setOffsetFromBelowMm] = useState(0);
@@ -49,7 +58,14 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
 
   const activeId = project.activeLayerId;
   const activeLayer = useMemo(() => getLayerById(project, activeId), [project, activeId]);
-  const sortedLayers = useMemo(() => sortLayersByOrder(project.layers), [project.layers]);
+  const scopeDomain = editor2dPlanScopeToLayerDomain(project.viewState.editor2dPlanScope);
+  const fullSorted = useMemo(() => sortLayersByOrder(project.layers), [project.layers]);
+  const sortedLayersView = useMemo(() => {
+    if (listMode === "project") {
+      return fullSorted;
+    }
+    return sortLayersForDomain(project, scopeDomain);
+  }, [listMode, fullSorted, project, scopeDomain]);
   const extraVisible = useMemo(() => new Set(normalizeVisibleLayerIds(project)), [project]);
   const verticalById = useMemo(() => computeLayerVerticalStack(project), [project]);
 
@@ -65,6 +81,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
       return;
     }
     setName(activeLayer.name);
+    setDomain(activeLayer.domain);
     setElevationMm(activeLayer.elevationMm);
     setLevelMode(activeLayer.levelMode);
     setOffsetFromBelowMm(activeLayer.offsetFromBelowMm);
@@ -115,6 +132,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
     }
     updateLayer(activeId, {
       name: n,
+      domain,
       elevationMm: Number.isFinite(elevationMm) ? elevationMm : activeLayer.elevationMm,
       levelMode,
       offsetFromBelowMm: Number.isFinite(offsetFromBelowMm) ? offsetFromBelowMm : 0,
@@ -125,6 +143,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
   const dirtyCurrent =
     activeLayer &&
     (name.trim() !== activeLayer.name ||
+      domain !== activeLayer.domain ||
       elevationMm !== activeLayer.elevationMm ||
       levelMode !== activeLayer.levelMode ||
       offsetFromBelowMm !== activeLayer.offsetFromBelowMm ||
@@ -179,6 +198,28 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="off"
               />
+            </div>
+
+            <div className="lm-field">
+              <label className="lm-label" htmlFor="lp-domain">
+                Раздел проекта
+              </label>
+              <select
+                id="lp-domain"
+                className="lm-input"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value as LayerDomain)}
+              >
+                {(Object.keys(LAYER_DOMAIN_LABELS) as LayerDomain[]).map((d) => (
+                  <option key={d} value={d}>
+                    {LAYER_DOMAIN_LABELS[d]}
+                  </option>
+                ))}
+              </select>
+              <p className="lp-micro">
+                Определяет, в каком режиме слева слой показывается по умолчанию. Один общий стек высот для всего
+                здания.
+              </p>
             </div>
 
             <div className="lm-field">
@@ -290,9 +331,24 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
 
         {tab === "list" && (
           <div className="lp-panel" role="tabpanel">
+            <div className="lm-field" style={{ marginBottom: "0.75rem" }}>
+              <button
+                type="button"
+                className="lm-btn lm-btn--ghost lm-btn--sm"
+                onClick={() => setListMode(listMode === "context" ? "project" : "context")}
+              >
+                {listMode === "context" ? "Показать все слои проекта" : "Только слои текущего раздела"}
+              </button>
+            </div>
             <p className="lp-stack-legend">
               Порядок в таблице: <strong>снизу вверх</strong> по зданию (первая строка — нижний слой). Перетащите строку
               или используйте стрелки.
+              {listMode === "context" ? (
+                <>
+                  {" "}
+                  Сейчас: только «{LAYER_DOMAIN_LABELS[scopeDomain]}».
+                </>
+              ) : null}
             </p>
             <div className="lp-table-wrap">
               <table className="lp-table lp-table--stack">
@@ -303,17 +359,27 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
                       Видимость
                     </th>
                     <th scope="col">Название</th>
+                    {listMode === "project" ? <th scope="col">Раздел</th> : null}
                     <th scope="col">Режим</th>
                     <th scope="col">По высоте</th>
                     <th scope="col">Стек</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedLayers.map((l, sortedIdx) => {
+                  {sortedLayersView.map((l, sortedIdx) => {
                     const isActive = l.id === activeId;
                     const checked = isActive || extraVisible.has(l.id);
                     const slice = getLayerVerticalSlice(project, l.id, verticalById);
                     const isDrag = dragLayerId === l.id;
+                    const idxGlobal = fullSorted.findIndex((x) => x.id === l.id);
+                    const upDisabled =
+                      listMode === "context"
+                        ? getAdjacentLayerIdInDomain(project, l.id, "next") === null
+                        : idxGlobal < 0 || idxGlobal >= fullSorted.length - 1;
+                    const downDisabled =
+                      listMode === "context"
+                        ? getAdjacentLayerIdInDomain(project, l.id, "previous") === null
+                        : idxGlobal <= 0;
                     return (
                       <tr
                         key={l.id}
@@ -355,6 +421,9 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
                             </span>
                           )}
                         </td>
+                        {listMode === "project" ? (
+                          <td className="lp-mode-cell">{LAYER_DOMAIN_LABELS[l.domain]}</td>
+                        ) : null}
                         <td className="lp-mode-cell">
                           <span title={l.levelMode === "absolute" ? "От нуля проекта" : "От верха предыдущего слоя"}>
                             {modeLabel(l.levelMode)}
@@ -368,7 +437,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
                             type="button"
                             className="lm-btn lm-btn--ghost lm-btn--sm"
                             title="Выше по зданию"
-                            disabled={sortedIdx >= sortedLayers.length - 1}
+                            disabled={upDisabled}
                             onClick={() => reorderLayerDown(l.id)}
                           >
                             ↑
@@ -377,7 +446,7 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
                             type="button"
                             className="lm-btn lm-btn--ghost lm-btn--sm"
                             title="Ниже по зданию"
-                            disabled={sortedIdx <= 0}
+                            disabled={downDisabled}
                             onClick={() => reorderLayerUp(l.id)}
                           >
                             ↓

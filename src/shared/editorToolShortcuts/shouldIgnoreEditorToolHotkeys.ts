@@ -20,6 +20,10 @@ export interface EditorToolHotkeyAppSnapshot {
   readonly doorEditModal: unknown;
   /** Редактирование параметров плиты (двойной клик). */
   readonly slabEditModal: unknown | null;
+  /** Редактирование параметров крыши-генератора. */
+  readonly roofSystemEditModal: unknown | null;
+  /** Редактирование ручной плоскости крыши. */
+  readonly roofPlaneEditModal: unknown | null;
   readonly wallJointParamsModalOpen: boolean;
   readonly wallCalculationModalOpen: boolean;
   readonly roofCalculationModalOpen: boolean;
@@ -70,6 +74,8 @@ export function hasBlockingEditorOverlayModal(app: EditorToolHotkeyAppSnapshot):
     app.windowEditModal != null ||
     app.doorEditModal != null ||
     app.slabEditModal != null ||
+    app.roofSystemEditModal != null ||
+    app.roofPlaneEditModal != null ||
     app.wallJointParamsModalOpen ||
     app.wallCalculationModalOpen ||
     app.roofCalculationModalOpen ||

@@ -28,6 +28,7 @@ function createDefaultLayer(): { layer: Layer; layerId: string } {
   const layer: Layer = normalizeLayer({
     id: layerId,
     name: "Стены 1 эт",
+    domain: "floorPlan",
     orderIndex: 0,
     elevationMm: 0,
     levelMode: "absolute",

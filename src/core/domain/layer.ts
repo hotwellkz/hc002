@@ -1,8 +1,12 @@
+import { normalizeLayerDomain, type LayerDomain } from "./layerDomain";
+
 export type LayerLevelMode = "absolute" | "relativeToBelow";
 
 export interface Layer {
   readonly id: string;
   readonly name: string;
+  /** Раздел проекта: план / перекрытие / фундамент / крыша (единый реестр слоёв). */
+  readonly domain: LayerDomain;
   /**
    * Порядок в вертикальном стеке слоёв: меньше = ниже по зданию (ближе к нулю/низу стека).
    * Совпадает с сортировкой списка слоёв снизу вверх.
@@ -29,6 +33,7 @@ export interface Layer {
 export function normalizeLayer(input: Layer): Layer {
   return {
     ...input,
+    domain: normalizeLayerDomain((input as { domain?: unknown }).domain),
     levelMode: input.levelMode === "relativeToBelow" ? "relativeToBelow" : "absolute",
     offsetFromBelowMm: typeof input.offsetFromBelowMm === "number" && Number.isFinite(input.offsetFromBelowMm) ? input.offsetFromBelowMm : 0,
     manualHeightMm: typeof input.manualHeightMm === "number" && Number.isFinite(input.manualHeightMm) ? input.manualHeightMm : 0,

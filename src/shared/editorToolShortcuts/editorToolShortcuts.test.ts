@@ -21,6 +21,8 @@ const baseApp = {
   windowEditModal: null,
   doorEditModal: null,
   slabEditModal: null,
+  roofSystemEditModal: null,
+  roofPlaneEditModal: null,
   wallJointParamsModalOpen: false,
   wallCalculationModalOpen: false,
   roofCalculationModalOpen: false,

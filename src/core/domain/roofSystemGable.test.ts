@@ -69,7 +69,8 @@ describe("RoofSystem gable rectangle", () => {
     });
     expect(p.roofSystems).toHaveLength(1);
     expect(p.roofPlanes).toHaveLength(2);
-    const [a, b] = p.roofPlanes;
+    const a = p.roofPlanes[0]!;
+    const b = p.roofPlanes[1]!;
     expect(a.angleDeg).toBeCloseTo(30, 5);
     expect(b.angleDeg).toBeCloseTo(30, 5);
     expect(a.roofSystemId).toBe(p.roofSystems[0]!.id);

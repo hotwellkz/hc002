@@ -114,12 +114,16 @@ function CalculatedRoofPlaneMeshes({
   zAdjustMm,
   selectedRoofBattenEntityId,
   hoverRoofBattenEntityId,
+  selectedRoofPlaneEntityId,
+  hoverRoofPlaneEntityId,
 }: {
   readonly project: Project;
   readonly rp: RoofPlaneEntity;
   readonly zAdjustMm: number;
   readonly selectedRoofBattenEntityId: string | null;
   readonly hoverRoofBattenEntityId: string | null;
+  readonly selectedRoofPlaneEntityId: string | null;
+  readonly hoverRoofPlaneEntityId: string | null;
 }) {
   const profile = getProfileById(project, rp.profileId);
   const asm = useMemo(() => resolveRoofProfileAssembly(profile ?? {}), [profile]);
@@ -193,15 +197,22 @@ function CalculatedRoofPlaneMeshes({
   const covColor = parseHexColor(asm.coveringColorHex);
   const texturePlaceholder = asm.coveringAppearance3d === "texture";
 
+  const pick = editor3dPickUserData({ kind: "roofPlane", entityId: rp.id, reactKey: `roof-plane-${rp.id}` });
+  const planeSelected = selectedRoofPlaneEntityId === rp.id;
+  const planeHover = hoverRoofPlaneEntityId === rp.id && !planeSelected;
+  const slopeHighlight = planeSelected ? 0.42 : planeHover ? 0.26 : 0;
+
   return (
     <group name={`roof-plane-${rp.id}`}>
       {showMem && membraneThree ? (
-        <mesh geometry={membraneThree} castShadow receiveShadow>
+        <mesh geometry={membraneThree} castShadow receiveShadow userData={pick}>
           <meshStandardMaterial
             color={membranePreset.color}
             roughness={membranePreset.roughness}
             metalness={membranePreset.metalness}
             side={DoubleSide}
+            emissive={0xffffff}
+            emissiveIntensity={slopeHighlight}
           />
         </mesh>
       ) : null}
@@ -222,12 +233,14 @@ function CalculatedRoofPlaneMeshes({
           })
         : null}
       {showCov && coveringThree ? (
-        <mesh geometry={coveringThree} castShadow receiveShadow>
+        <mesh geometry={coveringThree} castShadow receiveShadow userData={pick}>
           <meshStandardMaterial
             color={texturePlaceholder ? 0xa8b4c4 : covColor}
             roughness={texturePlaceholder ? 0.88 : 0.42}
             metalness={texturePlaceholder ? 0.06 : 0.35}
             side={DoubleSide}
+            emissive={0xffffff}
+            emissiveIntensity={slopeHighlight}
           />
         </mesh>
       ) : null}
@@ -239,6 +252,8 @@ export interface ProjectRoofAssemblyProps {
   readonly project: Project;
   readonly selectedRoofBattenEntityId: string | null;
   readonly hoverRoofBattenEntityId: string | null;
+  readonly selectedRoofPlaneEntityId: string | null;
+  readonly hoverRoofPlaneEntityId: string | null;
 }
 
 /** 3D-узел кровли: только скаты, отмеченные расчётом; подслои по профилю кровли. */
@@ -246,6 +261,8 @@ export function ProjectRoofAssembly({
   project,
   selectedRoofBattenEntityId,
   hoverRoofBattenEntityId,
+  selectedRoofPlaneEntityId,
+  hoverRoofPlaneEntityId,
 }: ProjectRoofAssemblyProps) {
   const calculatedIds = useMemo(() => {
     const s = new Set<string>();
@@ -278,6 +295,8 @@ export function ProjectRoofAssembly({
           zAdjustMm={zAdjustByPlaneId.get(rp.id) ?? 0}
           selectedRoofBattenEntityId={selectedRoofBattenEntityId}
           hoverRoofBattenEntityId={hoverRoofBattenEntityId}
+          selectedRoofPlaneEntityId={selectedRoofPlaneEntityId}
+          hoverRoofPlaneEntityId={hoverRoofPlaneEntityId}
         />
       ))}
     </group>

@@ -159,10 +159,14 @@
     "layer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "orderIndex", "elevationMm", "isVisible", "createdAt", "updatedAt"],
+      "required": ["id", "name", "domain", "orderIndex", "elevationMm", "isVisible", "createdAt", "updatedAt"],
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "domain": {
+          "type": "string",
+          "enum": ["floorPlan", "slab", "foundation", "roof"]
+        },
         "orderIndex": { "type": "number" },
         "elevationMm": { "type": "number" },
         "levelMode": { "type": "string", "enum": ["absolute", "relativeToBelow"] },

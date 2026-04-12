@@ -132,6 +132,7 @@ describe("computeLayerVerticalStack", () => {
     } as unknown as Layer);
     expect(legacy.levelMode).toBe("absolute");
     expect(legacy.offsetFromBelowMm).toBe(0);
+    expect(legacy.domain).toBe("floorPlan");
     const p = {
       ...createEmptyProject(),
       layers: [legacy],

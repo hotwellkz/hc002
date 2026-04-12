@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { LAYER_DOMAIN_LABELS, editor2dPlanScopeToLayerDomain } from "@/core/domain/layerDomain";
 import { getLayerById } from "@/core/domain/layerOps";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -18,6 +19,10 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
   const [elevationMm, setElevationMm] = useState(0);
 
   const active = getLayerById(project, project.activeLayerId);
+  const scopeDomain =
+    project.viewState.activeTab === "2d"
+      ? editor2dPlanScopeToLayerDomain(project.viewState.editor2dPlanScope)
+      : "floorPlan";
 
   useEffect(() => {
     if (open && active) {
@@ -81,6 +86,9 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
         <h2 id="lm-create-title" className="lm-title">
           Новый слой
         </h2>
+        <p className="lm-micro" style={{ marginTop: "-0.25rem", marginBottom: "0.75rem" }}>
+          Раздел: <strong>{LAYER_DOMAIN_LABELS[scopeDomain]}</strong> (как в выбранном режиме слева на 2D).
+        </p>
         <label className="lm-field">
           <span className="lm-label">Название</span>
           <input

@@ -22,6 +22,8 @@ export function editor3dContextDeleteTargetLabelRu(pick: Editor3dPickPayload): s
       return "проём";
     case "floorBeam":
       return "балку перекрытия";
+    case "roofPlane":
+      return "скат крыши";
     default:
       return "объект";
   }

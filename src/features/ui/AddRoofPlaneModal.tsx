@@ -30,8 +30,8 @@ export function AddRoofPlaneModal() {
   const [levelMm, setLevelMm] = useState(0);
   const [profileId, setProfileId] = useState("");
   const [roofKind, setRoofKind] = useState<RoofSystemKind>("gable");
-  const [eaveMm, setEaveMm] = useState(300);
-  const [sideMm, setSideMm] = useState(200);
+  const [eaveMm, setEaveMm] = useState(450);
+  const [sideMm, setSideMm] = useState(450);
   const [ridgeAlong, setRidgeAlong] = useState<"short" | "long">("short");
   const [monoDrain, setMonoDrain] = useState<MonoCardinalDrain>("s");
 
@@ -83,8 +83,8 @@ export function AddRoofPlaneModal() {
     setLevelMm(0);
     setProfileId(roofProfiles[0]?.id ?? "");
     setRoofKind("gable");
-    setEaveMm(300);
-    setSideMm(200);
+    setEaveMm(450);
+    setSideMm(450);
     setRidgeAlong("short");
     setMonoDrain("s");
   }, [open, session, sessionSys, stickyManual, stickySys, roofProfiles]);

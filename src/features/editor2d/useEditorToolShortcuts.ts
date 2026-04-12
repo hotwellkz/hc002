@@ -26,6 +26,8 @@ function appSnapshotFromStore(): Parameters<typeof shouldIgnoreEditorToolHotkeys
     windowEditModal: s.windowEditModal,
     doorEditModal: s.doorEditModal,
     slabEditModal: s.slabEditModal,
+    roofSystemEditModal: s.roofSystemEditModal,
+    roofPlaneEditModal: s.roofPlaneEditModal,
     wallJointParamsModalOpen: s.wallJointParamsModalOpen,
     wallCalculationModalOpen: s.wallCalculationModalOpen,
     roofCalculationModalOpen: s.roofCalculationModalOpen,

@@ -20,6 +20,7 @@ describe("projectFirestoreWire", () => {
         {
           id: "L",
           name: "1",
+          domain: "floorPlan",
           orderIndex: 0,
           elevationMm: 0,
           levelMode: "absolute",

@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, Plus, Settings, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { getNextLayerId, getPreviousLayerId } from "@/core/domain/layerOps";
+import { getAdjacentLayerIdInDomain, getNextLayerId, getPreviousLayerId } from "@/core/domain/layerOps";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
 import { useAppStore, selectCanDeleteCurrentLayer } from "@/store/useAppStore";
 
@@ -17,8 +17,14 @@ export function LayerToolbar() {
   const openLayerParams = useAppStore((s) => s.openLayerParamsModal);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const prevDisabled = getPreviousLayerId(project) === null;
-  const nextDisabled = getNextLayerId(project) === null;
+  const prevDisabled =
+    project.viewState.activeTab === "2d"
+      ? getAdjacentLayerIdInDomain(project, project.activeLayerId, "previous") === null
+      : getPreviousLayerId(project) === null;
+  const nextDisabled =
+    project.viewState.activeTab === "2d"
+      ? getAdjacentLayerIdInDomain(project, project.activeLayerId, "next") === null
+      : getNextLayerId(project) === null;
   const deleteDisabled = !selectCanDeleteCurrentLayer();
 
   return (

@@ -24,12 +24,11 @@ export interface AddRectangleRoofSystemArgs {
   readonly monoDrainCardinal: MonoCardinalDrain;
 }
 
-/**
- * Добавляет в проект крышу из генератора: скаты, запись `RoofSystemEntity`, автоматический расчёт кровли (свесы).
- */
-export function addRectangleRoofSystemToProject(project: Project, args: AddRectangleRoofSystemArgs): Project {
-  const sysId = newEntityId();
-  const now = new Date().toISOString();
+function insertRectangleRoofSystemIntoProject(
+  project: Project,
+  args: AddRectangleRoofSystemArgs,
+  meta: { readonly systemId: string; readonly layerId: string; readonly createdAt: string; readonly updatedAt: string },
+): Project {
   const slope0 = nextRoofPlaneSlopeIndex(project);
   const geom = buildRectangleRoofSystemGeometryMm({
     footprintCcWMm: args.footprintCcWMm,
@@ -37,18 +36,18 @@ export function addRectangleRoofSystemToProject(project: Project, args: AddRecta
     pitchDeg: args.pitchDeg,
     baseLevelMm: args.baseLevelMm,
     profileId: args.profileId,
-    layerId: project.activeLayerId,
-    roofSystemId: sysId,
+    layerId: meta.layerId,
+    roofSystemId: meta.systemId,
     ridgeAlong: args.ridgeAlong,
     monoDrainCardinal: args.monoDrainCardinal,
     slopeIndexStart: slope0,
-    nowIso: now,
+    nowIso: meta.updatedAt,
   });
 
   const roofSystem: RoofSystemEntity = {
-    id: sysId,
+    id: meta.systemId,
     type: "roofSystem",
-    layerId: project.activeLayerId,
+    layerId: meta.layerId,
     roofKind: args.roofKind,
     footprintMm: args.footprintCcWMm.map((p) => ({ x: p.x, y: p.y })),
     profileId: args.profileId,
@@ -61,14 +60,14 @@ export function addRectangleRoofSystemToProject(project: Project, args: AddRecta
     ridgeAlong: args.ridgeAlong,
     generatedPlaneIds: geom.planes.map((p) => p.id),
     ridgeSegmentsPlanMm: geom.ridgeSegmentsPlanMm,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
   };
 
   const calcEntry: RoofAssemblyCalculation = {
     id: newEntityId(),
-    createdAt: now,
-    updatedAt: now,
+    createdAt: meta.updatedAt,
+    updatedAt: meta.updatedAt,
     roofPlaneIds: geom.planes.map((p) => p.id),
   };
 
@@ -88,4 +87,60 @@ export function addRectangleRoofSystemToProject(project: Project, args: AddRecta
   };
 
   return touchProjectMeta(next);
+}
+
+/**
+ * Добавляет в проект крышу из генератора: скаты, запись `RoofSystemEntity`, автоматический расчёт кровли (свесы).
+ */
+export function addRectangleRoofSystemToProject(project: Project, args: AddRectangleRoofSystemArgs): Project {
+  const sysId = newEntityId();
+  const now = new Date().toISOString();
+  return insertRectangleRoofSystemIntoProject(project, args, {
+    systemId: sysId,
+    layerId: project.activeLayerId,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Перестраивает существующую крышу-генератор с тем же id и слоем; контур основания берётся из текущей сущности.
+ */
+export function replaceRectangleRoofSystemInProject(
+  project: Project,
+  systemId: string,
+  args: Omit<AddRectangleRoofSystemArgs, "footprintCcWMm">,
+): Project {
+  const sys = project.roofSystems.find((s) => s.id === systemId);
+  if (!sys || sys.type !== "roofSystem") {
+    throw new Error("Крыша не найдена.");
+  }
+  const planeIds = new Set(sys.generatedPlaneIds);
+  const updatedAt = new Date().toISOString();
+
+  let stripped: Project = {
+    ...project,
+    roofPlanes: project.roofPlanes.filter((r) => !planeIds.has(r.id)),
+    roofSystems: project.roofSystems.filter((s) => s.id !== systemId),
+    roofAssemblyCalculations: project.roofAssemblyCalculations.filter(
+      (c) => !c.roofPlaneIds.some((id) => planeIds.has(id)),
+    ),
+  };
+  stripped = touchProjectMeta(stripped);
+
+  const footprintCcWMm = sys.footprintMm.map((p) => ({ x: p.x, y: p.y }));
+
+  return insertRectangleRoofSystemIntoProject(
+    stripped,
+    {
+      ...args,
+      footprintCcWMm,
+    },
+    {
+      systemId: sys.id,
+      layerId: sys.layerId,
+      createdAt: sys.createdAt,
+      updatedAt,
+    },
+  );
 }

@@ -4,14 +4,21 @@ import {
   canDeleteLayer,
   createLayerInProject,
   deleteLayerAndEntities,
+  getAdjacentLayerIdInDomain,
+  getLayerById,
   getNextLayerId,
   getPreviousLayerId,
+  moveLayerToDomainSortedIndex,
   moveLayerToStackPosition,
+  projectWithActiveLayerMatchingPlanScope,
   reorderLayerRelative,
+  reorderLayerRelativeInDomain,
   setActiveLayerId,
+  sortLayersForDomain,
   updateLayerInProject,
   type LayerUpdatePatch,
 } from "@/core/domain/layerOps";
+import { editor2dPlanScopeToLayerDomain, type LayerDomain } from "@/core/domain/layerDomain";
 import { normalizeVisibleLayerIds, setVisibleLayerIdsOnProject } from "@/core/domain/layerVisibility";
 import { createDemoProject } from "@/core/domain/demoProject";
 import { newEntityId } from "@/core/domain/ids";
@@ -178,7 +185,8 @@ import {
 } from "@/core/domain/slabOps";
 import { rectangleCornersFromDiagonalMm } from "@/core/domain/slabPolygon";
 import type { RoofSystemKind } from "@/core/domain/roofSystem";
-import { addRectangleRoofSystemToProject } from "@/core/domain/roofSystemToProject";
+import { applyManualRoofPlaneParamsInProject } from "@/core/domain/roofPlaneManualParamsApply";
+import { addRectangleRoofSystemToProject, replaceRectangleRoofSystemInProject } from "@/core/domain/roofSystemToProject";
 import type { MonoCardinalDrain } from "@/core/domain/roofSystemRectangleGeometry";
 import type { SlabStructuralPurpose } from "@/core/domain/slab";
 import type { FoundationPileEntity, FoundationPileKind } from "@/core/domain/foundationPile";
@@ -399,6 +407,8 @@ interface AppState {
   readonly activeTab: EditorTab;
   readonly uiPanels: UiPanelsState;
   readonly layerManagerOpen: boolean;
+  /** Список слоёв в UI: только текущий раздел 2D или все слои проекта. */
+  readonly layerListDisplayMode: "context" | "project";
   readonly layerParamsModalOpen: boolean;
   readonly profilesModalOpen: boolean;
   readonly addWallModalOpen: boolean;
@@ -449,6 +459,10 @@ interface AppState {
   readonly lastRoofSystemPlacementParams: RoofSystemPlacementDraftPersisted | null;
   readonly roofSystemPlacementSession: RoofSystemPlacementSession | null;
   readonly roofSystemPlacementHistoryBaseline: Project | null;
+  /** Редактирование параметров крыши-генератора (двойной клик по скату). */
+  readonly roofSystemEditModal: { readonly roofSystemId: string } | null;
+  /** Редактирование ручной плоскости крыши. */
+  readonly roofPlaneEditModal: { readonly roofPlaneId: string } | null;
   /** Стыковка контуров скатов (режим «Крыша»). */
   readonly roofContourJoinSession: RoofContourJoinSession | null;
   readonly roofContourJoinHistoryBaseline: Project | null;
@@ -615,7 +629,7 @@ interface AppActions {
   importProjectJson: (json: string) => void;
   /** Новые сущности плана в будущем создавать на активном слое. */
   getActiveLayerIdForNewEntities: () => string;
-  createLayer: (input: { readonly name: string; readonly elevationMm: number }) => void;
+  createLayer: (input: { readonly name: string; readonly elevationMm: number; readonly domain?: LayerDomain }) => void;
   goToPreviousLayer: () => void;
   goToNextLayer: () => void;
   deleteCurrentLayer: () => void;
@@ -626,6 +640,9 @@ interface AppActions {
   moveLayerToStackIndex: (layerId: string, targetSortedIndex: number) => void;
   deleteLayerById: (layerId: string) => void;
   openLayerManager: () => void;
+  /** Модалка «Все слои проекта» (без фильтра по разделу). */
+  openProjectLayersManager: () => void;
+  setLayerListDisplayMode: (mode: "context" | "project") => void;
   setEditor2dSuppressActiveLayerBadge: (suppress: boolean) => void;
   closeLayerManager: () => void;
   openLayerParamsModal: () => void;
@@ -844,6 +861,21 @@ interface AppActions {
     readonly ridgeAlong: "short" | "long";
     readonly monoDrainCardinal: MonoCardinalDrain;
   }) => void;
+  openRoofSystemEditModal: (roofSystemId: string) => void;
+  closeRoofSystemEditModal: () => void;
+  applyRoofSystemEditModal: (input: {
+    readonly roofKind: RoofSystemKind;
+    readonly pitchDeg: number;
+    readonly baseLevelMm: number;
+    readonly profileId: string;
+    readonly eaveOverhangMm: number;
+    readonly sideOverhangMm: number;
+    readonly ridgeAlong: "short" | "long";
+    readonly monoDrainCardinal: MonoCardinalDrain;
+  }) => void;
+  openRoofPlaneEditModal: (roofPlaneId: string) => void;
+  closeRoofPlaneEditModal: () => void;
+  applyRoofPlaneEditModal: (input: { readonly angleDeg: number; readonly levelMm: number; readonly profileId: string }) => void;
   cancelRoofSystemPlacement: () => void;
   roofSystemPlacementBackOrExit: () => void;
   roofSystemPlacementPreviewMove: (worldMm: Point2D, viewport: ViewportTransform) => void;
@@ -1185,6 +1217,8 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     lastRoofSystemPlacementParams: null,
     roofSystemPlacementSession: null,
     roofSystemPlacementHistoryBaseline: null,
+    roofSystemEditModal: null,
+    roofPlaneEditModal: null,
     roofContourJoinSession: null,
     roofContourJoinHistoryBaseline: null,
     activeTool: "select",
@@ -1461,6 +1495,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     activeTab: empty.viewState.activeTab,
     uiPanels: { rightPropertiesOpen: true, mobileSheet: null },
     layerManagerOpen: false,
+    layerListDisplayMode: "context",
     layerParamsModalOpen: false,
     profilesModalOpen: false,
     addWallModalOpen: false,
@@ -1504,6 +1539,8 @@ export const useAppStore = create<AppStore>((set, get) => {
     lastRoofSystemPlacementParams: null,
     roofSystemPlacementSession: null,
     roofSystemPlacementHistoryBaseline: null,
+    roofSystemEditModal: null,
+    roofPlaneEditModal: null,
     roofContourJoinSession: null,
     roofContourJoinHistoryBaseline: null,
     wallCoordinateModalOpen: false,
@@ -1833,6 +1870,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           roofPlanePlacementHistoryBaseline: tab === "2d" ? s.roofPlanePlacementHistoryBaseline : null,
           roofSystemPlacementSession: tab === "2d" ? s.roofSystemPlacementSession : null,
           roofSystemPlacementHistoryBaseline: tab === "2d" ? s.roofSystemPlacementHistoryBaseline : null,
+          roofSystemEditModal: tab === "2d" ? s.roofSystemEditModal : null,
+          roofPlaneEditModal: tab === "2d" ? s.roofPlaneEditModal : null,
           roofContourJoinSession: tab === "2d" ? s.roofContourJoinSession : null,
           roofContourJoinHistoryBaseline: tab === "2d" ? s.roofContourJoinHistoryBaseline : null,
           wallJointSession: tab === "2d" ? s.wallJointSession : null,
@@ -2019,30 +2058,56 @@ export const useAppStore = create<AppStore>((set, get) => {
       });
     },
 
-    getActiveLayerIdForNewEntities: () => get().currentProject.activeLayerId,
+    getActiveLayerIdForNewEntities: () => {
+      const p = get().currentProject;
+      if (p.viewState.activeTab !== "2d") {
+        return p.activeLayerId;
+      }
+      const domain = editor2dPlanScopeToLayerDomain(p.viewState.editor2dPlanScope);
+      const active = getLayerById(p, p.activeLayerId);
+      if (active?.domain === domain) {
+        return p.activeLayerId;
+      }
+      const inScope = sortLayersForDomain(p, domain);
+      return inScope[0]?.id ?? p.activeLayerId;
+    },
 
     createLayer: (input) => {
-      const next = createLayerInProject(get().currentProject, input);
+      const p0 = get().currentProject;
+      const domain =
+        input.domain ??
+        (p0.viewState.activeTab === "2d"
+          ? editor2dPlanScopeToLayerDomain(p0.viewState.editor2dPlanScope)
+          : "floorPlan");
+      const next = createLayerInProject(p0, { ...input, domain });
       set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }));
     },
 
     goToPreviousLayer: () => {
-      const id = getPreviousLayerId(get().currentProject);
+      const p = get().currentProject;
+      const id =
+        p.viewState.activeTab === "2d"
+          ? getAdjacentLayerIdInDomain(p, p.activeLayerId, "previous")
+          : getPreviousLayerId(p);
       if (!id) {
         return;
       }
-      const next = setActiveLayerId(get().currentProject, id);
+      const next = setActiveLayerId(p, id);
       if (next) {
         set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true }));
       }
     },
 
     goToNextLayer: () => {
-      const id = getNextLayerId(get().currentProject);
+      const p = get().currentProject;
+      const id =
+        p.viewState.activeTab === "2d"
+          ? getAdjacentLayerIdInDomain(p, p.activeLayerId, "next")
+          : getNextLayerId(p);
       if (!id) {
         return;
       }
-      const next = setActiveLayerId(get().currentProject, id);
+      const next = setActiveLayerId(p, id);
       if (next) {
         set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true }));
       }
@@ -2071,17 +2136,29 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     reorderLayerUp: (layerId) => {
-      const next = reorderLayerRelative(get().currentProject, layerId, "up");
+      const p = get().currentProject;
+      const next =
+        get().layerListDisplayMode === "context"
+          ? reorderLayerRelativeInDomain(p, layerId, "up")
+          : reorderLayerRelative(p, layerId, "up");
       set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     reorderLayerDown: (layerId) => {
-      const next = reorderLayerRelative(get().currentProject, layerId, "down");
+      const p = get().currentProject;
+      const next =
+        get().layerListDisplayMode === "context"
+          ? reorderLayerRelativeInDomain(p, layerId, "down")
+          : reorderLayerRelative(p, layerId, "down");
       set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
     moveLayerToStackIndex: (layerId, targetSortedIndex) => {
-      const next = moveLayerToStackPosition(get().currentProject, layerId, targetSortedIndex);
+      const p = get().currentProject;
+      const next =
+        get().layerListDisplayMode === "context"
+          ? moveLayerToDomainSortedIndex(p, layerId, targetSortedIndex)
+          : moveLayerToStackPosition(p, layerId, targetSortedIndex);
       set((s) => buildProjectMutationState(s, next, { dirty: true }));
     },
 
@@ -2094,10 +2171,12 @@ export const useAppStore = create<AppStore>((set, get) => {
       set((s) => buildProjectMutationState(s, next, { selectedEntityIds: [], dirty: true, lastError: null }));
     },
 
-    openLayerManager: () => set({ layerManagerOpen: true }),
+    openLayerManager: () => set({ layerManagerOpen: true, layerListDisplayMode: "context" }),
+    openProjectLayersManager: () => set({ layerManagerOpen: true, layerListDisplayMode: "project" }),
+    setLayerListDisplayMode: (mode) => set({ layerListDisplayMode: mode }),
     closeLayerManager: () => set({ layerManagerOpen: false }),
 
-    openLayerParamsModal: () => set({ layerParamsModalOpen: true }),
+    openLayerParamsModal: () => set({ layerParamsModalOpen: true, layerListDisplayMode: "context" }),
     closeLayerParamsModal: () => set({ layerParamsModalOpen: false }),
 
     toggleVisibleLayer: (layerId) => {
@@ -4626,12 +4705,17 @@ export const useAppStore = create<AppStore>((set, get) => {
     setEditor2dPlanScope: (scope) =>
       set((s) => {
         const prev = s.currentProject.viewState.editor2dPlanScope;
-        const nextProject = touchProjectMeta(mergeViewState(s.currentProject, { editor2dPlanScope: scope }));
+        let nextProject = touchProjectMeta(mergeViewState(s.currentProject, { editor2dPlanScope: scope }));
+        const matchedActive = projectWithActiveLayerMatchingPlanScope(nextProject, scope);
+        if (matchedActive) {
+          nextProject = matchedActive;
+        }
         // Набор полей состояния собирается по шагам; без `any` мешают readonly-поля `AppStore`.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const patch: any = {
           dirty: true,
           lastError: null,
+          layerListDisplayMode: "context",
           activeTool: "select",
           ruler2dSession: null,
           line2dSession: null,
@@ -4714,6 +4798,12 @@ export const useAppStore = create<AppStore>((set, get) => {
             patch.roofSystemPlacementSession = null;
             patch.roofSystemPlacementHistoryBaseline = null;
             patch.addRoofPlaneModalOpen = false;
+          }
+          if (s.roofSystemEditModal != null) {
+            patch.roofSystemEditModal = null;
+          }
+          if (s.roofPlaneEditModal != null) {
+            patch.roofPlaneEditModal = null;
           }
           if (s.roofContourJoinSession != null) {
             patch.roofContourJoinSession = null;
@@ -4809,6 +4899,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         roofContourJoinHistoryBaseline: null,
         roofSystemPlacementSession: null,
         roofSystemPlacementHistoryBaseline: null,
+        roofSystemEditModal: null,
+        roofPlaneEditModal: null,
         lastError: null,
       }),
 
@@ -4948,7 +5040,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!s || isSceneCoordinateModalBlocking(get())) {
         return;
       }
-      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      const snap = resolveWallPlacementSnapFromStore(get, worldMm, viewport, { snapLayerBias: "preferActive" });
       set({
         roofSystemPlacementSession: {
           ...s,
@@ -4963,7 +5055,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       if (!s0) {
         return;
       }
-      const snap = resolvePlacementSnap(get, worldMm, viewport);
+      const snap = resolveWallPlacementSnapFromStore(get, worldMm, viewport, { snapLayerBias: "preferActive" });
       const pt = snap.point;
       const minLen = 10;
       const p0 = get().currentProject;
@@ -5012,13 +5104,12 @@ export const useAppStore = create<AppStore>((set, get) => {
           return;
         }
         const newPlaneIds = nextProject.roofPlanes.filter((r) => !beforeIds.has(r.id)).map((r) => r.id);
-        const nextSession = newRoofSystemPlacementSession(d);
         set((st) =>
           buildProjectMutationState(
             st,
             nextProject,
             {
-              roofSystemPlacementSession: nextSession,
+              roofSystemPlacementSession: null,
               roofSystemPlacementHistoryBaseline: null,
               selectedEntityIds: newPlaneIds.length > 0 ? [newPlaneIds[0]!] : [],
               dirty: true,
@@ -5028,6 +5119,118 @@ export const useAppStore = create<AppStore>((set, get) => {
           ),
         );
       }
+    },
+
+    openRoofSystemEditModal: (roofSystemId) =>
+      set({
+        roofSystemEditModal: { roofSystemId },
+        roofPlaneEditModal: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      }),
+
+    closeRoofSystemEditModal: () => set({ roofSystemEditModal: null }),
+
+    openRoofPlaneEditModal: (roofPlaneId) =>
+      set({
+        roofPlaneEditModal: { roofPlaneId },
+        roofSystemEditModal: null,
+        addRoofPlaneModalOpen: false,
+        lastError: null,
+      }),
+
+    closeRoofPlaneEditModal: () => set({ roofPlaneEditModal: null }),
+
+    applyRoofPlaneEditModal: (input) => {
+      const m = get().roofPlaneEditModal;
+      if (!m) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const r = applyManualRoofPlaneParamsInProject(p0, m.roofPlaneId, {
+        angleDeg: Number(input.angleDeg),
+        levelMm: Number(input.levelMm),
+        profileId: String(input.profileId ?? "").trim(),
+      });
+      if (!r.ok) {
+        set({ lastError: r.error });
+        return;
+      }
+      set((st) =>
+        buildProjectMutationState(
+          st,
+          r.project,
+          {
+            dirty: true,
+            lastError: null,
+            roofPlaneEditModal: null,
+            selectedEntityIds: [m.roofPlaneId],
+          },
+          { historyBefore: st.currentProject },
+        ),
+      );
+    },
+
+    applyRoofSystemEditModal: (input) => {
+      const m = get().roofSystemEditModal;
+      if (!m) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const profileId = String(input.profileId ?? "").trim();
+      if (!profileId) {
+        set({ lastError: "Выберите профиль кровли." });
+        return;
+      }
+      const profile = getProfileById(p0, profileId);
+      if (!profile || !isProfileUsableForRoofPlane(profile)) {
+        set({ lastError: "Выберите профиль категории «крыша»." });
+        return;
+      }
+      const pitchDeg = Number(input.pitchDeg);
+      const baseLevelMm = Number(input.baseLevelMm);
+      const eaveOverhangMm = Number(input.eaveOverhangMm);
+      const sideOverhangMm = Number(input.sideOverhangMm);
+      if (!Number.isFinite(pitchDeg) || !Number.isFinite(baseLevelMm)) {
+        set({ lastError: "Угол и уровень должны быть числами." });
+        return;
+      }
+      if (!Number.isFinite(eaveOverhangMm) || !Number.isFinite(sideOverhangMm) || eaveOverhangMm < 0 || sideOverhangMm < 0) {
+        set({ lastError: "Свесы должны быть неотрицательными числами (мм)." });
+        return;
+      }
+      let nextProject: Project;
+      try {
+        nextProject = replaceRectangleRoofSystemInProject(p0, m.roofSystemId, {
+          roofKind: input.roofKind,
+          pitchDeg,
+          baseLevelMm,
+          profileId,
+          eaveOverhangMm,
+          sideOverhangMm,
+          ridgeAlong: input.ridgeAlong,
+          monoDrainCardinal: input.monoDrainCardinal,
+        });
+      } catch (e) {
+        set({ lastError: e instanceof Error ? e.message : "Не удалось перестроить крышу." });
+        return;
+      }
+      const sys = nextProject.roofSystems.find((s) => s.id === m.roofSystemId);
+      const sel = sys && sys.generatedPlaneIds.length > 0 ? [sys.generatedPlaneIds[0]!] : [];
+      set((st) =>
+        buildProjectMutationState(
+          st,
+          nextProject,
+          {
+            dirty: true,
+            lastError: null,
+            roofSystemEditModal: null,
+            roofPlaneEditModal: null,
+            selectedEntityIds: sel.length > 0 ? sel : st.selectedEntityIds,
+          },
+          { historyBefore: st.currentProject },
+        ),
+      );
     },
 
     cancelRoofPlanePlacement: () =>

@@ -7,6 +7,8 @@ export type ResolvedObjectEditorAction =
   | { readonly kind: "door"; readonly openingId: string }
   | { readonly kind: "window"; readonly openingId: string }
   | { readonly kind: "slab"; readonly slabId: string }
+  | { readonly kind: "roofSystem"; readonly roofSystemId: string }
+  | { readonly kind: "manualRoofPlane"; readonly roofPlaneId: string }
   | { readonly kind: "hint"; readonly message: string };
 
 /**
@@ -35,6 +37,16 @@ export function resolveObjectEditorForSelection(
   }
   if (project.slabs.some((s) => s.id === id)) {
     return { kind: "slab", slabId: id };
+  }
+  const roofPlane = project.roofPlanes.find((r) => r.id === id);
+  if (roofPlane) {
+    if (roofPlane.roofSystemId) {
+      const sys = project.roofSystems.find((s) => s.id === roofPlane.roofSystemId);
+      if (sys) {
+        return { kind: "roofSystem", roofSystemId: sys.id };
+      }
+    }
+    return { kind: "manualRoofPlane", roofPlaneId: roofPlane.id };
   }
   if (project.floorBeams.some((b) => b.id === id)) {
     return { kind: "hint", message: "Балка перекрытия: параметры задаются при создании; удаление — Del или контекстное меню." };
@@ -75,6 +87,14 @@ export function applyResolvedObjectEditor(resolved: ResolvedObjectEditorAction):
   }
   if (resolved.kind === "slab") {
     store.openSlabEditModal(resolved.slabId);
+    return;
+  }
+  if (resolved.kind === "roofSystem") {
+    store.openRoofSystemEditModal(resolved.roofSystemId);
+    return;
+  }
+  if (resolved.kind === "manualRoofPlane") {
+    store.openRoofPlaneEditModal(resolved.roofPlaneId);
     return;
   }
   store.openWindowEditModal(resolved.openingId, "form");

@@ -40,9 +40,32 @@ export function RightPropertiesPanelContent() {
       {selectedRoofPlane ? (
         <div className="rpp-block">
           <p className="muted rpp-hint" style={{ marginBottom: 8 }}>
-            Выбран объект: <strong>плоскость крыши</strong> (тип roofPlane). Угол {Math.round(selectedRoofPlane.angleDeg * 10) / 10}
-            °, Скат {selectedRoofPlane.slopeIndex}. Редактирование параметров — в следующих версиях.
+            Выбран объект: <strong>плоскость крыши</strong>. Угол {Math.round(selectedRoofPlane.angleDeg * 10) / 10}°, скат{" "}
+            {selectedRoofPlane.slopeIndex}.
           </p>
+          {selectedRoofPlane.roofSystemId ? (
+            <>
+              <button
+                type="button"
+                className="rpp-action-btn"
+                onClick={() => useAppStore.getState().openRoofSystemEditModal(selectedRoofPlane.roofSystemId!)}
+              >
+                Изменить крышу…
+              </button>
+              <p className="muted rpp-hint">Открывает параметры всей крыши-генератора (все скаты пересобираются).</p>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rpp-action-btn"
+                onClick={() => useAppStore.getState().openRoofPlaneEditModal(selectedRoofPlane.id)}
+              >
+                Изменить плоскость…
+              </button>
+              <p className="muted rpp-hint">Двойной клик по скату на плане или в 3D — тот же редактор.</p>
+            </>
+          )}
         </div>
       ) : null}
       <dl className="rpp-dl">

@@ -35,6 +35,7 @@ export function migrateWireV0ToProject(data: Record<string, unknown>): Project {
     normalizeLayer({
       id: lev.id,
       name: i === 0 ? "Стены 1 эт" : lev.name,
+      domain: "floorPlan",
       orderIndex: lev.order,
       elevationMm: lev.elevationMm,
       levelMode: "absolute",

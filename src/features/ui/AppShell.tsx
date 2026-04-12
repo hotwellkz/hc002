@@ -8,6 +8,8 @@ import { useProjectUndoRedoHotkeys } from "@/features/project/useProjectUndoRedo
 import { AddFoundationPileModal } from "@/features/ui/AddFoundationPileModal";
 import { FoundationStripAutoPilesModal } from "@/features/ui/FoundationStripAutoPilesModal";
 import { AddRoofPlaneModal } from "@/features/ui/AddRoofPlaneModal";
+import { EditRoofPlaneModal } from "@/features/ui/EditRoofPlaneModal";
+import { EditRoofSystemModal } from "@/features/ui/EditRoofSystemModal";
 import { AddSlabModal } from "@/features/ui/AddSlabModal";
 import { AddFoundationStripModal } from "@/features/ui/AddFoundationStripModal";
 import { AddWallModal } from "@/features/ui/AddWallModal";
@@ -109,6 +111,8 @@ export function AppShell() {
       <AddFoundationStripModal />
       <AddSlabModal />
       <AddRoofPlaneModal />
+      <EditRoofSystemModal />
+      <EditRoofPlaneModal />
       <SlabEditModal />
       <AddFoundationPileModal />
       <FoundationStripAutoPilesModal />

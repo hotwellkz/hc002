@@ -587,3 +587,76 @@ export function buildRectangleRoofSystemGeometryMm(input: RectangleRoofBuildInpu
     }
   }
 }
+
+/**
+ * Линии конька/верхнего карниза для превью на 2D без создания сущностей.
+ * Для односкатной — отрезок противоположной «верхней» стороне стока (визуальная ось ската).
+ */
+export function previewRidgeSegmentsForRectangleFootprintMm(
+  footprintCcWMm: readonly Point2D[],
+  roofKind: RoofSystemKind,
+  ridgeAlong: RidgeAlongChoice,
+  monoDrainCardinal: MonoCardinalDrain,
+): readonly RoofRidgeSegmentMm[] {
+  if (footprintCcWMm.length !== 4) {
+    return [];
+  }
+  const r = rectMetrics(footprintCcWMm);
+  if (r.Lx < 1 || r.Ly < 1) {
+    return [];
+  }
+  const { xmin, xmax, ymin, ymax, Lx, Ly, cx, cy } = r;
+
+  if (roofKind === "mono") {
+    switch (monoDrainCardinal) {
+      case "s":
+        return [{ ax: xmin, ay: ymax, bx: xmax, by: ymax }];
+      case "n":
+        return [{ ax: xmin, ay: ymin, bx: xmax, by: ymin }];
+      case "w":
+        return [{ ax: xmax, ay: ymin, bx: xmax, by: ymax }];
+      case "e":
+        return [{ ax: xmin, ay: ymin, bx: xmin, by: ymax }];
+      default: {
+        const _e: never = monoDrainCardinal;
+        return _e;
+      }
+    }
+  }
+
+  if (roofKind === "gable") {
+    const horizShorter = Lx <= Ly;
+    const wantRidgeAlongShort = ridgeAlong === "short";
+    const ridgeHorizontal = wantRidgeAlongShort ? horizShorter : !horizShorter;
+    if (ridgeHorizontal) {
+      return [{ ax: xmin, ay: cy, bx: xmax, by: cy }];
+    }
+    return [{ ax: cx, ay: ymin, bx: cx, by: ymax }];
+  }
+
+  if (roofKind === "hip") {
+    if (Math.abs(Lx - Ly) < 1) {
+      return [{ ax: cx, ay: cy, bx: cx, by: cy }];
+    }
+    if (Lx > Ly) {
+      const ymid = cy;
+      const inset = Ly * 0.5;
+      const xR0 = xmin + inset;
+      const xR1 = xmax - inset;
+      if (xR1 <= xR0 + EPS) {
+        return [{ ax: cx, ay: cy, bx: cx, by: cy }];
+      }
+      return [{ ax: xR0, ay: ymid, bx: xR1, by: ymid }];
+    }
+    const xmid = cx;
+    const inset = Lx * 0.5;
+    const yR0 = ymin + inset;
+    const yR1 = ymax - inset;
+    if (yR1 <= yR0 + EPS) {
+      return [{ ax: cx, ay: cy, bx: cx, by: cy }];
+    }
+    return [{ ax: xmid, ay: yR0, bx: xmid, by: yR1 }];
+  }
+
+  return [];
+}
