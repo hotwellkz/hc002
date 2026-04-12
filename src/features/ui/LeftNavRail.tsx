@@ -1,4 +1,4 @@
-import { BrickWall, LayoutGrid, Layers } from "lucide-react";
+import { BrickWall, LandPlot, LayoutGrid, Layers } from "lucide-react";
 
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
 import { useAppStore } from "@/store/useAppStore";
@@ -23,6 +23,7 @@ export function LeftNavRailContent({ className, onNavigate }: LeftNavRailContent
   });
   const floorPlanActive = activeTab === "2d" && planScope === "main";
   const floorStructureActive = activeTab === "2d" && planScope === "floorStructure";
+  const foundationActive = activeTab === "2d" && planScope === "foundation";
   const wallDetailActive = activeTab === "wall";
 
   const wrapCls = ["lnr", className].filter(Boolean).join(" ");
@@ -60,6 +61,22 @@ export function LeftNavRailContent({ className, onNavigate }: LeftNavRailContent
       >
         <LucideToolIcon icon={Layers} className="lnr-icon" />
         <span className="lnr-label">Перекрытие</span>
+      </button>
+      <button
+        type="button"
+        className="lnr-btn"
+        title="Фундамент"
+        aria-label="Фундамент"
+        aria-pressed={foundationActive}
+        data-active={foundationActive}
+        onClick={() => {
+          setActiveTab("2d");
+          setEditor2dPlanScope("foundation");
+          onNavigate?.();
+        }}
+      >
+        <LucideToolIcon icon={LandPlot} className="lnr-icon" />
+        <span className="lnr-label">Фундамент</span>
       </button>
       <button
         type="button"

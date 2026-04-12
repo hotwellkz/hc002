@@ -1,4 +1,4 @@
-import { GripHorizontal, SquareSplitHorizontal } from "lucide-react";
+import { GripHorizontal, PanelTop, SquareSplitHorizontal } from "lucide-react";
 
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
 import { useAppStore } from "@/store/useAppStore";
@@ -9,7 +9,9 @@ import "./editor2d-plan-toolbar.css";
 export function Editor2DFloorStructureToolbar() {
   const openBeam = useAppStore((s) => s.openAddFloorBeamModal);
   const openSplit = useAppStore((s) => s.openFloorBeamSplitModal);
+  const openSlab = useAppStore((s) => s.openAddSlabModal);
   const beamToolActive = useAppStore((s) => s.floorBeamPlacementSession != null);
+  const slabToolActive = useAppStore((s) => s.slabPlacementSession != null);
   const splitModalOpen = useAppStore((s) => s.floorBeamSplitModalOpen);
   const splitAwaitingPick = useAppStore((s) => s.floorBeamSplitSession != null);
 
@@ -42,6 +44,17 @@ export function Editor2DFloorStructureToolbar() {
         onClick={() => openSplit()}
       >
         <LucideToolIcon icon={SquareSplitHorizontal} className="e2dpt-icon" />
+      </button>
+      <button
+        type="button"
+        className="e2dpt-btn"
+        title={slabToolActive ? "Параметры плиты (добавить ещё)" : "Добавить плиту"}
+        aria-label={slabToolActive ? "Параметры плиты" : "Добавить плиту"}
+        aria-pressed={slabToolActive}
+        data-active={slabToolActive}
+        onClick={() => openSlab("overlap")}
+      >
+        <LucideToolIcon icon={PanelTop} className="e2dpt-icon" />
       </button>
     </div>
   );

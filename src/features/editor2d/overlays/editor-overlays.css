@@ -75,6 +75,30 @@
   line-height: 1.4;
 }
 
+.ed2d-live-hud-badge--interactive {
+  pointer-events: auto;
+}
+
+.ed2d-live-hud-badge__input {
+  width: 4.2em;
+  max-width: 96px;
+  margin: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-editor-hud-live-border));
+  background: color-mix(in srgb, var(--color-surface-base) 40%, var(--color-editor-hud-live-bg));
+  color: var(--color-editor-hud-live-fg);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.ed2d-live-hud-badge__input:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-editor-hud-live-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
 .ed2d-live-hud-badge--angle-snap {
   border-color: color-mix(in srgb, var(--color-success, #5cd49a) 42%, var(--color-editor-hud-live-border));
   box-shadow: var(--shadow-editor-hud), 0 0 0 1px color-mix(in srgb, var(--color-success) 18%, transparent);

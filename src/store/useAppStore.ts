@@ -64,7 +64,7 @@ import {
 } from "@/core/domain/openingWindowGeometry";
 import { editor3dPickSupportsContextDelete } from "@/core/domain/editor3dContextMenuPolicy";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
-import { type ViewportTransform } from "@/core/geometry/viewportTransform";
+import { buildViewportTransform, type ViewportTransform } from "@/core/geometry/viewportTransform";
 import type { Point2D } from "@/core/geometry/types";
 import {
   DOOR_SWING_PICK_DEAD_ZONE_MM,
@@ -126,6 +126,12 @@ import { initialWallPlacementPhase } from "@/core/domain/wallPlacement";
 import { commitFloorBeamPlacementSecondPoint } from "@/core/domain/floorBeamPlacementCommit";
 import type { FloorBeamPlacementSession } from "@/core/domain/floorBeamPlacement";
 import { initialFloorBeamPlacementPhase } from "@/core/domain/floorBeamPlacement";
+import {
+  floorBeamPlacementSecondPointFromNumericInput,
+  linearSecondPointFromNumericInput,
+  type FloorBeamPlacementNumericField,
+} from "@/core/domain/floorBeamPlacementNumericPreview";
+import { mergeFloorBeamPlacementPreviewFromRawWorldMm } from "@/core/domain/floorBeamPlacementPreviewApply";
 import { applyFloorBeamSplitInProject } from "@/core/domain/floorBeamSplit";
 import type { FloorBeamSplitMode } from "@/core/domain/floorBeamSplitMode";
 import { beamPlanThicknessAndVerticalMm, isProfileUsableForFloorBeam } from "@/core/domain/floorBeamSection";
@@ -142,6 +148,7 @@ import {
   updateSlabInProject,
 } from "@/core/domain/slabOps";
 import { rectangleCornersFromDiagonalMm } from "@/core/domain/slabPolygon";
+import type { SlabStructuralPurpose } from "@/core/domain/slab";
 import type { FoundationPileEntity, FoundationPileKind } from "@/core/domain/foundationPile";
 import type { FoundationPileMoveCopySession } from "@/core/domain/foundationPileMoveCopySession";
 import type { FloorBeamMoveCopySession } from "@/core/domain/floorBeamMoveCopySession";
@@ -232,6 +239,7 @@ export type SlabPlacementPhase = "waitingFirstPoint" | "waitingSecondPoint" | "p
 export interface SlabPlacementDraftPersisted {
   readonly depthMm: number;
   readonly levelMm: number;
+  readonly purpose: SlabStructuralPurpose;
 }
 
 export interface SlabPlacementSession {
@@ -337,9 +345,13 @@ interface AppState {
   readonly foundationPilePlacementHistoryBaseline: Project | null;
   /** Двойной клик по ленте: параметры авто-свай для связной группы лент. */
   readonly foundationStripAutoPilesModal: { readonly seedStripId: string } | null;
-  /** Липкие параметры «Добавить плиту» между сеансами. */
-  readonly lastSlabPlacementParams: { readonly depthMm: number; readonly levelMm: number };
+  /** Липкие параметры «Добавить плиту» по контексту (перекрытие / фундамент). */
+  readonly lastSlabPlacementParamsByPurpose: Readonly<
+    Record<SlabStructuralPurpose, { readonly depthMm: number; readonly levelMm: number }>
+  >;
   readonly addSlabModalOpen: boolean;
+  /** Контекст открытой модалки плиты (совпадает с выбранным режимом слева). */
+  readonly addSlabModalPurpose: SlabStructuralPurpose | null;
   readonly slabPlacementSession: SlabPlacementSession | null;
   readonly slabPlacementHistoryBaseline: Project | null;
   readonly slabCoordinateModalOpen: boolean;
@@ -351,6 +363,8 @@ interface AppState {
   /** Активен режим «Разделить»: после «Применить» в модалке — клик по балке. */
   readonly floorBeamSplitSession: { readonly mode: FloorBeamSplitMode; readonly overlapMm: number } | null;
   readonly wallCoordinateModalOpen: boolean;
+  /** Пробел: ручной ввод ΔX/ΔY второй точки балки перекрытия (только превью, без коммита). */
+  readonly floorBeamPlacementCoordinateModalOpen: boolean;
   /** Модалка смещения начала стены от опорной точки (Пробел после выбора опоры). */
   readonly wallAnchorCoordinateModalOpen: boolean;
   /** Режим «Точка привязки»: опорная точка и смещение для начала стены (вместе с «Добавить стену»). */
@@ -518,7 +532,7 @@ interface AppActions {
   duplicateProfileById: (profileId: string) => void;
   openAddWallModal: () => void;
   closeAddWallModal: () => void;
-  openAddSlabModal: () => void;
+  openAddSlabModal: (purpose: SlabStructuralPurpose) => void;
   closeAddSlabModal: () => void;
   applyAddSlabModal: (input: { readonly depthMm: number; readonly levelMm: number }) => void;
   cancelSlabPlacement: () => void;
@@ -687,7 +701,7 @@ interface AppActions {
     viewport: ViewportTransform,
     opts?: { readonly altKey?: boolean },
   ) => void;
-  floorBeamPlacementCompleteSecondPoint: (secondSnappedMm: Point2D) => void;
+  floorBeamPlacementCompleteSecondPoint: (secondSnappedMm: Point2D) => boolean;
   openFloorBeamSplitModal: () => void;
   closeFloorBeamSplitModal: () => void;
   applyFloorBeamSplitModal: (input: { readonly mode: FloorBeamSplitMode; readonly overlapMm: number }) => void;
@@ -708,6 +722,26 @@ interface AppActions {
   openWallCoordinateModal: (opts?: { readonly focus?: "x" | "y" }) => void;
   closeWallCoordinateModal: () => void;
   applyWallCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
+  openFloorBeamPlacementCoordinateModal: (opts?: { readonly focus?: "x" | "y" }) => void;
+  closeFloorBeamPlacementCoordinateModal: () => void;
+  applyFloorBeamPlacementCoordinateModal: (input: { readonly dxMm: number; readonly dyMm: number }) => void;
+  /** Ручной ввод X/Y/D у live-HUD: та же цепочка snap, затем commit, как второй клик. */
+  floorBeamPlacementCommitNumericField: (input: {
+    readonly field: FloorBeamPlacementNumericField;
+    readonly valueMm: number;
+  }) => boolean;
+  wallMoveCopyApplyNumericPreviewField: (input: {
+    readonly field: FloorBeamPlacementNumericField;
+    readonly valueMm: number;
+  }) => void;
+  floorBeamMoveCopyApplyNumericPreviewField: (input: {
+    readonly field: FloorBeamPlacementNumericField;
+    readonly valueMm: number;
+  }) => void;
+  entityCopyApplyNumericPreviewField: (input: {
+    readonly field: FloorBeamPlacementNumericField;
+    readonly valueMm: number;
+  }) => void;
   openWallContextMenu: (input: { readonly wallId: string; readonly clientX: number; readonly clientY: number }) => void;
   closeWallContextMenu: () => void;
   deleteWallFromContextMenu: (wallId: string) => void;
@@ -923,6 +957,7 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     sceneCoordModalDesiredFocus: null,
     wallCalculationModalOpen: false,
     wallCoordinateModalOpen: false,
+    floorBeamPlacementCoordinateModalOpen: false,
     wallAnchorCoordinateModalOpen: false,
     wallAnchorPlacementModeActive: false,
     wallPlacementAnchorMm: null,
@@ -965,6 +1000,7 @@ function historyJumpClearTransientUi(s: AppStore, restored: Project): Partial<Ap
     foundationPilePlacementHistoryBaseline: null,
     foundationStripAutoPilesModal: null,
     addSlabModalOpen: false,
+    addSlabModalPurpose: null,
     slabPlacementSession: null,
     slabPlacementHistoryBaseline: null,
     slabCoordinateModalOpen: false,
@@ -1198,6 +1234,7 @@ function tryCommitSlabOutline(
     pointsMm,
     levelMm: session.draft.levelMm,
     depthMm: session.draft.depthMm,
+    structuralPurpose: session.draft.purpose,
   });
   if ("error" in created) {
     return { ok: false, error: created.error };
@@ -1239,8 +1276,12 @@ export const useAppStore = create<AppStore>((set, get) => {
     foundationPilePlacementSession: null,
     foundationPilePlacementHistoryBaseline: null,
     foundationStripAutoPilesModal: null,
-    lastSlabPlacementParams: { depthMm: 1000, levelMm: 0 },
+    lastSlabPlacementParamsByPurpose: {
+      overlap: { depthMm: 1000, levelMm: 0 },
+      foundation: { depthMm: 1000, levelMm: 0 },
+    },
     addSlabModalOpen: false,
+    addSlabModalPurpose: null,
     slabPlacementSession: null,
     slabPlacementHistoryBaseline: null,
     slabCoordinateModalOpen: false,
@@ -1251,6 +1292,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     floorBeamSplitModalOpen: false,
     floorBeamSplitSession: null,
     wallCoordinateModalOpen: false,
+    floorBeamPlacementCoordinateModalOpen: false,
     wallAnchorCoordinateModalOpen: false,
     wallAnchorPlacementModeActive: false,
     wallPlacementAnchorMm: null,
@@ -1410,6 +1452,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointParamsModalOpen: false,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -1433,6 +1476,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           foundationPilePlacementSession: null,
           foundationPilePlacementHistoryBaseline: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -1574,6 +1618,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           pendingDoorPlacement: tab === "2d" ? s.pendingDoorPlacement : null,
           windowEditModal: tab === "2d" ? s.windowEditModal : null,
           wallCoordinateModalOpen: tab === "2d" ? s.wallCoordinateModalOpen : false,
+          floorBeamPlacementCoordinateModalOpen: tab === "2d" ? s.floorBeamPlacementCoordinateModalOpen : false,
           wallAnchorCoordinateModalOpen: tab === "2d" ? s.wallAnchorCoordinateModalOpen : false,
           wallAnchorPlacementModeActive: tab === "2d" ? s.wallAnchorPlacementModeActive : false,
           wallPlacementAnchorMm: tab === "2d" ? s.wallPlacementAnchorMm : null,
@@ -1895,6 +1940,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           pendingOpeningPlacementHistoryBaseline: null,
           foundationStripAutoPilesModal: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -1923,6 +1969,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallJointParamsModalOpen: false,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -1939,6 +1986,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           foundationPilePlacementHistoryBaseline: null,
           foundationStripAutoPilesModal: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -1967,6 +2015,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallJointParamsModalOpen: false,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -1984,6 +2033,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           foundationPileMoveCopyHistoryBaseline: null,
           foundationStripAutoPilesModal: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -2181,6 +2231,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallPlacementSession: null,
         wallPlacementHistoryBaseline: null,
         addSlabModalOpen: false,
+        addSlabModalPurpose: null,
         slabPlacementSession: null,
         slabPlacementHistoryBaseline: null,
         slabCoordinateModalOpen: false,
@@ -2372,9 +2423,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       );
     },
 
-    openAddSlabModal: () => set({ addSlabModalOpen: true, lastError: null }),
+    openAddSlabModal: (purpose) => set({ addSlabModalOpen: true, addSlabModalPurpose: purpose, lastError: null }),
 
-    closeAddSlabModal: () => set({ addSlabModalOpen: false }),
+    closeAddSlabModal: () => set({ addSlabModalOpen: false, addSlabModalPurpose: null }),
 
     applyAddSlabModal: (input) => {
       const depthMm = Number(input.depthMm);
@@ -2387,12 +2438,19 @@ export const useAppStore = create<AppStore>((set, get) => {
         set({ lastError: "Уровень должен быть числом (мм)." });
         return;
       }
-      const p = get().currentProject;
+      const st0 = get();
+      const p = st0.currentProject;
+      const purpose: SlabStructuralPurpose =
+        st0.addSlabModalPurpose ?? st0.slabPlacementSession?.draft.purpose ?? "overlap";
       const baseline = cloneProjectSnapshot(p);
-      const draft: SlabPlacementDraftPersisted = { depthMm, levelMm };
+      const draft: SlabPlacementDraftPersisted = { depthMm, levelMm, purpose };
       set({
         addSlabModalOpen: false,
-        lastSlabPlacementParams: draft,
+        addSlabModalPurpose: null,
+        lastSlabPlacementParamsByPurpose: {
+          ...st0.lastSlabPlacementParamsByPurpose,
+          [purpose]: { depthMm, levelMm },
+        },
         slabPlacementHistoryBaseline: baseline,
         slabPlacementSession: newSlabPlacementSession(p, draft),
         slabCoordinateModalOpen: false,
@@ -2419,6 +2477,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         slabPlacementSession: null,
         slabPlacementHistoryBaseline: null,
         addSlabModalOpen: false,
+        addSlabModalPurpose: null,
         slabCoordinateModalOpen: false,
         lastError: null,
       }),
@@ -2774,6 +2833,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           foundationPilePlacementHistoryBaseline: null,
           foundationStripAutoPilesModal: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -2782,6 +2842,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallJointParamsModalOpen: false,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -2814,6 +2875,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           foundationPilePlacementSession: null,
           foundationPilePlacementHistoryBaseline: null,
           addSlabModalOpen: false,
+          addSlabModalPurpose: null,
           slabPlacementSession: null,
           slabPlacementHistoryBaseline: null,
           slabCoordinateModalOpen: false,
@@ -2822,6 +2884,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallJointParamsModalOpen: false,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -3350,6 +3413,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallPlacementSession: null,
         wallJointSession: null,
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -3369,6 +3433,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: { kind, phase: "pickFirst" },
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -3556,6 +3621,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallPlacementSession: null,
         wallPlacementHistoryBaseline: null,
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -3584,6 +3650,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             shiftLockReferenceMm: null,
           },
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallPlacementAnchorMm: null,
           wallPlacementAnchorPreviewEndMm: null,
@@ -3605,6 +3672,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           shiftLockReferenceMm: null,
         },
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -4188,6 +4256,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             },
             wallPlacementHistoryBaseline: null,
             wallCoordinateModalOpen: false,
+            floorBeamPlacementCoordinateModalOpen: false,
             wallAnchorCoordinateModalOpen: false,
             wallPlacementAnchorMm: null,
             wallPlacementAnchorPreviewEndMm: null,
@@ -4216,19 +4285,101 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     setEditor2dPlanScope: (scope) =>
       set((s) => {
+        const prev = s.currentProject.viewState.editor2dPlanScope;
         const nextProject = touchProjectMeta(mergeViewState(s.currentProject, { editor2dPlanScope: scope }));
-        if (scope === "main" && (s.floorBeamPlacementSession || s.floorBeamSplitSession || s.floorBeamSplitModalOpen)) {
-          return buildProjectMutationState(s, nextProject, {
-            floorBeamPlacementSession: null,
-            floorBeamPlacementHistoryBaseline: null,
-            addFloorBeamModalOpen: false,
-            floorBeamSplitSession: null,
-            floorBeamSplitModalOpen: false,
-            dirty: true,
-            lastError: null,
-          });
+        // Набор полей состояния собирается по шагам; без `any` мешают readonly-поля `AppStore`.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const patch: any = {
+          dirty: true,
+          lastError: null,
+          activeTool: "select",
+          ruler2dSession: null,
+          line2dSession: null,
+          lengthChange2dSession: null,
+          lengthChangeCoordinateModalOpen: false,
+        };
+
+        if (prev !== scope && s.addSlabModalOpen) {
+          patch.addSlabModalOpen = false;
+          patch.addSlabModalPurpose = null;
         }
-        return buildProjectMutationState(s, nextProject, { dirty: true, lastError: null });
+
+        if (scope !== "main") {
+          if (
+            s.wallPlacementSession != null ||
+            s.addWallModalOpen ||
+            s.wallJointSession != null ||
+            s.wallJointParamsModalOpen
+          ) {
+            patch.wallPlacementSession = null;
+            patch.wallPlacementHistoryBaseline = null;
+            patch.addWallModalOpen = false;
+            patch.wallJointSession = null;
+            patch.wallJointParamsModalOpen = false;
+            patch.wallAnchorPlacementModeActive = false;
+            patch.wallPlacementAnchorMm = null;
+            patch.wallPlacementAnchorPreviewEndMm = null;
+            patch.wallPlacementAnchorLastSnapKind = null;
+            patch.wallPlacementAnchorAngleSnapLockedDeg = null;
+            patch.wallCoordinateModalOpen = false;
+            patch.wallAnchorCoordinateModalOpen = false;
+          }
+          patch.openingMoveModeActive = false;
+          patch.projectOriginMoveToolActive = false;
+          patch.projectOriginCoordinateModalOpen = false;
+        }
+
+        if (scope !== "floorStructure") {
+          if (
+            s.floorBeamPlacementSession != null ||
+            s.floorBeamSplitSession != null ||
+            s.floorBeamSplitModalOpen ||
+            s.addFloorBeamModalOpen
+          ) {
+            patch.floorBeamPlacementSession = null;
+            patch.floorBeamPlacementHistoryBaseline = null;
+            patch.addFloorBeamModalOpen = false;
+            patch.floorBeamSplitSession = null;
+            patch.floorBeamSplitModalOpen = false;
+            patch.floorBeamPlacementCoordinateModalOpen = false;
+          }
+        }
+
+        if (scope !== "foundation") {
+          if (
+            s.foundationStripPlacementSession != null ||
+            s.addFoundationStripModalOpen ||
+            s.foundationPilePlacementSession != null ||
+            s.addFoundationPileModalOpen ||
+            s.foundationStripAutoPilesModal != null
+          ) {
+            patch.foundationStripPlacementSession = null;
+            patch.foundationStripPlacementHistoryBaseline = null;
+            patch.addFoundationStripModalOpen = false;
+            patch.foundationPilePlacementSession = null;
+            patch.foundationPilePlacementHistoryBaseline = null;
+            patch.addFoundationPileModalOpen = false;
+            patch.foundationStripAutoPilesModal = null;
+          }
+        }
+
+        const slabAllowed = scope === "floorStructure" || scope === "foundation";
+        if (!slabAllowed) {
+          if (s.slabPlacementSession != null) {
+            patch.slabPlacementSession = null;
+            patch.slabPlacementHistoryBaseline = null;
+            patch.slabCoordinateModalOpen = false;
+          }
+        } else if (s.slabPlacementSession != null) {
+          const wantPurpose: SlabStructuralPurpose = scope === "foundation" ? "foundation" : "overlap";
+          if (s.slabPlacementSession.draft.purpose !== wantPurpose) {
+            patch.slabPlacementSession = null;
+            patch.slabPlacementHistoryBaseline = null;
+            patch.slabCoordinateModalOpen = false;
+          }
+        }
+
+        return buildProjectMutationState(s, nextProject, patch);
       }),
 
     applyAddFloorBeamModal: (input) => {
@@ -4287,6 +4438,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       set({
         floorBeamPlacementSession: null,
         floorBeamPlacementHistoryBaseline: null,
+        floorBeamPlacementCoordinateModalOpen: false,
         addFloorBeamModalOpen: false,
         lastError: null,
       }),
@@ -4463,6 +4615,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             shiftDirectionLockUnit: null,
             shiftLockReferenceMm: null,
           },
+          floorBeamPlacementCoordinateModalOpen: false,
           lastError: null,
         });
         return;
@@ -4479,6 +4632,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           shiftDirectionLockUnit: null,
           shiftLockReferenceMm: null,
         },
+        floorBeamPlacementCoordinateModalOpen: false,
         lastError: null,
       });
     },
@@ -4624,7 +4778,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     floorBeamPlacementCompleteSecondPoint: (secondSnappedMm) => {
       const session = get().floorBeamPlacementSession;
       if (!session || session.phase !== "waitingSecondPoint") {
-        return;
+        return false;
       }
       const p0 = get().currentProject;
       const placementMode = p0.settings.editor2d.linearPlacementMode;
@@ -4637,7 +4791,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       );
       if ("error" in result) {
         set({ lastError: result.error });
-        return;
+        return false;
       }
       const nextProject = result.project;
       set((s) =>
@@ -4656,6 +4810,7 @@ export const useAppStore = create<AppStore>((set, get) => {
               shiftLockReferenceMm: null,
             },
             floorBeamPlacementHistoryBaseline: null,
+            floorBeamPlacementCoordinateModalOpen: false,
             selectedEntityIds: [...result.createdFloorBeamIds],
             dirty: true,
             lastError: null,
@@ -4665,6 +4820,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             : {},
         ),
       );
+      return true;
     },
 
     toggleWallAnchorPlacementMode: () => {
@@ -5366,6 +5522,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         entityCopyCoordinateModalOpen: false,
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -5415,6 +5572,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallMoveCopyHistoryBaseline: null,
           wallMoveCopyCoordinateModalOpen: false,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           selectedEntityIds: proj.walls.some((w) => w.id === s.sourceWallId) ? [s.sourceWallId] : [],
           dirty: true,
           lastError: null,
@@ -5526,6 +5684,7 @@ export const useAppStore = create<AppStore>((set, get) => {
             wallMoveCopyHistoryBaseline: null,
             wallMoveCopyCoordinateModalOpen: false,
             wallCoordinateModalOpen: false,
+            floorBeamPlacementCoordinateModalOpen: false,
             selectedEntityIds: [s.workingWallId],
             dirty: true,
             lastError: null,
@@ -6532,6 +6691,254 @@ export const useAppStore = create<AppStore>((set, get) => {
       get().wallPlacementCompleteSecondPoint(exactSecond);
     },
 
+    openFloorBeamPlacementCoordinateModal: (opts) => {
+      const s = get().floorBeamPlacementSession;
+      if (!s || s.phase !== "waitingSecondPoint" || !s.firstPointMm) {
+        return;
+      }
+      set({
+        floorBeamPlacementCoordinateModalOpen: true,
+        lastError: null,
+        sceneCoordModalDesiredFocus: opts?.focus ?? "x",
+      });
+    },
+
+    closeFloorBeamPlacementCoordinateModal: () => set({ floorBeamPlacementCoordinateModalOpen: false }),
+
+    applyFloorBeamPlacementCoordinateModal: (input) => {
+      const session = get().floorBeamPlacementSession;
+      if (!session?.firstPointMm) {
+        set({ floorBeamPlacementCoordinateModalOpen: false });
+        return;
+      }
+      if (session.phase !== "waitingSecondPoint") {
+        set({ floorBeamPlacementCoordinateModalOpen: false });
+        return;
+      }
+      if (!Number.isFinite(input.dxMm) || !Number.isFinite(input.dyMm)) {
+        set({ lastError: "Введите числовые X и Y (мм)." });
+        return;
+      }
+      const first = session.firstPointMm;
+      const rawWorldMm = { x: first.x + input.dxMm, y: first.y + input.dyMm };
+      const patch = mergeFloorBeamPlacementPreviewFromRawWorldMm({
+        session,
+        project: get().currentProject,
+        canvasPx: get().viewportCanvas2dPx,
+        rawWorldMm,
+        altKey: false,
+        editor2dSnapSettings: editor2dSnapSettings,
+      });
+      const secondMm = patch.previewEndMm;
+      if (secondMm == null) {
+        set({ lastError: "Не удалось вычислить вторую точку." });
+        return;
+      }
+      /** Как второй клик мышью: та же цепочка snap/preview, затем доменный commit в проект. */
+      get().floorBeamPlacementCompleteSecondPoint(secondMm);
+    },
+
+    floorBeamPlacementCommitNumericField: (input) => {
+      const session = get().floorBeamPlacementSession;
+      if (!session?.firstPointMm || !session.previewEndMm) {
+        return false;
+      }
+      if (!Number.isFinite(input.valueMm)) {
+        return false;
+      }
+      const rawWorldMm = floorBeamPlacementSecondPointFromNumericInput(
+        session,
+        input.field,
+        input.valueMm,
+      );
+      if (!rawWorldMm) {
+        return false;
+      }
+      const patch = mergeFloorBeamPlacementPreviewFromRawWorldMm({
+        session,
+        project: get().currentProject,
+        canvasPx: get().viewportCanvas2dPx,
+        rawWorldMm,
+        altKey: false,
+        editor2dSnapSettings: editor2dSnapSettings,
+      });
+      const secondMm = patch.previewEndMm;
+      if (secondMm == null) {
+        return false;
+      }
+      return get().floorBeamPlacementCompleteSecondPoint(secondMm);
+    },
+
+    wallMoveCopyApplyNumericPreviewField: (input) => {
+      const s = get().wallMoveCopySession;
+      if (!s || s.phase !== "pickTarget" || !s.anchorWorldMm || !s.previewTargetMm) {
+        return;
+      }
+      if (!Number.isFinite(input.valueMm)) {
+        return;
+      }
+      const rawWorldMm = linearSecondPointFromNumericInput(
+        {
+          anchorMm: s.anchorWorldMm,
+          previewEndMm: s.previewTargetMm,
+          shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        },
+        input.field,
+        input.valueMm,
+      );
+      if (!rawWorldMm) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const vp = get().viewportCanvas2dPx;
+      if (!vp) {
+        return;
+      }
+      const vp2 = p0.viewState.viewport2d;
+      const t = buildViewportTransform(vp.width, vp.height, vp2.panXMm, vp2.panYMm, vp2.zoomPixelsPerMm);
+      const r = computeLinearSecondPointPreview({
+        anchor: s.anchorWorldMm,
+        rawWorldMm,
+        viewport: t,
+        project: p0,
+        snapSettings: editor2dSnapSettings(p0),
+        gridStepMm: p0.settings.gridStepMm,
+        shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        angleSnapLockedDeg: s.angleSnapLockedDeg,
+        skipAngleSnap: get().wallMoveCopyCoordinateModalOpen,
+        altKey: false,
+      });
+      set({
+        wallMoveCopySession: {
+          ...s,
+          previewTargetMm: r.previewEnd,
+          lastSnapKind: r.lastSnapKind,
+          angleSnapLockedDeg: r.angleSnapLockedDeg,
+          shiftLockReferenceMm: r.shiftLockReferenceMm,
+        },
+      });
+    },
+
+    floorBeamMoveCopyApplyNumericPreviewField: (input) => {
+      const s = get().floorBeamMoveCopySession;
+      if (!s || s.phase !== "pickTarget" || !s.baseAnchorWorldMm || !s.previewTargetMm) {
+        return;
+      }
+      if (!Number.isFinite(input.valueMm)) {
+        return;
+      }
+      const rawWorldMm = linearSecondPointFromNumericInput(
+        {
+          anchorMm: s.baseAnchorWorldMm,
+          previewEndMm: s.previewTargetMm,
+          shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        },
+        input.field,
+        input.valueMm,
+      );
+      if (!rawWorldMm) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const vp = get().viewportCanvas2dPx;
+      if (!vp) {
+        return;
+      }
+      const vp2 = p0.viewState.viewport2d;
+      const t = buildViewportTransform(vp.width, vp.height, vp2.panXMm, vp2.panYMm, vp2.zoomPixelsPerMm);
+      const r = computeLinearSecondPointPreview({
+        anchor: s.baseAnchorWorldMm,
+        rawWorldMm,
+        viewport: t,
+        project: p0,
+        snapSettings: editor2dSnapSettings(p0),
+        gridStepMm: p0.settings.gridStepMm,
+        shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        angleSnapLockedDeg: s.angleSnapLockedDeg,
+        skipAngleSnap: get().floorBeamMoveCopyCoordinateModalOpen,
+        altKey: false,
+      });
+      const anchor = s.baseAnchorWorldMm;
+      const dragDeltaMm = { x: r.previewEnd.x - anchor.x, y: r.previewEnd.y - anchor.y };
+      set({
+        floorBeamMoveCopySession: {
+          ...s,
+          previewTargetMm: r.previewEnd,
+          dragDeltaMm,
+          lastSnapKind: r.lastSnapKind,
+          angleSnapLockedDeg: r.angleSnapLockedDeg,
+          shiftLockReferenceMm: r.shiftLockReferenceMm,
+        },
+      });
+    },
+
+    entityCopyApplyNumericPreviewField: (input) => {
+      const s = get().entityCopySession;
+      const vp = get().viewportCanvas2dPx;
+      if (!s || s.phase !== "pickTarget" || !s.worldAnchorStart || !s.previewTargetWorldMm || !vp) {
+        return;
+      }
+      if (!Number.isFinite(input.valueMm)) {
+        return;
+      }
+      const rawWorldMm = linearSecondPointFromNumericInput(
+        {
+          anchorMm: s.worldAnchorStart,
+          previewEndMm: s.previewTargetWorldMm,
+          shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        },
+        input.field,
+        input.valueMm,
+      );
+      if (!rawWorldMm) {
+        return;
+      }
+      const p0 = get().currentProject;
+      const snap = editor2dSnapSettings(p0);
+      const layerIds = layerIdsForEntityCopy(p0);
+      const structural = snap.snapToVertex || snap.snapToEdge;
+      const altKey = false;
+      const vp2 = p0.viewState.viewport2d;
+      const t = buildViewportTransform(vp.width, vp.height, vp2.panXMm, vp2.panYMm, vp2.zoomPixelsPerMm);
+      const { refWorldMm, nextAngleSnapLockedDeg } = computeEntityCopyPickTargetRefWorldMm({
+        anchorWorldMm: s.worldAnchorStart,
+        rawWorldMm,
+        shiftDirectionLockUnit: s.shiftDirectionLockUnit,
+        angleSnapLockedDeg: s.angleSnapLockedDeg,
+        altKey,
+      });
+      const tagged = collectEntityCopySnapPointsForFullScene(p0, layerIds);
+      const r = resolveEntityCopySnap({
+        refWorldMm,
+        viewport: t,
+        project: p0,
+        snapSettings: snap,
+        gridStepMm: p0.settings.gridStepMm,
+        altKey,
+        structuralSnapEnabled: structural,
+        taggedPoints: tagged,
+      });
+      const markers = buildEntityCopySnapMarkers(
+        rawWorldMm,
+        t,
+        tagged,
+        altKey ? null : r.point,
+        structural && !altKey,
+      );
+      set({
+        entityCopySession: {
+          ...s,
+          resolvedCursorWorldMm: r.point,
+          previewTargetWorldMm: r.point,
+          snapMarkers: markers,
+          activeSnapVisual: r.visual === "none" ? "none" : r.visual,
+          lastSnapKind: r.snapKind,
+          angleSnapLockedDeg: nextAngleSnapLockedDeg,
+          shiftLockReferenceMm: null,
+        },
+      });
+    },
+
     openWallCalculationModal: () => {
       const { selectedEntityIds, currentProject } = get();
       const sel = new Set(selectedEntityIds);
@@ -6771,6 +7178,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -6838,6 +7246,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,
@@ -6909,6 +7318,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         wallJointSession: null,
         wallPlacementSession: null,
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallAnchorPlacementModeActive: false,
         wallPlacementAnchorMm: null,
@@ -7013,6 +7423,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           wallJointSession: null,
           wallPlacementSession: null,
           wallCoordinateModalOpen: false,
+          floorBeamPlacementCoordinateModalOpen: false,
           wallAnchorCoordinateModalOpen: false,
           wallAnchorPlacementModeActive: false,
           wallPlacementAnchorMm: null,

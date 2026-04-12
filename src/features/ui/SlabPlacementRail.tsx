@@ -33,9 +33,12 @@ export function SlabPlacementRail() {
     return null;
   }
 
+  const heading =
+    session.draft.purpose === "foundation" ? "Плита (фундамент)" : "Плита (перекрытие)";
+
   return (
     <aside className="lpr spr" aria-label="Режим построения плиты">
-      <div className="spr-heading">Плита</div>
+      <div className="spr-heading">{heading}</div>
       <div className="lpr-group" aria-label="Контур плиты">
         {MODES.map(({ mode: m, title, icon }) => (
           <button

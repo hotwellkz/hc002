@@ -23,6 +23,7 @@ const baseApp = {
   wallJointParamsModalOpen: false,
   wallCalculationModalOpen: false,
   wallCoordinateModalOpen: false,
+  floorBeamPlacementCoordinateModalOpen: false,
   slabCoordinateModalOpen: false,
   wallAnchorCoordinateModalOpen: false,
   wallMoveCopyCoordinateModalOpen: false,

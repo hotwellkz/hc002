@@ -2,8 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Keyboard, List, MoreHorizontal, Redo2, Save, Undo2 } from "lucide-react";
 
-import { Editor2DPlanToolbar } from "@/features/ui/Editor2DPlanToolbar";
-import { Editor2DFloorStructureToolbar } from "@/features/ui/Editor2DFloorStructureToolbar";
+import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
 import { ThemeMenu } from "@/features/ui/ThemeMenu";
@@ -176,7 +175,6 @@ export function TopBar() {
   const name = useAppStore((s) => s.currentProject.meta.name);
   const dirty = useAppStore((s) => s.dirty);
   const activeTab = useAppStore((s) => s.activeTab);
-  const planScope = useAppStore((s) => s.currentProject.viewState.editor2dPlanScope);
   const openProfiles = useAppStore((s) => s.openProfilesModal);
   const openHotkeys = useEditorShortcutsStore((s) => s.openShortcutsSettings);
   const canUndo = useAppStore((s) => s.history.past.length > 0);
@@ -255,7 +253,7 @@ export function TopBar() {
       <div className="shell-top-center shell-top-tools tb-group tb-group--center">
         {activeTab === "2d" ? (
           <>
-            {planScope === "floorStructure" ? <Editor2DFloorStructureToolbar /> : <Editor2DPlanToolbar />}
+            <Editor2DScopeToolbar />
             {showLayerToolbar ? <LayerToolbar /> : null}
           </>
         ) : activeTab === "3d" ? (

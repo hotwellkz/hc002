@@ -3,8 +3,7 @@ import { Box, BrickWall, ClipboardList, DraftingCompass, Info, LayoutGrid, Layer
 
 import { Editor2DToolbarMobileSheet } from "@/features/editor2d/Editor2DToolbarMobile";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
-import { Editor2DFloorStructureToolbar } from "@/features/ui/Editor2DFloorStructureToolbar";
-import { Editor2DPlanToolbar } from "@/features/ui/Editor2DPlanToolbar";
+import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
 import { LeftNavRailContent } from "@/features/ui/LeftNavRail";
 import { LinearPlacementRail } from "@/features/ui/LinearPlacementRail";
@@ -71,8 +70,6 @@ function MainMenuSheet() {
 
 function PlanTopToolsSheet() {
   const tab = useAppStore((s) => s.activeTab);
-  const planScope = useAppStore((s) => s.currentProject.viewState.editor2dPlanScope);
-
   if (tab === "3d") {
     return (
       <div className="mobile-sheet-stack mobile-sheet-stack--tools">
@@ -83,7 +80,7 @@ function PlanTopToolsSheet() {
 
   return (
     <div className="mobile-sheet-stack mobile-sheet-stack--tools">
-      {planScope === "floorStructure" ? <Editor2DFloorStructureToolbar /> : <Editor2DPlanToolbar />}
+      <Editor2DScopeToolbar />
       <div className="mobile-sheet-subsection">
         <p className="mobile-sheet-subtitle">Слой</p>
         <LayerToolbar />

@@ -17,7 +17,7 @@ export function AddFloorBeamModal() {
 
   const [profileId, setProfileId] = useState("");
   const [elevationMm, setElevationMm] = useState(0);
-  const [sectionRolled, setSectionRolled] = useState(false);
+  const [sectionRolled, setSectionRolled] = useState(true);
 
   const beamProfiles = useMemo(
     () => project.profiles.filter((pr) => isProfileUsableForFloorBeam(pr)).sort((a, b) => a.name.localeCompare(b.name, "ru")),
@@ -42,7 +42,7 @@ export function AddFloorBeamModal() {
     const first = beamProfiles[0];
     setProfileId(first?.id ?? "");
     setElevationMm(base);
-    setSectionRolled(false);
+    setSectionRolled(true);
   }, [open, beamProfiles]);
 
   if (!open) {
@@ -89,7 +89,7 @@ export function AddFloorBeamModal() {
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
       <div
-        className="lm-dialog"
+        className="lm-dialog lm-dialog--floor-beam-params"
         role="dialog"
         aria-modal="true"
         aria-labelledby="afb-title"
@@ -118,12 +118,18 @@ export function AddFloorBeamModal() {
             onChange={(e) => setElevationMm(Number(e.target.value))}
           />
         </label>
-        <label className="lm-field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={sectionRolled} onChange={(e) => setSectionRolled(e.target.checked)} />
-          <span className="lm-label" style={{ margin: 0 }}>
-            Развернуть профиль (ребро / плашмя)
-          </span>
-        </label>
+        <div className="lm-field lm-field--checkbox-inline">
+          <label className="lm-checkbox-row" htmlFor="afb-section-rolled">
+            <input
+              id="afb-section-rolled"
+              className="lm-checkbox-row__input"
+              type="checkbox"
+              checked={sectionRolled}
+              onChange={(e) => setSectionRolled(e.target.checked)}
+            />
+            <span className="lm-checkbox-row__text">Развернуть профиль (ребро / плашмя)</span>
+          </label>
+        </div>
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена

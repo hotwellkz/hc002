@@ -4,6 +4,7 @@
  */
 export function isSceneCoordinateModalBlocking(store: {
   readonly wallCoordinateModalOpen: boolean;
+  readonly floorBeamPlacementCoordinateModalOpen: boolean;
   readonly wallAnchorCoordinateModalOpen: boolean;
   readonly wallMoveCopyCoordinateModalOpen: boolean;
   readonly floorBeamMoveCopyCoordinateModalOpen: boolean;
@@ -16,6 +17,7 @@ export function isSceneCoordinateModalBlocking(store: {
 }): boolean {
   return (
     store.wallCoordinateModalOpen ||
+    store.floorBeamPlacementCoordinateModalOpen ||
     store.wallAnchorCoordinateModalOpen ||
     store.wallMoveCopyCoordinateModalOpen ||
     store.floorBeamMoveCopyCoordinateModalOpen ||

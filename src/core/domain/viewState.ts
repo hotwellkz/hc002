@@ -4,8 +4,10 @@ import type { Project } from "./project";
 
 export type EditorTab = "2d" | "3d" | "spec" | "wall";
 
-/** Подрежим 2D: основной план (стены и общие инструменты) или конструктив перекрытия. */
-export type Editor2dPlanScope = "main" | "floorStructure";
+/**
+ * Подрежим 2D: план этажа, перекрытие (балки и плиты перекрытия) или фундамент (лента, сваи, плита).
+ */
+export type Editor2dPlanScope = "main" | "floorStructure" | "foundation";
 
 export interface ViewportState2D {
   readonly panXMm: number;
@@ -117,8 +119,9 @@ export function normalizeViewState(
   },
 ): ViewState {
   const tab = VALID_TABS.includes(input.activeTab as EditorTab) ? input.activeTab : "2d";
+  const rawScope = input.editor2dPlanScope;
   const scope: Editor2dPlanScope =
-    input.editor2dPlanScope === "floorStructure" ? "floorStructure" : "main";
+    rawScope === "floorStructure" || rawScope === "foundation" ? rawScope : "main";
   return {
     activeTab: tab,
     editor2dPlanScope: scope,

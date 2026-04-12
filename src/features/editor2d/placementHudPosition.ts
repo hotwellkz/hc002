@@ -47,6 +47,7 @@ export function getEditorInstructionAvoidanceRect(
 export function computeEditorInstructionScreenPosition(opts: {
   readonly canvasRect: DOMRect;
   readonly wallCoordinateModalOpen: boolean;
+  readonly floorBeamPlacementCoordinateModalOpen?: boolean;
   readonly wallAnchorCoordinateModalOpen?: boolean;
   readonly wallMoveCopyCoordinateModalOpen?: boolean;
   readonly floorBeamMoveCopyCoordinateModalOpen?: boolean;
@@ -56,6 +57,7 @@ export function computeEditorInstructionScreenPosition(opts: {
 }): { readonly left: number; readonly top: number } {
   const anyCoordModalOpen =
     opts.wallCoordinateModalOpen ||
+    Boolean(opts.floorBeamPlacementCoordinateModalOpen) ||
     Boolean(opts.wallAnchorCoordinateModalOpen) ||
     Boolean(opts.wallMoveCopyCoordinateModalOpen) ||
     Boolean(opts.floorBeamMoveCopyCoordinateModalOpen) ||
@@ -177,6 +179,7 @@ export function computeEditorOverlayLayout(opts: {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
   readonly wallCoordinateModalOpen: boolean;
+  readonly floorBeamPlacementCoordinateModalOpen?: boolean;
   readonly wallAnchorCoordinateModalOpen?: boolean;
   readonly wallMoveCopyCoordinateModalOpen?: boolean;
   readonly floorBeamMoveCopyCoordinateModalOpen?: boolean;
@@ -187,6 +190,7 @@ export function computeEditorOverlayLayout(opts: {
 }): EditorOverlayScreenLayout {
   const anyCoordModalOpen =
     opts.wallCoordinateModalOpen ||
+    Boolean(opts.floorBeamPlacementCoordinateModalOpen) ||
     Boolean(opts.wallAnchorCoordinateModalOpen) ||
     Boolean(opts.wallMoveCopyCoordinateModalOpen) ||
     Boolean(opts.floorBeamMoveCopyCoordinateModalOpen) ||
@@ -197,6 +201,7 @@ export function computeEditorOverlayLayout(opts: {
   const instruction = computeEditorInstructionScreenPosition({
     canvasRect: opts.canvasRect,
     wallCoordinateModalOpen: opts.wallCoordinateModalOpen,
+    floorBeamPlacementCoordinateModalOpen: opts.floorBeamPlacementCoordinateModalOpen,
     wallAnchorCoordinateModalOpen: opts.wallAnchorCoordinateModalOpen,
     wallMoveCopyCoordinateModalOpen: opts.wallMoveCopyCoordinateModalOpen,
     floorBeamMoveCopyCoordinateModalOpen: opts.floorBeamMoveCopyCoordinateModalOpen,

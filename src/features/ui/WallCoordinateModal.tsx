@@ -11,25 +11,29 @@ export function WallCoordinateModal() {
   const entityCopyCoordOpen = useAppStore((s) => s.entityCopyCoordinateModalOpen);
   const lengthChangeCoordOpen = useAppStore((s) => s.lengthChangeCoordinateModalOpen);
   const slabCoordOpen = useAppStore((s) => s.slabCoordinateModalOpen);
+  const floorBeamPlacementCoordOpen = useAppStore((s) => s.floorBeamPlacementCoordinateModalOpen);
   const open =
     wallCoordOpen ||
     moveCopyCoordOpen ||
     floorBeamMoveCopyCoordOpen ||
     entityCopyCoordOpen ||
     lengthChangeCoordOpen ||
-    slabCoordOpen;
+    slabCoordOpen ||
+    floorBeamPlacementCoordOpen;
   const closeWallCoord = useAppStore((s) => s.closeWallCoordinateModal);
   const closeMoveCopyCoord = useAppStore((s) => s.closeWallMoveCopyCoordinateModal);
   const closeFloorBeamMoveCopyCoord = useAppStore((s) => s.closeFloorBeamMoveCopyCoordinateModal);
   const closeEntityCopyCoord = useAppStore((s) => s.closeEntityCopyCoordinateModal);
   const closeLengthChangeCoord = useAppStore((s) => s.closeLengthChangeCoordinateModal);
   const closeSlabCoord = useAppStore((s) => s.closeSlabCoordinateModal);
+  const closeFloorBeamPlacementCoord = useAppStore((s) => s.closeFloorBeamPlacementCoordinateModal);
   const applyWallCoord = useAppStore((s) => s.applyWallCoordinateModal);
   const applyMoveCopyCoord = useAppStore((s) => s.applyWallMoveCopyCoordinateModal);
   const applyFloorBeamMoveCopyCoord = useAppStore((s) => s.applyFloorBeamMoveCopyCoordinateModal);
   const applyEntityCopyCoord = useAppStore((s) => s.applyEntityCopyCoordinateModal);
   const applyLengthChangeCoord = useAppStore((s) => s.applyLengthChangeCoordinateModal);
   const applySlabCoord = useAppStore((s) => s.applySlabCoordinateModal);
+  const applyFloorBeamPlacementCoord = useAppStore((s) => s.applyFloorBeamPlacementCoordinateModal);
   const setSceneCoordModalDesiredFocus = useAppStore((s) => s.setSceneCoordModalDesiredFocus);
   const lastError = useAppStore((s) => s.lastError);
 
@@ -116,6 +120,17 @@ export function WallCoordinateModal() {
       }
       return;
     }
+    if (st.floorBeamPlacementCoordinateModalOpen && st.floorBeamPlacementSession) {
+      const fb = st.floorBeamPlacementSession;
+      if (fb.firstPointMm && fb.previewEndMm) {
+        const dx = fb.previewEndMm.x - fb.firstPointMm.x;
+        const dy = fb.previewEndMm.y - fb.firstPointMm.y;
+        setXStr(String(Math.round(dx)));
+        setYStr(String(Math.round(dy)));
+        setLocalError(null);
+      }
+      return;
+    }
     const ws = st.wallPlacementSession;
     if (ws?.firstPointMm && ws.previewEndMm) {
       const dx = ws.previewEndMm.x - ws.firstPointMm.x;
@@ -166,6 +181,8 @@ export function WallCoordinateModal() {
           closeMoveCopyCoord();
         } else if (st.slabCoordinateModalOpen) {
           closeSlabCoord();
+        } else if (st.floorBeamPlacementCoordinateModalOpen) {
+          closeFloorBeamPlacementCoord();
         } else {
           closeWallCoord();
         }
@@ -181,6 +198,7 @@ export function WallCoordinateModal() {
     closeEntityCopyCoord,
     closeLengthChangeCoord,
     closeSlabCoord,
+    closeFloorBeamPlacementCoord,
   ]);
 
   if (!open) {
@@ -217,6 +235,8 @@ export function WallCoordinateModal() {
       applyMoveCopyCoord({ dxMm: dx, dyMm: dy });
     } else if (slabCoordOpen) {
       applySlabCoord({ dxMm: dx, dyMm: dy });
+    } else if (floorBeamPlacementCoordOpen) {
+      applyFloorBeamPlacementCoord({ dxMm: dx, dyMm: dy });
     } else {
       applyWallCoord({ dxMm: dx, dyMm: dy });
     }
@@ -235,6 +255,8 @@ export function WallCoordinateModal() {
       closeMoveCopyCoord();
     } else if (slabCoordOpen) {
       closeSlabCoord();
+    } else if (floorBeamPlacementCoordOpen) {
+      closeFloorBeamPlacementCoord();
     } else {
       closeWallCoord();
     }
@@ -242,7 +264,9 @@ export function WallCoordinateModal() {
 
   const hintText = lengthChangeCoordOpen
     ? "Δ длины вдоль оси объекта (стена, балка) в мм. Положительное значение — удлинение, отрицательное — укорочение."
-    : slabCoordOpen
+    : floorBeamPlacementCoordOpen
+      ? "Смещение второй точки балки относительно первой (мм). «Применить» — создать балку на плане (как второй клик), затем можно указать следующую."
+      : slabCoordOpen
       ? "Смещение текущей точки относительно опорной (мм): прямоугольник — от первого угла; полилиния — от последней зафиксированной вершины."
       : entityCopyCoordOpen
         ? "Смещение конечной точки копирования относительно опорной (мм), как у копирования сваи. Знак учитывается."

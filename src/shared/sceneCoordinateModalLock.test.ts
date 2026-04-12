@@ -7,6 +7,7 @@ describe("isSceneCoordinateModalBlocking", () => {
     expect(
       isSceneCoordinateModalBlocking({
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         floorBeamMoveCopyCoordinateModalOpen: false,
@@ -24,6 +25,7 @@ describe("isSceneCoordinateModalBlocking", () => {
     expect(
       isSceneCoordinateModalBlocking({
         wallCoordinateModalOpen: true,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         floorBeamMoveCopyCoordinateModalOpen: false,
@@ -41,6 +43,7 @@ describe("isSceneCoordinateModalBlocking", () => {
     expect(
       isSceneCoordinateModalBlocking({
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         floorBeamMoveCopyCoordinateModalOpen: false,
@@ -58,6 +61,7 @@ describe("isSceneCoordinateModalBlocking", () => {
     expect(
       isSceneCoordinateModalBlocking({
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         floorBeamMoveCopyCoordinateModalOpen: false,
@@ -75,6 +79,7 @@ describe("isSceneCoordinateModalBlocking", () => {
     expect(
       isSceneCoordinateModalBlocking({
         wallCoordinateModalOpen: false,
+        floorBeamPlacementCoordinateModalOpen: false,
         wallAnchorCoordinateModalOpen: false,
         wallMoveCopyCoordinateModalOpen: false,
         floorBeamMoveCopyCoordinateModalOpen: false,

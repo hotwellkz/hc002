@@ -22,6 +22,7 @@ export interface EditorToolHotkeyAppSnapshot {
   readonly wallJointParamsModalOpen: boolean;
   readonly wallCalculationModalOpen: boolean;
   readonly wallCoordinateModalOpen: boolean;
+  readonly floorBeamPlacementCoordinateModalOpen: boolean;
   readonly slabCoordinateModalOpen: boolean;
   readonly wallAnchorCoordinateModalOpen: boolean;
   readonly wallMoveCopyCoordinateModalOpen: boolean;

@@ -59,6 +59,44 @@
   max-width: 560px;
 }
 
+/** «Параметры балки»: чекбокс в одну строку + запас по ширине под подпись */
+.lm-dialog--floor-beam-params {
+  max-width: min(460px, calc(100vw - 2 * var(--space-lg)));
+}
+
+.lm-field--checkbox-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+.lm-checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lm-checkbox-row__input {
+  flex-shrink: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--color-accent, #4da3ff);
+}
+
+.lm-checkbox-row__text {
+  white-space: nowrap;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text-primary);
+}
+
 .lm-title {
   margin: 0 0 var(--space-md);
   font-size: var(--text-body);

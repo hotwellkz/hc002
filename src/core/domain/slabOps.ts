@@ -12,6 +12,7 @@ export function createSlabFromPolygon(
     readonly pointsMm: readonly Point2D[];
     readonly levelMm: number;
     readonly depthMm: number;
+    readonly structuralPurpose?: SlabEntity["structuralPurpose"];
     readonly nowIso?: string;
   },
 ): { readonly slab: SlabEntity } | { readonly error: string } {
@@ -30,6 +31,7 @@ export function createSlabFromPolygon(
     pointsMm: input.pointsMm.map((p) => ({ x: p.x, y: p.y })),
     levelMm: input.levelMm,
     depthMm: input.depthMm,
+    ...(input.structuralPurpose != null ? { structuralPurpose: input.structuralPurpose } : {}),
     createdAt: t,
     updatedAt: t,
   };

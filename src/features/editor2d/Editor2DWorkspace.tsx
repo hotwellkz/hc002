@@ -42,8 +42,68 @@ import type { EditorInstructionLine } from "./overlays/instructionHintModel";
 import { hintLines } from "./overlays/instructionHintModel";
 import { InstructionOverlay } from "./overlays/InstructionOverlay";
 import { LiveHudBadge } from "./overlays/LiveHudBadge";
+import type { LiveHudInlineEdit } from "./overlays/LiveHudBadge";
 import { computeMarqueeSelection } from "./computeMarqueeSelection";
+import {
+  liveHudAxisFieldFromKeyEvent,
+  liveHudIsDKeyEvent,
+  parseSignedHudDraftMm,
+} from "./liveHudNumericDraft";
 import { entityIdsForSelectAll2d } from "./editor2dSelectAll";
+
+type CoordHudInlineKind = "floorBeamPlacement" | "wallMoveCopy" | "floorBeamMoveCopy" | "entityCopy";
+
+type CoordHudInlineState = {
+  readonly kind: CoordHudInlineKind;
+  readonly field: "x" | "y" | "d";
+  readonly draft: string;
+};
+
+function readCoordHudLinearMetricsForInline(
+  kind: CoordHudInlineKind,
+): { readonly dx: number; readonly dy: number; readonly d: number } | null {
+  const st = useAppStore.getState();
+  switch (kind) {
+    case "floorBeamPlacement": {
+      const s = st.floorBeamPlacementSession;
+      if (!s?.firstPointMm || !s.previewEndMm) {
+        return null;
+      }
+      const dx = Math.round(s.previewEndMm.x - s.firstPointMm.x);
+      const dy = Math.round(s.previewEndMm.y - s.firstPointMm.y);
+      return { dx, dy, d: Math.round(Math.hypot(dx, dy)) };
+    }
+    case "wallMoveCopy": {
+      const s = st.wallMoveCopySession;
+      if (!s?.anchorWorldMm || !s.previewTargetMm) {
+        return null;
+      }
+      const dx = Math.round(s.previewTargetMm.x - s.anchorWorldMm.x);
+      const dy = Math.round(s.previewTargetMm.y - s.anchorWorldMm.y);
+      return { dx, dy, d: Math.round(Math.hypot(dx, dy)) };
+    }
+    case "floorBeamMoveCopy": {
+      const s = st.floorBeamMoveCopySession;
+      if (!s?.baseAnchorWorldMm || !s.previewTargetMm) {
+        return null;
+      }
+      const dx = Math.round(s.previewTargetMm.x - s.baseAnchorWorldMm.x);
+      const dy = Math.round(s.previewTargetMm.y - s.baseAnchorWorldMm.y);
+      return { dx, dy, d: Math.round(Math.hypot(dx, dy)) };
+    }
+    case "entityCopy": {
+      const s = st.entityCopySession;
+      if (!s?.worldAnchorStart || !s.previewTargetWorldMm) {
+        return null;
+      }
+      const dx = Math.round(s.previewTargetWorldMm.x - s.worldAnchorStart.x);
+      const dy = Math.round(s.previewTargetWorldMm.y - s.worldAnchorStart.y);
+      return { dx, dy, d: Math.round(Math.hypot(dx, dy)) };
+    }
+    default:
+      return null;
+  }
+}
 import { pickClosestPlanLineAlongPoint } from "./planLinePick2d";
 import { drawPlanLines2d } from "./planLines2dPixi";
 import { drawRectangleWallPlacementPreview, drawWallPlacementPreview } from "./drawWallPreview2d";
@@ -454,6 +514,13 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
   } | null>(null);
   const setCoordHudRef = useRef(setCoordHud);
   setCoordHudRef.current = setCoordHud;
+
+  const [coordHudInline, setCoordHudInline] = useState<CoordHudInlineState | null>(null);
+  const coordHudInlineActiveRef = useRef(false);
+  coordHudInlineActiveRef.current = coordHudInline != null;
+  const coordHudInlineInputRef = useRef<HTMLInputElement | null>(null);
+  const setCoordHudInlineRef = useRef(setCoordHudInline);
+  setCoordHudInlineRef.current = setCoordHudInline;
   const moveDimHitsRef = useRef<readonly MoveDimHitArea[]>([]);
   const [moveEdit, setMoveEdit] = useState<{
     readonly side: MoveDimSide;
@@ -490,6 +557,60 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
       setCoordHud(null);
     }
   }, [floorBeamPlacementSession]);
+
+  useEffect(() => {
+    if (!floorBeamPlacementSession || floorBeamPlacementSession.phase !== "waitingSecondPoint") {
+      setCoordHudInline((prev) => (prev?.kind === "floorBeamPlacement" ? null : prev));
+    }
+  }, [floorBeamPlacementSession]);
+
+  useEffect(() => {
+    const s = wallMoveCopySession;
+    if (!s || s.phase !== "pickTarget") {
+      setCoordHudInline((prev) => (prev?.kind === "wallMoveCopy" ? null : prev));
+    }
+  }, [wallMoveCopySession]);
+
+  useEffect(() => {
+    const s = floorBeamMoveCopySession;
+    if (!s || s.phase !== "pickTarget") {
+      setCoordHudInline((prev) => (prev?.kind === "floorBeamMoveCopy" ? null : prev));
+    }
+  }, [floorBeamMoveCopySession]);
+
+  useEffect(() => {
+    const s = entityCopySession;
+    if (!s || s.phase !== "pickTarget") {
+      setCoordHudInline((prev) => (prev?.kind === "entityCopy" ? null : prev));
+    }
+  }, [entityCopySession]);
+
+  const coordHudInlineFocusKey = coordHudInline ? `${coordHudInline.kind}:${coordHudInline.field}` : "";
+  useEffect(() => {
+    if (!coordHudInlineFocusKey) {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      coordHudInlineInputRef.current?.focus();
+      coordHudInlineInputRef.current?.select?.();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [coordHudInlineFocusKey]);
+
+  useEffect(() => {
+    if (!coordHudInline) {
+      return;
+    }
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.(".ed2d-live-hud-badge")) {
+        return;
+      }
+      setCoordHudInline(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [coordHudInline]);
 
   useEffect(() => {
     if (!wallMoveCopySession) {
@@ -567,6 +688,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
               wallJointParamsModalOpen: stA.wallJointParamsModalOpen,
               wallCalculationModalOpen: stA.wallCalculationModalOpen,
               wallCoordinateModalOpen: stA.wallCoordinateModalOpen,
+              floorBeamPlacementCoordinateModalOpen: stA.floorBeamPlacementCoordinateModalOpen,
               slabCoordinateModalOpen: stA.slabCoordinateModalOpen,
               wallAnchorCoordinateModalOpen: stA.wallAnchorCoordinateModalOpen,
               wallMoveCopyCoordinateModalOpen: stA.wallMoveCopyCoordinateModalOpen,
@@ -631,6 +753,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             wallJointParamsModalOpen: st0.wallJointParamsModalOpen,
             wallCalculationModalOpen: st0.wallCalculationModalOpen,
             wallCoordinateModalOpen: st0.wallCoordinateModalOpen,
+            floorBeamPlacementCoordinateModalOpen: st0.floorBeamPlacementCoordinateModalOpen,
             slabCoordinateModalOpen: st0.slabCoordinateModalOpen,
             wallAnchorCoordinateModalOpen: st0.wallAnchorCoordinateModalOpen,
             wallMoveCopyCoordinateModalOpen: st0.wallMoveCopyCoordinateModalOpen,
@@ -725,6 +848,11 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (useAppStore.getState().slabCoordinateModalOpen) {
           e.preventDefault();
           useAppStore.getState().closeSlabCoordinateModal();
+          return;
+        }
+        if (useAppStore.getState().floorBeamPlacementCoordinateModalOpen) {
+          e.preventDefault();
+          useAppStore.getState().closeFloorBeamPlacementCoordinateModal();
           return;
         }
         if (useAppStore.getState().wallAnchorCoordinateModalOpen) {
@@ -907,15 +1035,25 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             return;
           }
         }
+        const fbsSp = st.floorBeamPlacementSession;
+        if (
+          fbsSp &&
+          !st.floorBeamPlacementCoordinateModalOpen &&
+          fbsSp.phase === "waitingSecondPoint" &&
+          fbsSp.firstPointMm
+        ) {
+          e.preventDefault();
+          st.openFloorBeamPlacementCoordinateModal();
+          return;
+        }
         if (!st.wallPlacementSession || st.wallPlacementSession.phase !== "waitingSecondPoint") {
           return;
         }
         e.preventDefault();
         st.openWallCoordinateModal();
       }
-      const isCoordAxisKey =
-        (e.key === "x" || e.key === "X" || e.key === "y" || e.key === "Y") && !e.ctrlKey && !e.metaKey && !e.altKey;
-      if (isCoordAxisKey) {
+      const axisField = liveHudAxisFieldFromKeyEvent(e);
+      if (axisField && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isEditableKeyboardTarget(e.target)) {
           return;
         }
@@ -923,24 +1061,45 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (isSceneCoordinateModalBlocking(stXY)) {
           return;
         }
-        const focus = e.key === "y" || e.key === "Y" ? "y" : "x";
         if (
           stXY.entityCopySession?.phase === "pickTarget" &&
           stXY.entityCopySession.worldAnchorStart &&
+          stXY.entityCopySession.previewTargetWorldMm &&
           !stXY.entityCopyCoordinateModalOpen
         ) {
           e.preventDefault();
-          stXY.openEntityCopyCoordinateModal({ focus });
+          const mEc = readCoordHudLinearMetricsForInline("entityCopy");
+          if (mEc) {
+            setCoordHudInlineRef.current({
+              kind: "entityCopy",
+              field: axisField,
+              draft: String(axisField === "x" ? mEc.dx : mEc.dy),
+            });
+          }
           return;
         }
         if (stXY.floorBeamMoveCopySession?.phase === "pickTarget" && !stXY.floorBeamMoveCopyCoordinateModalOpen) {
           e.preventDefault();
-          stXY.openFloorBeamMoveCopyCoordinateModal({ focus });
+          const mFb = readCoordHudLinearMetricsForInline("floorBeamMoveCopy");
+          if (mFb) {
+            setCoordHudInlineRef.current({
+              kind: "floorBeamMoveCopy",
+              field: axisField,
+              draft: String(axisField === "x" ? mFb.dx : mFb.dy),
+            });
+          }
           return;
         }
         if (stXY.wallMoveCopySession?.phase === "pickTarget" && !stXY.wallMoveCopyCoordinateModalOpen) {
           e.preventDefault();
-          stXY.openWallMoveCopyCoordinateModal({ focus });
+          const mW = readCoordHudLinearMetricsForInline("wallMoveCopy");
+          if (mW) {
+            setCoordHudInlineRef.current({
+              kind: "wallMoveCopy",
+              field: axisField,
+              draft: String(axisField === "x" ? mW.dx : mW.dy),
+            });
+          }
           return;
         }
         const spXY = stXY.slabPlacementSession;
@@ -950,9 +1109,28 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             (spXY.phase === "polylineDrawing" && spXY.polylineVerticesMm.length >= 1);
           if (canSlabCoordXY) {
             e.preventDefault();
-            stXY.openSlabCoordinateModal({ focus });
+            stXY.openSlabCoordinateModal({ focus: axisField === "y" ? "y" : "x" });
             return;
           }
+        }
+        const fbsHud = stXY.floorBeamPlacementSession;
+        if (
+          fbsHud &&
+          fbsHud.phase === "waitingSecondPoint" &&
+          fbsHud.firstPointMm &&
+          fbsHud.previewEndMm &&
+          !stXY.floorBeamPlacementCoordinateModalOpen
+        ) {
+          e.preventDefault();
+          const mPl = readCoordHudLinearMetricsForInline("floorBeamPlacement");
+          if (mPl) {
+            setCoordHudInlineRef.current({
+              kind: "floorBeamPlacement",
+              field: axisField,
+              draft: String(axisField === "x" ? mPl.dx : mPl.dy),
+            });
+          }
+          return;
         }
         if (
           stXY.wallPlacementSession?.phase === "waitingSecondPoint" &&
@@ -960,12 +1138,10 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           !stXY.wallCoordinateModalOpen
         ) {
           e.preventDefault();
-          stXY.openWallCoordinateModal({ focus });
+          stXY.openWallCoordinateModal({ focus: axisField === "y" ? "y" : "x" });
         }
       }
-      const openEntityCopyCoordByD =
-        (e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey && !e.altKey;
-      if (openEntityCopyCoordByD) {
+      if (liveHudIsDKeyEvent(e) && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isEditableKeyboardTarget(e.target)) {
           return;
         }
@@ -973,13 +1149,48 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         if (isSceneCoordinateModalBlocking(stD)) {
           return;
         }
+        const fbsD = stD.floorBeamPlacementSession;
+        if (
+          fbsD &&
+          fbsD.phase === "waitingSecondPoint" &&
+          fbsD.firstPointMm &&
+          fbsD.previewEndMm &&
+          !stD.floorBeamPlacementCoordinateModalOpen
+        ) {
+          e.preventDefault();
+          const mD0 = readCoordHudLinearMetricsForInline("floorBeamPlacement");
+          if (mD0) {
+            setCoordHudInlineRef.current({ kind: "floorBeamPlacement", field: "d", draft: String(mD0.d) });
+          }
+          return;
+        }
+        if (stD.wallMoveCopySession?.phase === "pickTarget" && !stD.wallMoveCopyCoordinateModalOpen) {
+          const mDw = readCoordHudLinearMetricsForInline("wallMoveCopy");
+          if (mDw) {
+            e.preventDefault();
+            setCoordHudInlineRef.current({ kind: "wallMoveCopy", field: "d", draft: String(mDw.d) });
+            return;
+          }
+        }
+        if (stD.floorBeamMoveCopySession?.phase === "pickTarget" && !stD.floorBeamMoveCopyCoordinateModalOpen) {
+          const mDf = readCoordHudLinearMetricsForInline("floorBeamMoveCopy");
+          if (mDf) {
+            e.preventDefault();
+            setCoordHudInlineRef.current({ kind: "floorBeamMoveCopy", field: "d", draft: String(mDf.d) });
+            return;
+          }
+        }
         if (
           stD.entityCopySession?.phase === "pickTarget" &&
           stD.entityCopySession.worldAnchorStart &&
+          stD.entityCopySession.previewTargetWorldMm &&
           !stD.entityCopyCoordinateModalOpen
         ) {
           e.preventDefault();
-          stD.openEntityCopyCoordinateModal();
+          const mDe = readCoordHudLinearMetricsForInline("entityCopy");
+          if (mDe) {
+            setCoordHudInlineRef.current({ kind: "entityCopy", field: "d", draft: String(mDe.d) });
+          }
         }
       }
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1272,6 +1483,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
         (fbs.phase === "waitingSecondPoint" ||
           fbs.phase === "waitingFirstPoint" ||
           fbs.phase === "waitingOriginAndFirst") &&
+        !st.floorBeamPlacementCoordinateModalOpen &&
         !st.openingMoveModeActive &&
         !st.projectOriginMoveToolActive;
       const show =
@@ -3214,6 +3426,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           currentProject,
           wallJointSession,
           wallCoordinateModalOpen,
+          floorBeamPlacementCoordinateModalOpen,
           activeTool,
           ruler2dSession,
           line2dSession,
@@ -3501,7 +3714,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const titleFb = "Перенос балки";
             const modeLabelFbMv = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
             if (fbM0?.phase === "pickTarget" || fbM0?.phase === "pickBase") {
-              useAppStore.getState().floorBeamMoveCopyPreviewMove(p, t, { altKey: altKeyFbMv });
+              if (!coordHudInlineActiveRef.current || fbM0?.phase === "pickBase") {
+                useAppStore.getState().floorBeamMoveCopyPreviewMove(p, t, { altKey: altKeyFbMv });
+              }
             }
             const fbM2 = useAppStore.getState().floorBeamMoveCopySession;
             if (fbM2?.phase === "pickTarget" && fbM2.baseAnchorWorldMm) {
@@ -3612,7 +3827,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const title = wm?.mode === "copy" ? "Копирование стены" : "Перенос стены";
             if (wm?.phase === "pickTarget" && wm.anchorWorldMm) {
               const altKey = Boolean((ev as { altKey?: boolean }).altKey);
-              useAppStore.getState().wallMoveCopyPreviewMove(p, t, { altKey });
+              if (!coordHudInlineActiveRef.current) {
+                useAppStore.getState().wallMoveCopyPreviewMove(p, t, { altKey });
+              }
               const ws = useAppStore.getState().wallMoveCopySession;
               let snapLine: string | null = null;
               if (ws?.lastSnapKind && ws.lastSnapKind !== "none") {
@@ -3709,7 +3926,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const modeLabelEc = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
             const titleEc = "Копирование";
             const altKeyEc = Boolean((ev as { altKey?: boolean }).altKey);
-            if (ec0) {
+            if (ec0 && (!coordHudInlineActiveRef.current || ec0.phase !== "pickTarget")) {
               useAppStore.getState().entityCopyPreviewMove(p, t, { altKey: altKeyEc });
             }
             const ec2 = useAppStore.getState().entityCopySession;
@@ -4256,7 +4473,9 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
             const modeLabelFb = linearPlacementModeLabelRu(currentProject.settings.editor2d.linearPlacementMode);
             if (floorBeamPlacementSession.phase === "waitingSecondPoint") {
               const altKeyFb = Boolean((ev as { altKey?: boolean }).altKey);
-              useAppStore.getState().floorBeamPlacementPreviewMove(p, t, { altKey: altKeyFb });
+              if (!coordHudInlineActiveRef.current) {
+                useAppStore.getState().floorBeamPlacementPreviewMove(p, t, { altKey: altKeyFb });
+              }
               const fbsM = useAppStore.getState().floorBeamPlacementSession;
               let snapLineFb: string | null = null;
               if (fbsM?.lastSnapKind && fbsM.lastSnapKind !== "none") {
@@ -4274,6 +4493,7 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
                 viewportWidth: viewportW,
                 viewportHeight: viewportH,
                 wallCoordinateModalOpen: false,
+                floorBeamPlacementCoordinateModalOpen,
                 showCoordHud: true,
               });
               const shiftHintFb = fbsM?.shiftDirectionLockUnit
@@ -5878,6 +6098,62 @@ export function Editor2DWorkspace({ onWorldCursorMm }: Editor2DWorkspaceProps) {
           angleDeg={coordHud.angleDeg}
           angleSnapLockedDeg={coordHud.angleSnapLockedDeg}
           secondLine={coordHud.secondLine}
+          inlineEdit={
+            coordHudInline
+              ? ({
+                  field: coordHudInline.field,
+                  value: coordHudInline.draft,
+                  onChange: (next) =>
+                    setCoordHudInline((prev) => (prev ? { ...prev, draft: next } : null)),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const { draft, field, kind } = coordHudInline;
+                      const n = parseSignedHudDraftMm(draft);
+                      if (n === null) {
+                        return;
+                      }
+                      const st = useAppStore.getState();
+                      if (kind === "floorBeamPlacement") {
+                        const ok = st.floorBeamPlacementCommitNumericField({ field, valueMm: n });
+                        if (!ok) {
+                          paintWorkspaceRef.current?.();
+                          return;
+                        }
+                      } else if (kind === "wallMoveCopy") {
+                        st.wallMoveCopyApplyNumericPreviewField({ field, valueMm: n });
+                      } else if (kind === "floorBeamMoveCopy") {
+                        st.floorBeamMoveCopyApplyNumericPreviewField({ field, valueMm: n });
+                      } else {
+                        st.entityCopyApplyNumericPreviewField({ field, valueMm: n });
+                      }
+                      setCoordHudInline(null);
+                      paintWorkspaceRef.current?.();
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setCoordHudInline(null);
+                      return;
+                    }
+                    if (e.key === "Tab") {
+                      e.preventDefault();
+                      const mTab = readCoordHudLinearMetricsForInline(coordHudInline.kind);
+                      if (!mTab) {
+                        return;
+                      }
+                      const order = ["x", "y", "d"] as const;
+                      const i = order.indexOf(coordHudInline.field);
+                      const ni = (i + (e.shiftKey ? -1 : 1) + 3) % 3;
+                      const nf = order[ni]!;
+                      const draftN = nf === "x" ? String(mTab.dx) : nf === "y" ? String(mTab.dy) : String(mTab.d);
+                      setCoordHudInline({ ...coordHudInline, field: nf, draft: draftN });
+                    }
+                  },
+                  inputRef: coordHudInlineInputRef,
+                } satisfies LiveHudInlineEdit)
+              : null
+          }
         />
       ) : null}
       {openingMoveDragHud ? (
