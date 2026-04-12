@@ -117,6 +117,25 @@ export interface ViewState {
    * Не совпадает с layer.isVisible (2D) и с visibleLayerIds.
    */
   readonly hidden3dProjectLayerIds: readonly string[];
+  /**
+   * Ключи групп панели «Видимость» (3D), которые свернуты.
+   * Отсутствие id в списке = развёрнута; сохраняется в проекте.
+   */
+  readonly editor3dVisibilityCollapsedKeys: readonly string[];
+  /**
+   * После первого явного сворачивания/разворачивания в дереве — true.
+   * Пока false и список свёрнутых пуст: все группы считаются свернутыми (компактный вид по умолчанию).
+   * Когда true и список пуст: ни одна группа не свернута (всё развернуто).
+   */
+  readonly editor3dVisibilityCollapsePrimed: boolean;
+  /** Стропила крыши в 3D (внутри общей видимости крыши). */
+  readonly show3dRoofRafters: boolean;
+  /** Прогон (обвязка конька) в 3D. */
+  readonly show3dRoofPurlins: boolean;
+  /** Стойки под прогоном в 3D. */
+  readonly show3dRoofPosts: boolean;
+  /** Подкосы в 3D. */
+  readonly show3dRoofStruts: boolean;
 }
 
 /** Нормализация viewState из файла (старые проекты без поля). */
@@ -146,6 +165,12 @@ export function normalizeViewState(
     readonly show3dRoofCovering?: boolean;
     readonly show3dRoofSoffit?: boolean;
     readonly hidden3dProjectLayerIds?: readonly string[];
+    readonly editor3dVisibilityCollapsedKeys?: readonly string[];
+    readonly editor3dVisibilityCollapsePrimed?: boolean;
+    readonly show3dRoofRafters?: boolean;
+    readonly show3dRoofPurlins?: boolean;
+    readonly show3dRoofPosts?: boolean;
+    readonly show3dRoofStruts?: boolean;
   },
 ): ViewState {
   const tab = VALID_TABS.includes(input.activeTab as EditorTab) ? input.activeTab : "2d";
@@ -162,6 +187,18 @@ export function normalizeViewState(
       }
       seen.add(x);
       hidden3dProjectLayerIds.push(x);
+    }
+  }
+  const collapsedRaw = input.editor3dVisibilityCollapsedKeys;
+  const editor3dVisibilityCollapsedKeys: string[] = [];
+  if (Array.isArray(collapsedRaw)) {
+    const seenC = new Set<string>();
+    for (const x of collapsedRaw) {
+      if (typeof x !== "string" || x.length === 0 || seenC.has(x)) {
+        continue;
+      }
+      seenC.add(x);
+      editor3dVisibilityCollapsedKeys.push(x);
     }
   }
   return {
@@ -190,5 +227,11 @@ export function normalizeViewState(
     show3dRoofCovering: input.show3dRoofCovering !== false,
     show3dRoofSoffit: input.show3dRoofSoffit === true,
     hidden3dProjectLayerIds,
+    editor3dVisibilityCollapsedKeys,
+    editor3dVisibilityCollapsePrimed: input.editor3dVisibilityCollapsePrimed === true,
+    show3dRoofRafters: input.show3dRoofRafters !== false,
+    show3dRoofPurlins: input.show3dRoofPurlins !== false,
+    show3dRoofPosts: input.show3dRoofPosts !== false,
+    show3dRoofStruts: input.show3dRoofStruts !== false,
   };
 }

@@ -205,7 +205,13 @@ export function createDemoProject(): Project {
       show3dRoofBattens: true,
       show3dRoofCovering: true,
       show3dRoofSoffit: false,
+      show3dRoofRafters: true,
+      show3dRoofPurlins: true,
+      show3dRoofPosts: true,
+      show3dRoofStruts: true,
       hidden3dProjectLayerIds: [],
+      editor3dVisibilityCollapsedKeys: [],
+      editor3dVisibilityCollapsePrimed: false,
     },
   };
 

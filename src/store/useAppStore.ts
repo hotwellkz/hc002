@@ -75,6 +75,10 @@ import {
   validateWindowPlacementOnWall,
 } from "@/core/domain/openingWindowGeometry";
 import { editor3dPickSupportsContextDelete } from "@/core/domain/editor3dContextMenuPolicy";
+import {
+  viewStateAll3dVisibilityOff,
+  viewStateAll3dVisibilityOn,
+} from "@/features/editor3d/editor3dVisibilityTreeModel";
 import { deleteEntitiesFromProject } from "@/core/domain/projectMutations";
 import type { FloorInsulationAreaMode, FloorInsulationLayoutMode } from "@/core/domain/floorInsulation";
 import { applyFloorInsulationToLayer } from "@/core/domain/floorInsulationApply";
@@ -660,7 +664,13 @@ interface AppActions {
         | "show3dRoofBattens"
         | "show3dRoofCovering"
         | "show3dRoofSoffit"
+        | "show3dRoofRafters"
+        | "show3dRoofPurlins"
+        | "show3dRoofPosts"
+        | "show3dRoofStruts"
         | "hidden3dProjectLayerIds"
+        | "editor3dVisibilityCollapsedKeys"
+        | "editor3dVisibilityCollapsePrimed"
       >
     >,
   ) => void;
@@ -2134,7 +2144,12 @@ export const useAppStore = create<AppStore>((set, get) => {
 
     showAll3dProjectLayers: () =>
       set((s) => ({
-        currentProject: touchProjectMeta(mergeViewState(s.currentProject, { hidden3dProjectLayerIds: [] })),
+        currentProject: touchProjectMeta(
+          mergeViewState(s.currentProject, {
+            hidden3dProjectLayerIds: [],
+            ...viewStateAll3dVisibilityOn(),
+          }),
+        ),
         dirty: true,
       })),
 
@@ -2143,6 +2158,7 @@ export const useAppStore = create<AppStore>((set, get) => {
         currentProject: touchProjectMeta(
           mergeViewState(s.currentProject, {
             hidden3dProjectLayerIds: s.currentProject.layers.map((l) => l.id),
+            ...viewStateAll3dVisibilityOff(),
           }),
         ),
         dirty: true,

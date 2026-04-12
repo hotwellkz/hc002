@@ -66,7 +66,11 @@ export function ProjectRoofFramingWood({ project }: ProjectRoofFramingWoodProps)
     return roofStrutsToMeshSpecs(project, list);
   }, [project]);
 
-  const roofOn = project.viewState.show3dRoof !== false;
+  const vs = project.viewState;
+  const roofOn = vs.show3dRoof !== false;
+  const showPosts = roofOn && vs.show3dRoofPosts !== false;
+  const showPurlins = roofOn && vs.show3dRoofPurlins !== false;
+  const showStruts = roofOn && vs.show3dRoofStruts !== false;
   const hasAny = postSpecs.length > 0 || purlinSpecs.length > 0 || strutSpecs.length > 0;
 
   if (!hasAny) {
@@ -74,16 +78,28 @@ export function ProjectRoofFramingWood({ project }: ProjectRoofFramingWoodProps)
   }
 
   return (
-    <group name="project-roof-framing-wood" visible={roofOn}>
-      {postSpecs.map((s) => (
-        <FramingBox3d key={s.reactKey} s={s} />
-      ))}
-      {purlinSpecs.map((s) => (
-        <FramingBox3d key={s.reactKey} s={s} />
-      ))}
-      {strutSpecs.map((s) => (
-        <FramingBox3d key={s.reactKey} s={s} />
-      ))}
+    <group name="project-roof-framing-wood">
+      {postSpecs.length > 0 ? (
+        <group visible={showPosts}>
+          {postSpecs.map((s) => (
+            <FramingBox3d key={s.reactKey} s={s} />
+          ))}
+        </group>
+      ) : null}
+      {purlinSpecs.length > 0 ? (
+        <group visible={showPurlins}>
+          {purlinSpecs.map((s) => (
+            <FramingBox3d key={s.reactKey} s={s} />
+          ))}
+        </group>
+      ) : null}
+      {strutSpecs.length > 0 ? (
+        <group visible={showStruts}>
+          {strutSpecs.map((s) => (
+            <FramingBox3d key={s.reactKey} s={s} />
+          ))}
+        </group>
+      ) : null}
     </group>
   );
 }

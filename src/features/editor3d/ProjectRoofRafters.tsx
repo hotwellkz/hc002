@@ -92,10 +92,12 @@ export function ProjectRoofRafters({
     return roofRaftersToMeshSpecs(project, list);
   }, [project]);
 
-  const roofOn = project.viewState.show3dRoof !== false;
+  const vs = project.viewState;
+  const roofOn = vs.show3dRoof !== false;
+  const showRafters = roofOn && vs.show3dRoofRafters !== false;
 
   return (
-    <group name="project-roof-rafters" visible={roofOn}>
+    <group name="project-roof-rafters" visible={showRafters}>
       {specs.map((s) => (
         <RoofRafterMesh3d
           key={s.reactKey}

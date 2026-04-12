@@ -266,3 +266,125 @@
 .ed3-vis-action-btn:hover {
   border-color: var(--color-border-strong);
 }
+
+/* Дерево видимости */
+.ed3-vis-tree {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.ed3-vis-tree-branch {
+  margin: 0;
+}
+
+.ed3-vis-tree-children {
+  margin: 0;
+  padding: 0 0 2px 0;
+  border-left: 1px solid color-mix(in srgb, var(--color-border-subtle) 75%, transparent);
+  margin-left: calc(10px + var(--ed3-vis-depth, 0) * 0px);
+}
+
+.ed3-vis-tree-row {
+  display: grid;
+  grid-template-columns: 24px 22px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 6px;
+  padding: 5px 0 5px calc(2px + var(--ed3-vis-depth, 0) * 12px);
+  border-radius: var(--radius-sm);
+}
+
+.ed3-vis-tree-row + .ed3-vis-tree-row,
+.ed3-vis-tree-branch + .ed3-vis-tree-branch {
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 55%, transparent);
+}
+
+.ed3-vis-tree-row--group {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.ed3-vis-tree-row--leaf {
+  font-weight: 400;
+}
+
+.ed3-vis-tree-row--disabled {
+  opacity: 0.55;
+}
+
+.ed3-vis-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+
+.ed3-vis-tree-toggle:hover {
+  background: color-mix(in srgb, var(--color-surface-hover) 65%, transparent);
+  color: var(--color-text-primary);
+}
+
+.ed3-vis-tree-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-glow);
+}
+
+.ed3-vis-tree-chevron {
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+
+.ed3-vis-tree-chevron--open {
+  transform: rotate(90deg);
+}
+
+.ed3-vis-tree-spacer {
+  width: 24px;
+  height: 1px;
+}
+
+.ed3-vis-tree-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  cursor: pointer;
+  justify-self: center;
+}
+
+.ed3-vis-tree-row--disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
+.ed3-vis-tree-label {
+  min-width: 0;
+  padding-top: 2px;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.ed3-vis-tree-label--group {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-text-primary);
+}
+
+.ed3-vis-tree-row--leaf .ed3-vis-tree-label {
+  font-weight: 400;
+  color: var(--color-text-primary);
+}

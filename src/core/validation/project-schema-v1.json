@@ -1456,10 +1456,19 @@
         "show3dRoofBattens": { "type": "boolean" },
         "show3dRoofCovering": { "type": "boolean" },
         "show3dRoofSoffit": { "type": "boolean" },
+        "show3dRoofRafters": { "type": "boolean" },
+        "show3dRoofPurlins": { "type": "boolean" },
+        "show3dRoofPosts": { "type": "boolean" },
+        "show3dRoofStruts": { "type": "boolean" },
         "hidden3dProjectLayerIds": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
+        "editor3dVisibilityCollapsedKeys": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "editor3dVisibilityCollapsePrimed": { "type": "boolean" },
         "activeTab": { "type": "string", "enum": ["2d", "3d", "spec", "wall"] },
         "editor2dPlanScope": {
           "type": "string",
