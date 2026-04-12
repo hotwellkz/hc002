@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { LAYER_DOMAIN_LABELS, editor2dPlanScopeToLayerDomain } from "@/core/domain/layerDomain";
 import { getLayerById } from "@/core/domain/layerOps";
+import { useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./layer-modals.css";
@@ -23,6 +24,14 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
     project.viewState.activeTab === "2d"
       ? editor2dPlanScopeToLayerDomain(project.viewState.editor2dPlanScope)
       : "floorPlan";
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(onClose);
+
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
 
   useEffect(() => {
     if (open && active) {
@@ -61,14 +70,14 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
     return null;
   }
 
-  const submit = () => {
-    const n = name.trim();
-    if (!n) {
-      return;
-    }
-    createLayer({ name: n, elevationMm: Number.isFinite(elevationMm) ? elevationMm : 0 });
-    onClose();
-  };
+  const submit = () =>
+    runApply(() => {
+      const n = name.trim();
+      if (!n) {
+        return false;
+      }
+      createLayer({ name: n, elevationMm: Number.isFinite(elevationMm) ? elevationMm : 0 });
+    });
 
   const modal = (
     <div
@@ -107,12 +116,17 @@ export function CreateLayerModal({ open, onClose }: CreateLayerModalProps) {
             onChange={(e) => setElevationMm(Number(e.target.value))}
           />
         </label>
+        {applyError ? (
+          <p className="lm-micro" role="alert" style={{ color: "var(--danger, #b91c1c)" }}>
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
-          <button type="button" className="lm-btn lm-btn--ghost" onClick={onClose}>
+          <button type="button" className="lm-btn lm-btn--ghost" onClick={onClose} disabled={isSubmitting}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Создать
+          <button type="button" className="lm-btn lm-btn--primary" disabled={isSubmitting} onClick={() => void submit()}>
+            {isSubmitting ? "Создание…" : "Создать"}
           </button>
         </div>
       </div>

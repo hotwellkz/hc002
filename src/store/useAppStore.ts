@@ -1410,6 +1410,7 @@ function runFoundationStripAutoPilesImpl(
       st,
       next,
       {
+        foundationStripAutoPilesModal: null,
         dirty: true,
         lastError: null,
       },
@@ -3670,19 +3671,22 @@ export const useAppStore = create<AppStore>((set, get) => {
         return;
       }
       if (!Number.isFinite(offsetMm)) {
-        set({ roofPlaneEdgeOffsetModal: null });
+        set({ lastError: "Введите числовое смещение (мм).", roofPlaneEdgeOffsetModal: ctx });
         return;
       }
       const p0 = get().currentProject;
       const rp = p0.roofPlanes.find((r) => r.id === ctx.planeId);
       if (!rp) {
-        set({ roofPlaneEdgeOffsetModal: null });
+        set({ lastError: "Скат не найден.", roofPlaneEdgeOffsetModal: ctx });
         return;
       }
       const d = clampRoofQuadEdgeDeltaMm(ctx.baseQuad, ctx.edgeIndex, offsetMm);
       const r = tryMoveRoofQuadEdgeMm(ctx.baseQuad, ctx.edgeIndex, d);
       if (!r.ok) {
-        set({ roofPlaneEdgeOffsetModal: null });
+        set({
+          lastError: "Такое смещение недопустимо для контура ската (геометрия или лимиты).",
+          roofPlaneEdgeOffsetModal: ctx,
+        });
         return;
       }
       const nextEnt = roofPlaneEntityApplyPlanQuadMm(rp, r.quad);

@@ -16,11 +16,14 @@ import {
 import {
   DEFAULT_WALL_MANUFACTURING,
   inferFrameMemberWidthMmFromProfile,
+  resolveWallCalculationModel,
   type DoorOpeningFramingPreset,
+  type WallCalculationMode,
   type WallManufacturingSettings,
   type WindowOpeningFramingPreset,
 } from "@/core/domain/wallManufacturing";
 import { validateProfile } from "@/core/domain/profileValidation";
+import { useModalApplyClose } from "@/shared/modalSubmit";
 import {
   DEFAULT_ROOF_PROFILE_ASSEMBLY,
   migrateRoofProfileAssemblyWire,
@@ -102,7 +105,7 @@ function normalizeWallManufacturing(
     panelNominalHeightMm?: number;
     frameMemberWidthMm?: number;
   } = {};
-  if (model === "frame" && profile) {
+  if ((model === "frame" || model === "sheet") && profile) {
     if (profile.defaultWidthMm != null && profile.defaultWidthMm > 0) {
       extra.panelNominalWidthMm = Math.round(profile.defaultWidthMm);
     }
@@ -133,6 +136,8 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
   const [draft, setDraft] = useState<Profile | null>(null);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(onClose);
+
   const sortedProfiles = useMemo(
     () => [...project.profiles].sort((a, b) => a.name.localeCompare(b.name, "ru")),
     [project.profiles],
@@ -159,6 +164,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
     if (!open) {
       setDraft(null);
       setLocalErrors([]);
+      clearApplyError();
       return;
     }
     const list = useAppStore.getState().currentProject.profiles;
@@ -172,7 +178,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
       );
     }
     setLocalErrors([]);
-  }, [open]);
+  }, [open, clearApplyError]);
 
   if (!open) {
     return null;
@@ -199,44 +205,49 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
     });
   };
 
-  const handleSave = () => {
-    if (!draft) {
-      return;
-    }
-    let toSave: Profile = {
-      ...draft,
-      wallManufacturing: normalizeWallManufacturing(draft.wallManufacturing, draft),
-    };
-    if (toSave.category === "roof") {
-      const stub =
-        toSave.layers.length > 0
-          ? [sortProfileLayersByOrder([...toSave.layers])[0]!]
-          : [
-              {
-                id: newEntityId(),
-                orderIndex: 0,
-                materialName: "—",
-                materialType: "custom" as ProfileMaterialType,
-                thicknessMm: 1,
-              },
-            ];
-      toSave = {
-        ...toSave,
-        compositionMode: "solid",
-        layers: stub,
-        roofAssembly: migrateRoofProfileAssemblyWire(toSave.roofAssembly),
+  const handleSave = () =>
+    runApply(() => {
+      if (!draft) {
+        return false;
+      }
+      let toSave: Profile = {
+        ...draft,
+        wallManufacturing: normalizeWallManufacturing(draft.wallManufacturing, draft),
       };
-    }
-    const errs = validateProfile(toSave);
-    if (errs.length > 0) {
-      setLocalErrors(errs);
-      return;
-    }
-    const ok = upsertProfile(toSave);
-    if (ok) {
+      if (toSave.category === "roof") {
+        const stub =
+          toSave.layers.length > 0
+            ? [sortProfileLayersByOrder([...toSave.layers])[0]!]
+            : [
+                {
+                  id: newEntityId(),
+                  orderIndex: 0,
+                  materialName: "—",
+                  materialType: "custom" as ProfileMaterialType,
+                  thicknessMm: 1,
+                },
+              ];
+        toSave = {
+          ...toSave,
+          compositionMode: "solid",
+          layers: stub,
+          roofAssembly: migrateRoofProfileAssemblyWire(toSave.roofAssembly),
+        };
+      }
+      const errs = validateProfile(toSave);
+      if (errs.length > 0) {
+        setLocalErrors(errs);
+        return false;
+      }
+      const ok = upsertProfile(toSave);
+      if (!ok) {
+        const msg = useAppStore.getState().lastError;
+        setLocalErrors(msg ? [msg] : ["Не удалось сохранить профиль."]);
+        return false;
+      }
       setLocalErrors([]);
-    }
-  };
+      return true;
+    });
 
   const handleDelete = (id: string) => {
     if (!window.confirm("Удалить этот профиль?")) {
@@ -938,47 +949,58 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                 ) : null}
 
                 {draft.category === "wall" ? (
-                  <div className="pm-row2">
-                    <div className="pm-field">
-                      <label className="pm-label" htmlFor="pm-calc-model">
-                        Модель расчёта
-                      </label>
-                      <select
-                        id="pm-calc-model"
-                        className="pm-select"
-                        value={draft.wallManufacturing?.calculationModel ?? "frame"}
-                        onChange={(e) =>
-                          patchWallManufacturing({
-                            calculationModel: e.target.value as "sip" | "frame",
-                          })}
-                      >
-                        <option value="frame">Каркас/перегородка</option>
-                        <option value="sip">SIP</option>
-                      </select>
+                  <>
+                    <div className="pm-row2">
+                      <div className="pm-field">
+                        <label className="pm-label" htmlFor="pm-calc-model">
+                          Режим расчёта
+                        </label>
+                        <select
+                          id="pm-calc-model"
+                          className="pm-select"
+                          value={resolveWallCalculationModel(draft)}
+                          onChange={(e) =>
+                            patchWallManufacturing({
+                              calculationModel: e.target.value as WallCalculationMode,
+                            })}
+                        >
+                          <option value="sheet">Листовой материал</option>
+                          <option value="sip">SIP</option>
+                          <option value="frame">Каркас / перегородка</option>
+                        </select>
+                      </div>
+                      {resolveWallCalculationModel(draft) === "frame" ? (
+                        <div className="pm-field">
+                          <label className="pm-label" htmlFor="pm-stud-spacing">
+                            Шаг каркаса, мм
+                          </label>
+                          <input
+                            id="pm-stud-spacing"
+                            className="pm-input"
+                            type="number"
+                            value={draft.wallManufacturing?.studSpacingMm ?? ""}
+                            placeholder="400 / 600"
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              patchWallManufacturing({
+                                studSpacingMm: v === "" ? DEFAULT_WALL_MANUFACTURING.studSpacingMm : Number(v),
+                              });
+                            }}
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="pm-field">
-                      <label className="pm-label" htmlFor="pm-stud-spacing">
-                        Шаг каркаса, мм
-                      </label>
-                      <input
-                        id="pm-stud-spacing"
-                        className="pm-input"
-                        type="number"
-                        value={draft.wallManufacturing?.studSpacingMm ?? ""}
-                        placeholder="400 / 600"
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          patchWallManufacturing({
-                            studSpacingMm: v === "" ? DEFAULT_WALL_MANUFACTURING.studSpacingMm : Number(v),
-                          });
-                        }}
-                      />
-                    </div>
-                  </div>
+                    <p className="muted" style={{ margin: "0 0 12px", fontSize: 12, lineHeight: 1.45 }}>
+                      {resolveWallCalculationModel(draft) === "sheet"
+                        ? "Листовой материал — только раскладка листов без каркаса."
+                        : resolveWallCalculationModel(draft) === "sip"
+                          ? "SIP — расчёт SIP-панелей."
+                          : "Каркас — стойки, шаг и материал каркаса участвуют в расчёте."}
+                    </p>
+                  </>
                 ) : null}
 
-                {draft.category === "wall" &&
-                (draft.wallManufacturing?.calculationModel ?? "frame") === "frame" ? (
+                {draft.category === "wall" && resolveWallCalculationModel(draft) === "frame" ? (
                   <div className="pm-row2">
                     <div className="pm-field">
                       <label className="pm-label" htmlFor="pm-door-opening-preset">
@@ -1020,7 +1042,7 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   </div>
                 ) : null}
 
-                {draft.category === "wall" ? (
+                {draft.category === "wall" && resolveWallCalculationModel(draft) === "frame" ? (
                   <div className="pm-row2">
                     <div className="pm-field">
                       <label className="pm-label" htmlFor="pm-frame-material">
@@ -1039,31 +1061,29 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                         <option value="steel">Металл</option>
                       </select>
                     </div>
-                    {(draft.wallManufacturing?.calculationModel ?? "frame") === "frame" ? (
-                      <div className="pm-field">
-                        <label className="pm-label" htmlFor="pm-frame-member-w">
-                          Ширина профиля каркаса, мм
-                        </label>
-                        <input
-                          id="pm-frame-member-w"
-                          className="pm-input"
-                          type="number"
-                          value={draft.wallManufacturing?.frameMemberWidthMm ?? ""}
-                          placeholder="из слоя стали"
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            patchWallManufacturing({
-                              frameMemberWidthMm: v === "" ? undefined : Number(v),
-                            });
-                          }}
-                        />
-                      </div>
-                    ) : null}
+                    <div className="pm-field">
+                      <label className="pm-label" htmlFor="pm-frame-member-w">
+                        Ширина профиля каркаса, мм
+                      </label>
+                      <input
+                        id="pm-frame-member-w"
+                        className="pm-input"
+                        type="number"
+                        value={draft.wallManufacturing?.frameMemberWidthMm ?? ""}
+                        placeholder="из слоя стали"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          patchWallManufacturing({
+                            frameMemberWidthMm: v === "" ? undefined : Number(v),
+                          });
+                        }}
+                      />
+                    </div>
                   </div>
                 ) : null}
 
                 {draft.category === "wall" &&
-                (draft.wallManufacturing?.calculationModel ?? "frame") === "frame" &&
+                resolveWallCalculationModel(draft) === "frame" &&
                 draft.wallManufacturing?.frameMaterial === "steel" ? (
                   <div className="pm-row2" style={{ alignItems: "flex-start" }}>
                     <div className="pm-field" style={{ flex: 1, minWidth: 200 }}>
@@ -1280,8 +1300,9 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
                   <div className="pm-badge-total">Итоговая толщина: {totalMm > 0 ? `${Math.round(totalMm)} мм` : "—"}</div>
                 ) : null}
 
-                {localErrors.length > 0 && (
+                {(localErrors.length > 0 || applyError) && (
                   <div className="pm-err" role="alert">
+                    {applyError ? <div key="__apply">{applyError}</div> : null}
                     {localErrors.map((e) => (
                       <div key={e}>{e}</div>
                     ))}
@@ -1293,11 +1314,18 @@ export function ProfilesModal({ open, onClose }: ProfilesModalProps) {
         </div>
 
         <div className="pm-foot">
-          <button type="button" className="pm-btn pm-btn--ghost" onClick={onClose}>
+          <button type="button" className="pm-btn pm-btn--ghost" onClick={onClose} disabled={isSubmitting}>
             Отмена
           </button>
-          <button type="button" className="pm-btn pm-btn--primary" disabled={!draft} onClick={handleSave}>
-            Сохранить профиль
+          <button
+            type="button"
+            className="pm-btn pm-btn--primary"
+            disabled={!draft || isSubmitting}
+            onClick={() => {
+              void handleSave();
+            }}
+          >
+            {isSubmitting ? "Сохранение…" : "Сохранить профиль"}
           </button>
         </div>
       </div>

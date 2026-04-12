@@ -330,8 +330,9 @@ export function WallDetailWorkspace() {
           }
         : { x0: 0, x1: L };
     const prof = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
-    const isFrameWallModel = prof ? resolveWallCalculationModel(prof) === "frame" : false;
-    /** Каркас/ГКЛ: разрезы по всем границам листов (в т.ч. у проёма); SIP — стыки OSB по joint_board. */
+    const wm = prof ? resolveWallCalculationModel(prof) : null;
+    const isFrameWallModel = wm === "frame" || wm === "sheet";
+    /** Каркас/ГКЛ и листовой без каркаса: разрезы по границам листов; SIP — стыки OSB по joint_board. */
     const seamCentersForSheetDims =
       calc && isFrameWallModel && calc.sipRegions.length > 0
         ? sheetInteriorCutXsAlongWallFromRegionsMm(calc.sipRegions, sipShell.x0, sipShell.x1)

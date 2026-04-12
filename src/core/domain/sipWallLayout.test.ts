@@ -83,6 +83,25 @@ describe("computeSipPanelWidthsOpeningAdjacentMm", () => {
 });
 
 describe("buildWallCalculationForWall", () => {
+  it("режим «листовой материал»: деление по модулю листа, без досок и каркаса", () => {
+    const p = createDemoProject();
+    const wall = { ...p.walls[0]!, end: { x: 4000, y: 0 } };
+    const baseProf = p.profiles[0]!;
+    const profile: Profile = {
+      ...baseProf,
+      defaultWidthMm: 1250,
+      defaultHeightMm: 2800,
+      wallManufacturing: {
+        ...baseProf.wallManufacturing,
+        calculationModel: "sheet",
+      },
+    };
+    const calc = buildWallCalculationForWall(wall, profile);
+    expect(calc.lumberPieces.length).toBe(0);
+    expect(calc.sipRegions.length).toBe(4);
+    expect(calc.sipRegions.map((r) => Math.round(r.widthMm))).toEqual([1250, 1250, 1250, 250]);
+  });
+
   it("SIP-панели начинаются с края стены (0) и идут модулями 1250 + добор только последней", () => {
     const p = createDemoProject();
     const wall = { ...p.walls[0]!, end: { x: 5295, y: 0 } };

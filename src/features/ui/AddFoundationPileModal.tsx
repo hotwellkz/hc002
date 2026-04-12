@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { FoundationPileKind } from "@/core/domain/foundationPile";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -10,6 +11,8 @@ export function AddFoundationPileModal() {
   const close = useAppStore((s) => s.closeAddFoundationPileModal);
   const apply = useAppStore((s) => s.applyAddFoundationPileModal);
   const session = useAppStore((s) => s.foundationPilePlacementSession);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const [pileKind, setPileKind] = useState<FoundationPileKind>("reinforcedConcrete");
   const [sizeMm, setSizeMm] = useState(300);
@@ -28,19 +31,28 @@ export function AddFoundationPileModal() {
     setLevelMm(-400);
   }, [open]);
 
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
 
-  const submit = () => {
-    apply({
-      pileKind,
-      sizeMm: Number(sizeMm),
-      capSizeMm: Number(capSizeMm),
-      heightMm: Number(heightMm),
-      levelMm: Number(levelMm),
+  const submit = () =>
+    runApply(() => {
+      apply({
+        pileKind,
+        sizeMm: Number(sizeMm),
+        capSizeMm: Number(capSizeMm),
+        heightMm: Number(heightMm),
+        levelMm: Number(levelMm),
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addFoundationPileModalOpen, s.lastError);
     });
-  };
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -112,12 +124,22 @@ export function AddFoundationPileModal() {
             onChange={(e) => setLevelMm(Number(e.target.value))}
           />
         </label>
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

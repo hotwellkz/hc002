@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { getConnectedFoundationStripsOnLayer } from "@/core/domain/foundationStripMerge";
 import type { FoundationStripAutoPileSettings } from "@/core/domain/foundationStrip";
 import { defaultFoundationStripAutoPileSettings } from "@/core/domain/foundationStripAutoPiles";
@@ -12,6 +13,8 @@ export function FoundationStripAutoPilesModal() {
   const close = useAppStore((s) => s.closeFoundationStripAutoPilesModal);
   const apply = useAppStore((s) => s.applyFoundationStripAutoPiles);
   const project = useAppStore((s) => s.currentProject);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const groupInfo = useMemo(() => {
     if (!modal) {
@@ -59,6 +62,12 @@ export function FoundationStripAutoPilesModal() {
     setCenterIntermediate(base.centerIntermediate);
   }, [modal, groupInfo]);
 
+  useEffect(() => {
+    if (modal) {
+      clearApplyError();
+    }
+  }, [modal, clearApplyError]);
+
   if (!modal || !groupInfo) {
     return null;
   }
@@ -74,6 +83,13 @@ export function FoundationStripAutoPilesModal() {
     centerIntermediate,
     replaceExistingAuto: true,
   });
+
+  const runAction = (action: "buildNew" | "update" | "delete") =>
+    runApply(() => {
+      apply(action, readSettings());
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.foundationStripAutoPilesModal != null, s.lastError);
+    });
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -153,14 +169,25 @@ export function FoundationStripAutoPilesModal() {
           <span className="lm-label">Центрировать промежуточные сваи (равномерный шаг между опорными)</span>
         </label>
 
+        {applyError ? (
+          <p className="muted" style={{ marginTop: 8, fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
+
         <div className="lm-actions" style={{ flexWrap: "wrap", gap: 8 }}>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={() => apply("buildNew", readSettings())}>
-            Построить сваи
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            disabled={isSubmitting}
+            onClick={() => void runAction("buildNew")}
+          >
+            {isSubmitting ? "…" : "Построить сваи"}
           </button>
-          <button type="button" className="lm-btn lm-btn--ghost" onClick={() => apply("update", readSettings())}>
+          <button type="button" className="lm-btn lm-btn--ghost" disabled={isSubmitting} onClick={() => void runAction("update")}>
             Обновить сваи
           </button>
-          <button type="button" className="lm-btn lm-btn--ghost" onClick={() => apply("delete", readSettings())}>
+          <button type="button" className="lm-btn lm-btn--ghost" disabled={isSubmitting} onClick={() => void runAction("delete")}>
             Удалить авто-сваи
           </button>
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>

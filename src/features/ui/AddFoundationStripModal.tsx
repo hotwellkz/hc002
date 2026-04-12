@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { FoundationStripBuildMode } from "@/store/useAppStore";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -10,6 +11,8 @@ export function AddFoundationStripModal() {
   const close = useAppStore((s) => s.closeAddFoundationStripModal);
   const apply = useAppStore((s) => s.applyAddFoundationStripModal);
   const session = useAppStore((s) => s.foundationStripPlacementSession);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const [depthMm, setDepthMm] = useState(400);
   const [side1Mm, setSide1Mm] = useState(50);
@@ -26,18 +29,27 @@ export function AddFoundationStripModal() {
     setBuildMode("linear");
   }, [open]);
 
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
 
-  const submit = () => {
-    apply({
-      depthMm: Number(depthMm),
-      side1Mm: Number(side1Mm),
-      side2Mm: Number(side2Mm),
-      buildMode,
+  const submit = () =>
+    runApply(() => {
+      apply({
+        depthMm: Number(depthMm),
+        side1Mm: Number(side1Mm),
+        side2Mm: Number(side2Mm),
+        buildMode,
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addFoundationStripModalOpen, s.lastError);
     });
-  };
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -99,12 +111,22 @@ export function AddFoundationStripModal() {
             onChange={(e) => setSide2Mm(Number(e.target.value))}
           />
         </label>
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

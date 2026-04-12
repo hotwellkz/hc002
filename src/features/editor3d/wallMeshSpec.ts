@@ -10,7 +10,7 @@ import { doorAlongWallOccupiedIntervalMm } from "@/core/domain/frameGklDoorAlong
 import {
   coreLayerNormalOffsetsMm,
   isInsulationCoreMaterial,
-  resolveWallProfileLayerStripsMm,
+  resolveWallProfileLayerStripsForWallVisualization,
 } from "@/core/domain/wallProfileLayers";
 
 const MM_TO_M = 0.001;
@@ -172,7 +172,7 @@ function layeredSpecsFromProfile(
   if (!(wall.thicknessMm > 0) || !(wall.heightMm > 0)) {
     return null;
   }
-  const strips = resolveWallProfileLayerStripsMm(wall.thicknessMm, profile);
+  const strips = resolveWallProfileLayerStripsForWallVisualization(wall.thicknessMm, profile);
   if (!strips || strips.length < 2) {
     return null;
   }

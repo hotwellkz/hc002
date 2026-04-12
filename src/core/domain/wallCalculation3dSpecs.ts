@@ -350,11 +350,22 @@ function sipSpecsForWall(
   offStart: number,
   offEnd: number,
 ): CalculationSolidSpec[] {
+  const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
+  /**
+   * Листовой материал без SIP: расчёт даёт только сегменты листов (sipRegions), без ядра EPS.
+   * Здесь нельзя строить «остаток ядра» — иначе при отсутствии полосы утеплителя в профиле
+   * подставлялся бы materialType по умолчанию `eps` (см. coreMaterial ниже).
+   * Оболочка стены в 3D строится отдельно по слоям профиля (editor3d wall mesh), не из этого списка.
+   */
+  if (profile && resolveWallCalculationModel(profile) === "sheet") {
+    return [];
+  }
+
   const out: CalculationSolidSpec[] = [];
   const coreBaseY = bottomMm + plateT;
   const pieces = calc.lumberPieces;
-  const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
   const coreBand = profile ? resolveWallProfileCoreBandMm(wall.thicknessMm, profile) : null;
+  /** Только для SIP-подобного расчёта: при отсутствии явной полосы ядра в слоях — legacy-дефолт EPS. */
   const coreMaterial: ProfileMaterialType = coreBand?.materialType ?? "eps";
 
   const pushResidualChunk = (reactKey: string, s0: number, s1: number, y0Core: number, y1Core: number) => {
@@ -684,8 +695,8 @@ function lumberSpecsForWall(
 }
 
 /**
- * Все объёмы расчёта для одной стены (SIP + пиломатериалы), согласованы с 2D (полоса ядра, смещения вдоль стены).
- * EPS в ядре дробится по нормали, исключая объемы вертикальных досок (без полного CSG).
+ * Все объёмы расчёта для одной стены (SIP-ядро + пиломатериалы), согласованы с 2D.
+ * Режим профиля «листовой материал» (`sheet`) не добавляет SIP-ядро в 3D (только оболочка по слоям профиля).
  */
 export function buildCalculationSolidSpecsForWall(
   wall: Wall,

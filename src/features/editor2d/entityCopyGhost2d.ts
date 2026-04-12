@@ -13,7 +13,7 @@ import { floorBeamPlanQuadCornersMm } from "@/core/domain/floorBeamGeometry";
 import type { Project } from "@/core/domain/project";
 import { getProfileById } from "@/core/domain/profileOps";
 import { isOpeningPlacedOnWall } from "@/core/domain/opening";
-import { resolveWallProfileLayerStripsMm } from "@/core/domain/wallProfileLayers";
+import { resolveWallProfileLayerStripsForWallVisualization } from "@/core/domain/wallProfileLayers";
 import type { Wall } from "@/core/domain/wall";
 import { wallStripQuadCornersMm } from "@/core/geometry/snap2d";
 import type { Point2D } from "@/core/geometry/types";
@@ -51,7 +51,7 @@ function wallGhostQuads(w: Wall, project: Project, dx: number, dy: number, g: Gr
     return;
   }
   const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-  const strips = profile ? resolveWallProfileLayerStripsMm(T, profile) : null;
+  const strips = profile ? resolveWallProfileLayerStripsForWallVisualization(T, profile) : null;
   if (strips && strips.length > 0) {
     let acc = -T / 2;
     for (const strip of strips) {

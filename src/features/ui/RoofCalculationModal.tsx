@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./layer-modals.css";
@@ -10,6 +11,8 @@ export function RoofCalculationModal() {
   const apply = useAppStore((s) => s.applyRoofCalculationModal);
   const project = useAppStore((s) => s.currentProject);
   const selectedEntityIds = useAppStore((s) => s.selectedEntityIds);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const titleId = useId();
 
@@ -22,6 +25,7 @@ export function RoofCalculationModal() {
     if (!open) {
       return;
     }
+    clearApplyError();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -30,7 +34,7 @@ export function RoofCalculationModal() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [open, close, clearApplyError]);
 
   if (!open) {
     return null;
@@ -54,12 +58,28 @@ export function RoofCalculationModal() {
           подкровельная мембрана в 3D. Плоскости скатов на плане не изменяются. Все выбранные скаты должны иметь один
           профиль «Кровля» и образовывать одну связную группу по стыкам контура.
         </p>
+        {applyError ? (
+          <p className="lm-muted" style={{ marginTop: 8, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions" style={{ marginTop: 20 }}>
           <button type="button" className="lm-btn lm-btn--ghost" onClick={() => close()}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={() => apply()}>
-            Рассчитать
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            disabled={isSubmitting}
+            onClick={() =>
+              void runApply(() => {
+                apply();
+                const s = useAppStore.getState();
+                return finishStoreModalApply(s.roofCalculationModalOpen, s.lastError);
+              })
+            }
+          >
+            {isSubmitting ? "…" : "Рассчитать"}
           </button>
         </div>
       </div>

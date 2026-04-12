@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./wall-coordinate-modal.css";
@@ -36,6 +37,8 @@ export function WallCoordinateModal() {
   const applyFloorBeamPlacementCoord = useAppStore((s) => s.applyFloorBeamPlacementCoordinateModal);
   const setSceneCoordModalDesiredFocus = useAppStore((s) => s.setSceneCoordModalDesiredFocus);
   const lastError = useAppStore((s) => s.lastError);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const titleId = useId();
   const [xStr, setXStr] = useState("0");
@@ -201,6 +204,12 @@ export function WallCoordinateModal() {
     closeFloorBeamPlacementCoord,
   ]);
 
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
@@ -210,39 +219,50 @@ export function WallCoordinateModal() {
   const dShow =
     Number.isFinite(dxParsed) && Number.isFinite(dyParsed) ? Math.round(Math.hypot(dxParsed, dyParsed)) : "—";
 
-  const submit = () => {
-    setLocalError(null);
-    if (lengthChangeCoordOpen) {
-      const d = Number(deltaStr.replace(",", "."));
-      if (!Number.isFinite(d)) {
-        setLocalError("Введите числовое значение Δ (мм).");
-        return;
+  const submit = () =>
+    runApply(() => {
+      setLocalError(null);
+      if (lengthChangeCoordOpen) {
+        const d = Number(deltaStr.replace(",", "."));
+        if (!Number.isFinite(d)) {
+          setLocalError("Введите числовое значение Δ (мм).");
+          return false;
+        }
+        applyLengthChangeCoord({ deltaMm: d });
+      } else {
+        const dx = Number(xStr.replace(",", "."));
+        const dy = Number(yStr.replace(",", "."));
+        if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+          setLocalError("Введите числовые значения X и Y (мм).");
+          return false;
+        }
+        if (entityCopyCoordOpen) {
+          applyEntityCopyCoord({ dxMm: dx, dyMm: dy });
+        } else if (floorBeamMoveCopyCoordOpen) {
+          applyFloorBeamMoveCopyCoord({ dxMm: dx, dyMm: dy });
+        } else if (moveCopyCoordOpen) {
+          applyMoveCopyCoord({ dxMm: dx, dyMm: dy });
+        } else if (slabCoordOpen) {
+          applySlabCoord({ dxMm: dx, dyMm: dy });
+        } else if (floorBeamPlacementCoordOpen) {
+          applyFloorBeamPlacementCoord({ dxMm: dx, dyMm: dy });
+        } else {
+          applyWallCoord({ dxMm: dx, dyMm: dy });
+        }
       }
-      applyLengthChangeCoord({ deltaMm: d });
-      return;
-    }
-    const dx = Number(xStr.replace(",", "."));
-    const dy = Number(yStr.replace(",", "."));
-    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-      setLocalError("Введите числовые значения X и Y (мм).");
-      return;
-    }
-    if (entityCopyCoordOpen) {
-      applyEntityCopyCoord({ dxMm: dx, dyMm: dy });
-    } else if (floorBeamMoveCopyCoordOpen) {
-      applyFloorBeamMoveCopyCoord({ dxMm: dx, dyMm: dy });
-    } else if (moveCopyCoordOpen) {
-      applyMoveCopyCoord({ dxMm: dx, dyMm: dy });
-    } else if (slabCoordOpen) {
-      applySlabCoord({ dxMm: dx, dyMm: dy });
-    } else if (floorBeamPlacementCoordOpen) {
-      applyFloorBeamPlacementCoord({ dxMm: dx, dyMm: dy });
-    } else {
-      applyWallCoord({ dxMm: dx, dyMm: dy });
-    }
-  };
+      const st = useAppStore.getState();
+      const stillOpen =
+        st.wallCoordinateModalOpen ||
+        st.wallMoveCopyCoordinateModalOpen ||
+        st.floorBeamMoveCopyCoordinateModalOpen ||
+        st.entityCopyCoordinateModalOpen ||
+        st.lengthChangeCoordinateModalOpen ||
+        st.slabCoordinateModalOpen ||
+        st.floorBeamPlacementCoordinateModalOpen;
+      return finishStoreModalApply(stillOpen, st.lastError);
+    });
 
-  const err = localError ?? lastError;
+  const err = localError ?? lastError ?? applyError;
 
   const closeBackdrop = () => {
     if (lengthChangeCoordOpen) {
@@ -366,8 +386,8 @@ export function WallCoordinateModal() {
           <button type="button" className="wcm-btn wcm-btn--ghost" onClick={closeBackdrop}>
             Отмена
           </button>
-          <button type="button" className="wcm-btn wcm-btn--primary" onClick={submit}>
-            Применить
+          <button type="button" className="wcm-btn wcm-btn--primary" disabled={isSubmitting} onClick={() => void submit()}>
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { roofPlaneEditModalBridge } from "@/features/editor2d/roofPlaneEditModalBridge";
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./wall-coordinate-modal.css";
@@ -9,6 +10,7 @@ export function RoofPlaneEdgeOffsetModal() {
   const ctx = useAppStore((s) => s.roofPlaneEdgeOffsetModal);
   const close = useAppStore((s) => s.closeRoofPlaneEdgeOffsetModal);
   const applyStore = useAppStore((s) => s.applyRoofPlaneEdgeOffsetModal);
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
   const inputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const [str, setStr] = useState("0");
@@ -20,12 +22,13 @@ export function RoofPlaneEdgeOffsetModal() {
     }
     setStr(ctx.initialValueStr);
     setErr(null);
+    clearApplyError();
     const id = requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     });
     return () => cancelAnimationFrame(id);
-  }, [ctx]);
+  }, [ctx, clearApplyError]);
 
   if (!ctx) {
     return null;
@@ -36,20 +39,26 @@ export function RoofPlaneEdgeOffsetModal() {
     close();
   };
 
-  const submit = () => {
-    const raw = str.trim().replace(/,/g, ".");
-    if (raw === "" || raw === "-" || raw === "+") {
-      setErr("Введите число в миллиметрах");
-      return;
-    }
-    const v = Number(raw);
-    if (!Number.isFinite(v)) {
-      setErr("Некорректное число");
-      return;
-    }
-    applyStore(v);
-    roofPlaneEditModalBridge.onEdgeOffsetApplied?.();
-  };
+  const submit = () =>
+    runApply(() => {
+      const raw = str.trim().replace(/,/g, ".");
+      if (raw === "" || raw === "-" || raw === "+") {
+        setErr("Введите число в миллиметрах");
+        return false;
+      }
+      const v = Number(raw);
+      if (!Number.isFinite(v)) {
+        setErr("Некорректное число");
+        return false;
+      }
+      applyStore(v);
+      const s = useAppStore.getState();
+      if (!s.roofPlaneEdgeOffsetModal) {
+        roofPlaneEditModalBridge.onEdgeOffsetApplied?.();
+        return;
+      }
+      return finishStoreModalApply(true, s.lastError);
+    });
 
   return (
     <div
@@ -100,12 +109,17 @@ export function RoofPlaneEdgeOffsetModal() {
           </div>
         </div>
         {err ? <p className="wcm-error">{err}</p> : null}
+        {applyError ? (
+          <p className="wcm-error" role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="wcm-actions">
           <button type="button" className="wcm-btn wcm-btn--ghost" onClick={cancel}>
             Отмена
           </button>
-          <button type="button" className="wcm-btn wcm-btn--primary" onClick={submit}>
-            Применить
+          <button type="button" className="wcm-btn wcm-btn--primary" disabled={isSubmitting} onClick={() => void submit()}>
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

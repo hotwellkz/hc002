@@ -4,6 +4,7 @@ import { EMPTY_SURFACE_TEXTURE_STATE } from "./surfaceTextureState";
 import { normalizeLayer, type Layer } from "./layer";
 import type { Project } from "./project";
 import type { Profile } from "./profile";
+import { DEFAULT_WALL_MANUFACTURING } from "./wallManufacturing";
 import { newEntityId } from "./ids";
 
 /**
@@ -41,6 +42,7 @@ export function createDemoProject(): Project {
       compositionMode: "layered",
       defaultHeightMm: 2800,
       notes: "Пример для библиотеки профилей",
+      wallManufacturing: { ...DEFAULT_WALL_MANUFACTURING, calculationModel: "sip" },
       layers: [
         { id: newEntityId(), orderIndex: 0, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
         { id: newEntityId(), orderIndex: 1, materialName: "EPS", materialType: "eps", thicknessMm: 145 },

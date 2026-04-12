@@ -2,7 +2,7 @@ import { Graphics } from "pixi.js";
 
 import {
   MIN_WALL_2D_LAYER_LINE_STROKE_PX,
-  resolveWallProfileLayerStripsMm,
+  resolveWallProfileLayerStripsForWallVisualization,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
 import {
@@ -17,7 +17,7 @@ import {
 import type { Point2D } from "@/core/geometry/types";
 import type { Profile } from "@/core/domain/profile";
 
-import { fillColor2dForMaterialType } from "./materials2d";
+import { fillColor2dForMaterialType, plan2dLayerFillAlpha } from "./materials2d";
 import { quadCornersAlongWallMm } from "./wallPlanGeometry2d";
 import type { ViewportTransform } from "./viewportTransforms";
 import { worldToScreen } from "./viewportTransforms";
@@ -109,7 +109,10 @@ function drawWallBandLayeredFromCenterline(
       g.lineTo(si.x, si.y);
     }
     g.closePath();
-    g.fill({ color: fillColor2dForMaterialType(strip.materialType), alpha: 0.32 });
+    g.fill({
+      color: fillColor2dForMaterialType(strip.materialType),
+      alpha: plan2dLayerFillAlpha(strip.materialType, 0.32),
+    });
     g.stroke({ width: MIN_WALL_2D_LAYER_LINE_STROKE_PX, color: 0x5aa7ff, alpha: 0.45 });
   }
   acc = -T / 2;
@@ -128,7 +131,7 @@ function resolvePreviewStrips(opts: WallPreview2dLayeredOptions | undefined): Wa
   if (!opts?.profile || !opts.show2dProfileLayers) {
     return null;
   }
-  return resolveWallProfileLayerStripsMm(opts.thicknessMm, opts.profile);
+  return resolveWallProfileLayerStripsForWallVisualization(opts.thicknessMm, opts.profile);
 }
 
 /**

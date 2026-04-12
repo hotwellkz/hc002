@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { isProfileUsableForRoofPlane } from "@/core/domain/roofPlane";
 import type { RoofSystemKind } from "@/core/domain/roofSystem";
 import type { MonoCardinalDrain } from "@/core/domain/roofSystemRectangleGeometry";
@@ -19,6 +20,8 @@ export function AddRoofPlaneModal() {
   const stickySys = useAppStore((s) => s.lastRoofSystemPlacementParams);
   const session = useAppStore((s) => s.roofPlanePlacementSession);
   const sessionSys = useAppStore((s) => s.roofSystemPlacementSession);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const roofProfiles = useMemo(
     () => project.profiles.filter((pr) => isProfileUsableForRoofPlane(pr)).sort((a, b) => a.name.localeCompare(b.name, "ru")),
@@ -89,6 +92,12 @@ export function AddRoofPlaneModal() {
     setMonoDrain("s");
   }, [open, session, sessionSys, stickyManual, stickySys, roofProfiles]);
 
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
@@ -97,25 +106,28 @@ export function AddRoofPlaneModal() {
   const profileInvalid = !roofProfiles.some((p) => p.id === profileId);
   const applyDisabled = profileMissing || profileInvalid;
 
-  const submit = () => {
-    if (applyDisabled) {
-      return;
-    }
-    if (mode === "manualPlane") {
-      applyManual({ angleDeg: Number(angleDeg), levelMm: Number(levelMm), profileId: profileId.trim() });
-    } else {
-      applySystem({
-        roofKind,
-        pitchDeg: Number(angleDeg),
-        baseLevelMm: Number(levelMm),
-        profileId: profileId.trim(),
-        eaveOverhangMm: Number(eaveMm),
-        sideOverhangMm: Number(sideMm),
-        ridgeAlong,
-        monoDrainCardinal: monoDrain,
-      });
-    }
-  };
+  const submit = () =>
+    runApply(() => {
+      if (applyDisabled) {
+        return false;
+      }
+      if (mode === "manualPlane") {
+        applyManual({ angleDeg: Number(angleDeg), levelMm: Number(levelMm), profileId: profileId.trim() });
+      } else {
+        applySystem({
+          roofKind,
+          pitchDeg: Number(angleDeg),
+          baseLevelMm: Number(levelMm),
+          profileId: profileId.trim(),
+          eaveOverhangMm: Number(eaveMm),
+          sideOverhangMm: Number(sideMm),
+          ridgeAlong,
+          monoDrainCardinal: monoDrain,
+        });
+      }
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addRoofPlaneModalOpen, s.lastError);
+    });
 
   const title =
     session || sessionSys
@@ -263,12 +275,22 @@ export function AddRoofPlaneModal() {
             Выберите профиль из списка.
           </p>
         ) : null}
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit} disabled={applyDisabled}>
-            {mode === "roofSystem" ? "Построить" : "Применить"}
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={applyDisabled || isSubmitting}
+          >
+            {isSubmitting ? "…" : mode === "roofSystem" ? "Построить" : "Применить"}
           </button>
         </div>
       </div>

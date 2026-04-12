@@ -1,5 +1,6 @@
 import type { Profile, ProfileMaterialType } from "./profile";
 import { sortProfileLayersByOrder } from "./profileOps";
+import { resolveWallCalculationModel } from "./wallManufacturing";
 
 const THICK_EPS_MM = 0.5;
 
@@ -38,6 +39,42 @@ export function resolveWallProfileLayerStripsMm(wallThicknessMm: number, profile
     const k = T / sum;
     raw = raw.map((t) => t * k);
   }
+  return sorted.map((l, i) => ({
+    layerId: l.id,
+    materialType: l.materialType,
+    thicknessMm: raw[i]!,
+  }));
+}
+
+/**
+ * Полосы слоёв для отображения стены в 2D/3D.
+ * Режим «листовой материал» (`sheet`): слои утеплителя (EPS/XPS/insulation) не участвуют в визуализации —
+ * остаётся только фактический листовой состав (например OSB), толщина стены распределяется по оставшимся слоям.
+ * Остальные категории и режимы — как {@link resolveWallProfileLayerStripsMm}.
+ */
+export function resolveWallProfileLayerStripsForWallVisualization(
+  wallThicknessMm: number,
+  profile: Profile,
+): WallProfileLayerStripMm[] | null {
+  if (profile.category !== "wall" || resolveWallCalculationModel(profile) !== "sheet") {
+    return resolveWallProfileLayerStripsMm(wallThicknessMm, profile);
+  }
+  if (profile.compositionMode !== "layered") {
+    return null;
+  }
+  const sorted = sortProfileLayersByOrder([...profile.layers]).filter(
+    (l) => !isInsulationCoreMaterial(l.materialType),
+  );
+  if (sorted.length < 2) {
+    return null;
+  }
+  const T = wallThicknessMm;
+  let raw = sorted.map((l) => Math.max(0, l.thicknessMm));
+  const sum = raw.reduce((a, b) => a + b, 0);
+  if (sum < 1e-6) {
+    return null;
+  }
+  raw = raw.map((t) => t * (T / sum));
   return sorted.map((l, i) => ({
     layerId: l.id,
     materialType: l.materialType,

@@ -16,6 +16,27 @@ import {
 import { buildSipSeamVerticalLineSegmentsForProject } from "./sipSeamLines3d";
 
 describe("wallCalculation3dSpecs", () => {
+  it("листовой профиль (sheet): не создаётся расчётная геометрия ядра SIP/EPS — только оболочка по слоям профиля", () => {
+    const p = createDemoProject();
+    const base = p.profiles[0]!;
+    const sheetProfile: Profile = {
+      ...base,
+      id: newEntityId(),
+      wallManufacturing: { ...base.wallManufacturing, calculationModel: "sheet" },
+    };
+    const wall = { ...p.walls[0]!, profileId: sheetProfile.id };
+    const calc = buildWallCalculationForWall(wall, sheetProfile);
+    const proj = {
+      ...p,
+      walls: p.walls.map((w) => ({ ...w, profileId: sheetProfile.id })),
+      profiles: [sheetProfile],
+      wallCalculations: [calc],
+    };
+    const specs = buildCalculationSolidSpecsForWall(wall, proj, calc);
+    expect(specs.filter((s) => s.source === "sip")).toHaveLength(0);
+    expect(specs.filter((s) => s.materialType === "eps")).toHaveLength(0);
+  });
+
   it("каркас ГКЛ: 3D-габарит вертикали = сечение профиля (не 145 мм SIP)", () => {
     const p = createDemoProject();
     const wall = { ...p.walls[0]!, end: { x: 3000, y: 0 } };

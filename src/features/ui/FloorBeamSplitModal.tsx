@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { FloorBeamSplitMode } from "@/core/domain/floorBeamSplitMode";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -11,6 +12,8 @@ export function FloorBeamSplitModal() {
   const apply = useAppStore((s) => s.applyFloorBeamSplitModal);
   const project = useAppStore((s) => s.currentProject);
   const selectedEntityIds = useAppStore((s) => s.selectedEntityIds);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const [mode, setMode] = useState<FloorBeamSplitMode>("maxLength");
   const [overlapMm, setOverlapMm] = useState(0);
@@ -24,20 +27,24 @@ export function FloorBeamSplitModal() {
     if (open) {
       setMode("maxLength");
       setOverlapMm(0);
+      clearApplyError();
     }
-  }, [open]);
+  }, [open, clearApplyError]);
 
   if (!open) {
     return null;
   }
 
-  const submit = () => {
-    const o = Number(overlapMm);
-    if (!Number.isFinite(o) || o < 0) {
-      return;
-    }
-    apply({ mode, overlapMm: o });
-  };
+  const submit = () =>
+    runApply(() => {
+      const o = Number(overlapMm);
+      if (!Number.isFinite(o) || o < 0) {
+        return false;
+      }
+      apply({ mode, overlapMm: o });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.floorBeamSplitModalOpen, s.lastError);
+    });
 
   const hintAfterApply =
     beamSelectionCount === 0
@@ -101,12 +108,22 @@ export function FloorBeamSplitModal() {
             </p>
           ) : null}
         </fieldset>
+        {applyError ? (
+          <p className="lm-muted" style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

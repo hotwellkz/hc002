@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { isProfileUsableForRoofPlane } from "@/core/domain/roofPlane";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -10,6 +11,8 @@ export function EditRoofPlaneModal() {
   const close = useAppStore((s) => s.closeRoofPlaneEditModal);
   const apply = useAppStore((s) => s.applyRoofPlaneEditModal);
   const project = useAppStore((s) => s.currentProject);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const plane = useMemo(() => {
     if (!modal) {
@@ -35,6 +38,12 @@ export function EditRoofPlaneModal() {
     setLevelMm(plane.levelMm);
     setProfileId(plane.profileId);
   }, [modal, plane]);
+
+  useEffect(() => {
+    if (modal && plane) {
+      clearApplyError();
+    }
+  }, [modal, plane, clearApplyError]);
 
   if (!modal || !plane) {
     return null;
@@ -71,16 +80,19 @@ export function EditRoofPlaneModal() {
   const profileInvalid = !roofProfiles.some((p) => p.id === profileId);
   const applyDisabled = profileMissing || profileInvalid;
 
-  const submit = () => {
-    if (applyDisabled) {
-      return;
-    }
-    apply({
-      angleDeg: Number(angleDeg),
-      levelMm: Number(levelMm),
-      profileId: profileId.trim(),
+  const submit = () =>
+    runApply(() => {
+      if (applyDisabled) {
+        return false;
+      }
+      apply({
+        angleDeg: Number(angleDeg),
+        levelMm: Number(levelMm),
+        profileId: profileId.trim(),
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.roofPlaneEditModal != null, s.lastError);
     });
-  };
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -145,12 +157,22 @@ export function EditRoofPlaneModal() {
             Выберите профиль из списка.
           </p>
         ) : null}
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit} disabled={applyDisabled}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={applyDisabled || isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

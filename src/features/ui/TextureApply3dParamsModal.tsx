@@ -6,6 +6,7 @@ import { MeshStandardMaterial, type CanvasTexture } from "three";
 import type { SurfaceTextureApplyMode } from "@/core/domain/surfaceTextureOps";
 import { TEXTURE_CATALOG_CATEGORIES, getTextureCatalogEntry, textureCatalogEntriesForCategory } from "@/core/textures/textureCatalog";
 import { getCatalogDiffuseTexture, getCatalogPreviewDataUrl } from "@/core/textures/proceduralDiffuseTextures";
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./texture-apply-3d-modal.css";
@@ -52,6 +53,8 @@ export function TextureApply3dParamsModal() {
   const [mode, setMode] = useState<SurfaceTextureApplyMode>("object");
   const [resetTextures, setResetTextures] = useState(false);
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
   const resetForm = useCallback(() => {
     const cat = TEXTURE_CATALOG_CATEGORIES[0]?.id ?? "wood";
     setCategoryId(cat);
@@ -65,8 +68,9 @@ export function TextureApply3dParamsModal() {
   useEffect(() => {
     if (modal) {
       resetForm();
+      clearApplyError();
     }
-  }, [modal, resetForm]);
+  }, [modal, resetForm, clearApplyError]);
 
   useEffect(() => {
     if (!modal) {
@@ -114,14 +118,17 @@ export function TextureApply3dParamsModal() {
     return null;
   }
 
-  const submit = () => {
-    apply({
-      mode,
-      reset: resetTextures,
-      textureId,
-      scalePercent,
+  const submit = () =>
+    runApply(() => {
+      apply({
+        mode,
+        reset: resetTextures,
+        textureId,
+        scalePercent,
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.textureApply3dParamsModal != null, s.lastError);
     });
-  };
 
   return (
     <div className="ta3d-backdrop" role="presentation" onClick={close}>
@@ -139,7 +146,7 @@ export function TextureApply3dParamsModal() {
               return;
             }
             e.preventDefault();
-            submit();
+            void submit();
           }
         }}
       >
@@ -250,13 +257,13 @@ export function TextureApply3dParamsModal() {
             </div>
           </aside>
         </div>
-        {lastError ? <div className="ta3d-error">{lastError}</div> : null}
+        {lastError || applyError ? <div className="ta3d-error">{applyError ?? lastError}</div> : null}
         <div className="ta3d-foot">
-          <button type="button" className="ta3d-btn ta3d-btn--secondary" onClick={close}>
+          <button type="button" className="ta3d-btn ta3d-btn--secondary" onClick={close} disabled={isSubmitting}>
             Отмена
           </button>
-          <button type="button" className="ta3d-btn ta3d-btn--primary" onClick={submit}>
-            Применить
+          <button type="button" className="ta3d-btn ta3d-btn--primary" disabled={isSubmitting} onClick={() => void submit()}>
+            {isSubmitting ? "Применение…" : "Применить"}
           </button>
         </div>
       </div>

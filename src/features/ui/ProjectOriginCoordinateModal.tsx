@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./project-origin-coordinate-modal.css";
@@ -8,6 +9,7 @@ export function ProjectOriginCoordinateModal() {
   const open = useAppStore((s) => s.projectOriginCoordinateModalOpen);
   const close = useAppStore((s) => s.closeProjectOriginCoordinateModal);
   const apply = useAppStore((s) => s.applyProjectOriginCoordinateModalWorldMm);
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
   const titleId = useId();
   const [xStr, setXStr] = useState("0");
   const [yStr, setYStr] = useState("0");
@@ -21,7 +23,8 @@ export function ProjectOriginCoordinateModal() {
     setXStr(String(Math.round(p?.x ?? 0)));
     setYStr(String(Math.round(p?.y ?? 0)));
     setErr(null);
-  }, [open]);
+    clearApplyError();
+  }, [open, clearApplyError]);
 
   useEffect(() => {
     if (!open) {
@@ -41,16 +44,19 @@ export function ProjectOriginCoordinateModal() {
     return null;
   }
 
-  const submit = () => {
-    setErr(null);
-    const x = Number(xStr.replace(",", "."));
-    const y = Number(yStr.replace(",", "."));
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      setErr("Введите числовые X и Y (мм, мир).");
-      return;
-    }
-    apply({ x, y });
-  };
+  const submit = () =>
+    runApply(() => {
+      setErr(null);
+      const x = Number(xStr.replace(",", "."));
+      const y = Number(yStr.replace(",", "."));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        setErr("Введите числовые X и Y (мм, мир).");
+        return false;
+      }
+      apply({ x, y });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.projectOriginCoordinateModalOpen, s.lastError);
+    });
 
   return (
     <div
@@ -95,12 +101,18 @@ export function ProjectOriginCoordinateModal() {
           </label>
         </div>
         {err ? <div className="pocm-err">{err}</div> : null}
+        {applyError ? <div className="pocm-err">{applyError}</div> : null}
         <div className="pocm-actions">
           <button type="button" className="pocm-btn pocm-btn--ghost" onClick={() => close()}>
             Отмена
           </button>
-          <button type="button" className="pocm-btn pocm-btn--primary" onClick={() => submit()}>
-            Применить
+          <button
+            type="button"
+            className="pocm-btn pocm-btn--primary"
+            disabled={isSubmitting}
+            onClick={() => void submit()}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

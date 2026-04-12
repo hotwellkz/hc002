@@ -431,7 +431,15 @@ export function buildWallCalculationForWall(
     throw new SipWallLayoutError("Профиль не является стеновым.");
   }
   const m = resolveEffectiveWallManufacturing(profile);
-  const isSheetWall = resolveWallCalculationModel(profile) === "frame";
+  const wallMode = resolveWallCalculationModel(profile);
+  /** Каркас/перегородка: стойки, шаг, обвязка, проёмы по каркасной схеме. */
+  const isFramedWall = wallMode === "frame";
+  /** Только листы по модулю: без стоек, без SIP-стыков и без обвязки. */
+  const isSheetOnlyWall = wallMode === "sheet";
+  /** Классический SIP: панели, стыки, обвязка. */
+  const isSipWall = wallMode === "sip";
+  /** Общая раскладка «модуль листа» вдоль стены (каркас ГКЛ или чистый лист). */
+  const usesSheetModuleWidths = isFramedWall || isSheetOnlyWall;
   const frameMaterialType = m.frameMaterial === "steel" ? "steel" : "wood";
   const wallMark = wall.markLabel?.trim() || wall.id.slice(0, 8);
   /** Полная толщина SIP-сэндвича по стене/профилю (OSB+ядро+OSB), не толщина только EPS. */
@@ -467,7 +475,7 @@ export function buildWallCalculationForWall(
   const openingBlocks = openingsOnWall.map((o) => {
     const minRest = getOpeningMinEdgeRestMm(wall, o, m);
     const Tframe = m.jointBoardThicknessMm;
-    const isFrameGklDoor = o.kind === "door" && isSheetWall && m.doorOpeningFramingPreset === "frame_gkl_door";
+    const isFrameGklDoor = o.kind === "door" && isFramedWall && m.doorOpeningFramingPreset === "frame_gkl_door";
     const physicalSpan = isFrameGklDoor ? o.widthMm + 2 * Tframe : o.widthMm;
     const maxLeft = Math.max(minRest, L - physicalSpan - minRest);
     const clearLeft = Math.max(minRest, Math.min(maxLeft, o.offsetFromStartMm));
@@ -516,7 +524,7 @@ export function buildWallCalculationForWall(
       ? Math.min(verticalBetweenPlatesMm, Math.round(nominalH))
       : verticalBetweenPlatesMm;
   /** Каркас/ГКЛ: длина вертикалей в спецификации = высота стены (профиль входит в П-образные направляющие). */
-  const frameVerticalMemberLengthMm = isSheetWall ? wall.heightMm : verticalBetweenPlatesMm;
+  const frameVerticalMemberLengthMm = usesSheetModuleWidths ? wall.heightMm : verticalBetweenPlatesMm;
 
   const calculationId = newEntityId();
   const generatedAt = new Date().toISOString();
@@ -534,7 +542,7 @@ export function buildWallCalculationForWall(
   const sipRegions: SipPanelRegion[] = [];
   let lumberDrafts: LumberPieceDraftInput[] = [];
 
-  if (m.includeEndBoards && !isSheetWall) {
+  if (m.includeEndBoards && isSipWall) {
     const roleStart = endBoardRole(wall.id, "start", wallJoints, opt.includeWallConnectionElements);
     lumberDrafts.push({
       id: newEntityId(),
@@ -557,7 +565,7 @@ export function buildWallCalculationForWall(
     const segLen = segHi - segLo;
     const openingAdjacentSegment = segmentTouchesFlexibleOpening(segLo, segHi);
     const widths =
-      isSheetWall
+      usesSheetModuleWidths
         ? computeSheetModuleWidthsMm(segLen, m.panelNominalWidthMm)
         : openingAdjacentSegment && segLen < m.minPanelWidthMm
         ? [Math.round(segLen)]
@@ -580,12 +588,12 @@ export function buildWallCalculationForWall(
         endOffsetMm: s1,
         widthMm: wi,
         pieceMark: buildSipPanelPieceMark(wallMark, sipIdx),
-        heightMm: isSheetWall ? wall.heightMm : sipPanelHeightMm,
+        heightMm: usesSheetModuleWidths ? wall.heightMm : sipPanelHeightMm,
         thicknessMm: sipThicknessMm,
       });
       p = s1;
       if (i < n - 1) {
-        if (!isSheetWall) {
+        if (!usesSheetModuleWidths) {
           seamPositions.add(Math.round(s1));
           /** Как раньше: [seam, seam+Tj] вдоль стены — `pieceAlongIntervalMm` центрирует доску на линии стыка. */
           const seam = s1;
@@ -609,7 +617,7 @@ export function buildWallCalculationForWall(
     }
   }
 
-  if (isSheetWall) {
+  if (isFramedWall) {
     const studsRaw = collectGkLFrameStudCentersFromSheetRegionsMm(sipRegions, studStep);
     /** Стык листа + шаг каркаса могут дать два центра в пределах погрешности — сливаем в одну стойку. */
     const studs = mergeCloseSortedStudCentersMm(studsRaw, Math.min(28, Math.max(18, Tj / 2)));
@@ -640,7 +648,7 @@ export function buildWallCalculationForWall(
     }
   }
 
-  if (isSheetWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
+  if (isFramedWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
     lumberDrafts = filterFramingStudsClearOfDoorOpenings(
       lumberDrafts,
       openingsOnWall.filter((o) => o.kind === "door"),
@@ -649,7 +657,7 @@ export function buildWallCalculationForWall(
     );
   }
 
-  if (m.includeEndBoards && !isSheetWall) {
+  if (m.includeEndBoards && isSipWall) {
     const roleEnd = endBoardRole(wall.id, "end", wallJoints, opt.includeWallConnectionElements);
     lumberDrafts.push({
       id: newEntityId(),
@@ -669,26 +677,28 @@ export function buildWallCalculationForWall(
   const teeOnMain = opt.includeWallConnectionElements ? teeOffsetsOnMainWall(wall.id, wall, wallJoints) : [];
   let verticalDrafts = filterJointsOverlappingTee(lumberDrafts, teeOnMain, Tj);
 
-  for (const s of teeOnMain) {
-    if (s < EPS || s > L - EPS) {
-      continue;
+  if (!isSheetOnlyWall) {
+    for (const s of teeOnMain) {
+      if (s < EPS || s > L - EPS) {
+        continue;
+      }
+      verticalDrafts.push({
+        id: newEntityId(),
+        wallId: wall.id,
+        calculationId,
+        role: "tee_joint_board",
+        sectionThicknessMm: m.jointBoardThicknessMm,
+        sectionDepthMm: m.jointBoardDepthMm,
+        startOffsetMm: s - Tj / 2,
+        endOffsetMm: s + Tj / 2,
+        lengthMm: isFramedWall ? frameVerticalMemberLengthMm : verticalBetweenPlatesMm,
+        orientation: "across_wall",
+        metadata: { note: "Т-узел на основной стене", ...(isFramedWall ? { frameVertical: true } : {}) },
+      });
     }
-    verticalDrafts.push({
-      id: newEntityId(),
-      wallId: wall.id,
-      calculationId,
-      role: "tee_joint_board",
-      sectionThicknessMm: m.jointBoardThicknessMm,
-      sectionDepthMm: m.jointBoardDepthMm,
-      startOffsetMm: s - Tj / 2,
-      endOffsetMm: s + Tj / 2,
-      lengthMm: isSheetWall ? frameVerticalMemberLengthMm : verticalBetweenPlatesMm,
-      orientation: "across_wall",
-      metadata: { note: "Т-узел на основной стене", ...(isSheetWall ? { frameVertical: true } : {}) },
-    });
   }
 
-  if (opt.includeOpeningFraming) {
+  if (opt.includeOpeningFraming && !isSheetOnlyWall) {
     for (const o of openingsOnWall) {
       if (skipAutoOpeningFraming.has(o.id)) {
         continue;
@@ -706,7 +716,7 @@ export function buildWallCalculationForWall(
        * Металл: стойка 50×75 (вдоль стены × в плане); направляющие/перемычка 40×75; криплы над дверью — тоже стойка 50×75.
        * Вертикали спецификации на полную высоту стены; перемычка с заходом в боковые стойки.
        */
-      if (isDoor && isSheetWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
+      if (isDoor && isFramedWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
         const clearLeft = o0;
         const clearRight = o1;
         if (clearRight - clearLeft < EPS) {
@@ -900,7 +910,7 @@ export function buildWallCalculationForWall(
        * SIP: полоса SIP над/под окном режется на несколько панелей (модуль по ширине светового проёма).
        * Вертикальный стык — та же joint_board, что между панелями по длине стены; длина = сегмент ядра над/под проёмом.
        */
-      if (o.kind === "window" && !isSheetWall) {
+      if (o.kind === "window" && isSipWall) {
         const panelNomW = Math.max(1, Math.round(m.panelNominalWidthMm ?? 1250));
         const sortedRegs = [...sipRegions].sort((a, b) => a.startOffsetMm - b.startOffsetMm || a.index - b.index);
         const stripCuts = openingStripVerticalCutXsMm(o0, o1, sortedRegs, panelNomW, EPS);
@@ -946,7 +956,7 @@ export function buildWallCalculationForWall(
     }
   }
 
-  if (isSheetWall && m.doorOpeningFramingPreset === "frame_gkl_door" && opt.includeOpeningFraming) {
+  if (isFramedWall && m.doorOpeningFramingPreset === "frame_gkl_door" && opt.includeOpeningFraming) {
     verticalDrafts = removeGkLFramingStudsOverlappingDoorJambs(
       verticalDrafts,
       openingsOnWall.filter((o) => o.kind === "door"),
@@ -954,58 +964,60 @@ export function buildWallCalculationForWall(
     );
   }
 
-  const plateChunks = splitLengthMm(L, m.maxBoardLengthMm);
-  let platePos = 0;
-  for (let i = 0; i < plateChunks.length; i++) {
-    const len = plateChunks[i]!;
-    const a = platePos;
-    const b = platePos + len;
-    verticalDrafts.push({
-      id: newEntityId(),
-      wallId: wall.id,
-      calculationId,
-      role: "upper_plate",
-      sectionThicknessMm: m.plateBoardThicknessMm,
-      sectionDepthMm: m.plateBoardDepthMm,
-      startOffsetMm: a,
-      endOffsetMm: b,
-      lengthMm: len,
-      orientation: "along_wall",
-      metadata: { segmentIndex: i },
-    });
-    platePos = b;
-  }
-  /** Для дверного прохода нижнюю обвязку режем: в самом проёме порога быть не должно. */
-  const doorBlocks = openingsOnWall
-    .filter((o) => o.kind === "door")
-    .map((o) => {
-      if (isSheetWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
-        const { roughLo, roughHi } = frameGklDoorRoughAlongSpanMm(o.offsetFromStartMm, o.widthMm, Tj);
-        return { lo: Math.max(0, roughLo), hi: Math.min(L, roughHi) };
-      }
-      return { lo: Math.max(0, o.offsetFromStartMm), hi: Math.min(L, o.offsetFromStartMm + o.widthMm) };
-    })
-    .filter((b) => b.hi - b.lo > EPS);
-  const lowerRanges = subtractIntervalsFromRange(0, L, doorBlocks);
-  for (let i = 0; i < lowerRanges.length; i++) {
-    const [a, b] = lowerRanges[i]!;
-    const len = Math.round(Math.max(0, b - a));
-    if (len < 1) {
-      continue;
+  if (!isSheetOnlyWall) {
+    const plateChunks = splitLengthMm(L, m.maxBoardLengthMm);
+    let platePos = 0;
+    for (let i = 0; i < plateChunks.length; i++) {
+      const len = plateChunks[i]!;
+      const a = platePos;
+      const b = platePos + len;
+      verticalDrafts.push({
+        id: newEntityId(),
+        wallId: wall.id,
+        calculationId,
+        role: "upper_plate",
+        sectionThicknessMm: m.plateBoardThicknessMm,
+        sectionDepthMm: m.plateBoardDepthMm,
+        startOffsetMm: a,
+        endOffsetMm: b,
+        lengthMm: len,
+        orientation: "along_wall",
+        metadata: { segmentIndex: i },
+      });
+      platePos = b;
     }
-    verticalDrafts.push({
-      id: newEntityId(),
-      wallId: wall.id,
-      calculationId,
-      role: "lower_plate",
-      sectionThicknessMm: m.plateBoardThicknessMm,
-      sectionDepthMm: m.plateBoardDepthMm,
-      startOffsetMm: a,
-      endOffsetMm: b,
-      lengthMm: len,
-      orientation: "along_wall",
-      metadata: { segmentIndex: i, splitByDoor: true },
-    });
+    /** Для дверного прохода нижнюю обвязку режем: в самом проёме порога быть не должно. */
+    const doorBlocks = openingsOnWall
+      .filter((o) => o.kind === "door")
+      .map((o) => {
+        if (isFramedWall && m.doorOpeningFramingPreset === "frame_gkl_door") {
+          const { roughLo, roughHi } = frameGklDoorRoughAlongSpanMm(o.offsetFromStartMm, o.widthMm, Tj);
+          return { lo: Math.max(0, roughLo), hi: Math.min(L, roughHi) };
+        }
+        return { lo: Math.max(0, o.offsetFromStartMm), hi: Math.min(L, o.offsetFromStartMm + o.widthMm) };
+      })
+      .filter((b) => b.hi - b.lo > EPS);
+    const lowerRanges = subtractIntervalsFromRange(0, L, doorBlocks);
+    for (let i = 0; i < lowerRanges.length; i++) {
+      const [a, b] = lowerRanges[i]!;
+      const len = Math.round(Math.max(0, b - a));
+      if (len < 1) {
+        continue;
+      }
+      verticalDrafts.push({
+        id: newEntityId(),
+        wallId: wall.id,
+        calculationId,
+        role: "lower_plate",
+        sectionThicknessMm: m.plateBoardThicknessMm,
+        sectionDepthMm: m.plateBoardDepthMm,
+        startOffsetMm: a,
+        endOffsetMm: b,
+        lengthMm: len,
+        orientation: "along_wall",
+        metadata: { segmentIndex: i, splitByDoor: true },
+      });
+    }
   }
 
   const normalizedDrafts = verticalDrafts.map((d) => ({

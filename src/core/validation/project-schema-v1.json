@@ -524,7 +524,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
-        "calculationModel": { "type": "string", "enum": ["sip", "frame"] },
+        "calculationModel": { "type": "string", "enum": ["sheet", "sip", "frame"] },
         "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },
@@ -564,7 +564,7 @@
       ],
       "properties": {
         "panelNominalWidthMm": { "type": "number", "exclusiveMinimum": 0 },
-        "calculationModel": { "type": "string", "enum": ["sip", "frame"] },
+        "calculationModel": { "type": "string", "enum": ["sheet", "sip", "frame"] },
         "panelNominalHeightMm": { "type": "number", "exclusiveMinimum": 0 },
         "minPanelWidthMm": { "type": "number", "exclusiveMinimum": 0 },
         "jointBoardThicknessMm": { "type": "number", "exclusiveMinimum": 0 },

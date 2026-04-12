@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type {
   OpeningAlongAnchor,
   OpeningAlongAlignment,
@@ -83,8 +84,16 @@ export function WindowParamsModal() {
   const [sipBelowDouble, setSipBelowDouble] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
   const profiles = useMemo(() => boardLikeProfiles(project), [project.profiles]);
   const hasProfiles = profiles.length > 0;
+
+  useEffect(() => {
+    if (addOpen || edit) {
+      clearApplyError();
+    }
+  }, [addOpen, edit, clearApplyError]);
 
   useEffect(() => {
     if (addOpen && !editMode) {
@@ -231,38 +240,44 @@ export function WindowParamsModal() {
     };
   };
 
-  const submitAdd = () => {
-    const w = parsePositiveMm(widthStr);
-    const h = parsePositiveMm(heightStr);
-    const sill = Number(String(sillStr).replace(",", ".").trim());
-    if (w === null || h === null) {
-      setError("Укажите ширину и высоту числами больше 0.");
-      return;
-    }
-    if (!Number.isFinite(sill) || sill < 0) {
-      setError("Наплыв должен быть неотрицательным числом.");
-      return;
-    }
-    setError(null);
-    applyAdd({
-      formKey,
-      widthMm: w,
-      heightMm: h,
-      viewPreset,
-      sillOverhangMm: sill,
-      isEmptyOpening: isEmpty,
+  const submitAdd = () =>
+    runApply(() => {
+      const w = parsePositiveMm(widthStr);
+      const h = parsePositiveMm(heightStr);
+      const sill = Number(String(sillStr).replace(",", ".").trim());
+      if (w === null || h === null) {
+        setError("Укажите ширину и высоту числами больше 0.");
+        return false;
+      }
+      if (!Number.isFinite(sill) || sill < 0) {
+        setError("Наплыв должен быть неотрицательным числом.");
+        return false;
+      }
+      setError(null);
+      applyAdd({
+        formKey,
+        widthMm: w,
+        heightMm: h,
+        viewPreset,
+        sillOverhangMm: sill,
+        isEmptyOpening: isEmpty,
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addWindowModalOpen, s.lastError);
     });
-  };
 
-  const submitEdit = () => {
-    const payload = buildPayload();
-    if (!payload) {
-      setError("Проверьте числовые поля (ширина, высота, смещение, уровень).");
-      return;
-    }
-    setError(null);
-    applyEdit(payload);
-  };
+  const submitEdit = () =>
+    runApply(() => {
+      const payload = buildPayload();
+      if (!payload) {
+        setError("Проверьте числовые поля (ширина, высота, смещение, уровень).");
+        return false;
+      }
+      setError(null);
+      applyEdit(payload);
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.windowEditModal != null, s.lastError);
+    });
 
   const onBackdrop = () => {
     setError(null);
@@ -290,6 +305,8 @@ export function WindowParamsModal() {
       )}
     </div>
   );
+
+  const formError = error ?? applyError;
 
   return (
     <div className="wp-backdrop" role="presentation" onClick={onBackdrop}>
@@ -344,9 +361,9 @@ export function WindowParamsModal() {
         {activeTab === "form" ? (
           <div className="wp-body">
             <div className="wp-form">
-              {error ? (
+              {formError ? (
                 <p className="wp-error" role="alert">
-                  {error}
+                  {formError}
                 </p>
               ) : null}
 
@@ -448,9 +465,9 @@ export function WindowParamsModal() {
         {editMode && activeTab === "position" ? (
           <div className="wp-body">
             <div className="wp-form">
-              {error ? (
+              {formError ? (
                 <p className="wp-error" role="alert">
-                  {error}
+                  {formError}
                 </p>
               ) : null}
               <div className="lm-field wp-field">
@@ -526,9 +543,9 @@ export function WindowParamsModal() {
         {editMode && activeTab === "sip" ? (
           <div className="wp-body wp-body--sip">
             <div className="wp-form wp-form--scroll">
-              {error ? (
+              {formError ? (
                 <p className="wp-error" role="alert">
-                  {error}
+                  {formError}
                 </p>
               ) : null}
               <h3 className="wp-sip-h3">Над проёмом</h3>
@@ -614,19 +631,19 @@ export function WindowParamsModal() {
             <button
               type="button"
               className="lm-btn lm-btn--primary"
-              disabled={!sillOk || widthMm === null || heightMm === null || positionSpec === null}
-              onClick={submitEdit}
+              disabled={isSubmitting || !sillOk || widthMm === null || heightMm === null || positionSpec === null}
+              onClick={() => void submitEdit()}
             >
-              Сохранить
+              {isSubmitting ? "…" : "Сохранить"}
             </button>
           ) : (
             <button
               type="button"
               className="lm-btn lm-btn--primary"
-              disabled={!sillOk || widthMm === null || heightMm === null}
-              onClick={submitAdd}
+              disabled={isSubmitting || !sillOk || widthMm === null || heightMm === null}
+              onClick={() => void submitAdd()}
             >
-              Применить
+              {isSubmitting ? "…" : "Применить"}
             </button>
           )}
         </div>

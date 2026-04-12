@@ -5,12 +5,12 @@ import { getProfileById } from "@/core/domain/profileOps";
 import type { Wall } from "@/core/domain/wall";
 import {
   MIN_WALL_2D_LAYER_LINE_STROKE_PX,
-  resolveWallProfileLayerStripsMm,
+  resolveWallProfileLayerStripsForWallVisualization,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
 
 import { wallCenterlinePointAtAlongMm } from "./doorSwingSymbolMm";
-import { fillColor2dForMaterialType } from "./materials2d";
+import { fillColor2dForMaterialType, plan2dLayerFillAlpha } from "./materials2d";
 import { openingSlotCornersMm } from "./openingPlanGeometry2d";
 import { quadCornersAlongWallMm } from "./wallPlanGeometry2d";
 import type { ViewportTransform } from "./viewportTransforms";
@@ -234,7 +234,13 @@ function drawWallLayeredPlan(
     if (!corners) {
       continue;
     }
-    fillQuadMm(wallsG, corners, t, fillColor2dForMaterialType(strip.materialType), fillAlpha);
+    fillQuadMm(
+      wallsG,
+      corners,
+      t,
+      fillColor2dForMaterialType(strip.materialType),
+      plan2dLayerFillAlpha(strip.materialType, fillAlpha),
+    );
     strokeQuadMm(wallsG, corners, t, 0x0f1218, edgeAlpha, MIN_WALL_2D_LAYER_LINE_STROKE_PX);
   }
 
@@ -274,7 +280,7 @@ function drawWallLayeredPlan(
 /**
  * Стены: обычные и выбранные; проёмы — точки по центру.
  * В режиме context слой приглушён, выделение не отображается.
- * Послойный режим: заливки по resolveWallProfileLayerStripsMm; обводки/швы — не ниже MIN_WALL_2D_LAYER_LINE_STROKE_PX.
+ * Послойный режим: заливки по resolveWallProfileLayerStripsForWallVisualization; обводки/швы — не ниже MIN_WALL_2D_LAYER_LINE_STROKE_PX.
  */
 export function drawWallsAndOpenings2d(
   wallsG: Graphics,
@@ -299,7 +305,7 @@ export function drawWallsAndOpenings2d(
     const showSel = !ctx && sel;
     const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
     const strips =
-      show2dProfileLayers && profile ? resolveWallProfileLayerStripsMm(w.thicknessMm, profile) : null;
+      show2dProfileLayers && profile ? resolveWallProfileLayerStripsForWallVisualization(w.thicknessMm, profile) : null;
 
     if (strips && strips.length >= 2) {
       drawWallLayeredPlan(wallsG, openingsG, w, strips, t, showSel, ctx);

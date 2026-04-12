@@ -1,7 +1,7 @@
 import { snapWorldToGridAlignedToOrigin } from "../domain/projectOriginPlan";
 import type { Project } from "../domain/project";
 import { getProfileById } from "../domain/profileOps";
-import { resolveWallProfileLayerStripsMm } from "../domain/wallProfileLayers";
+import { resolveWallProfileLayerStripsForWallVisualization } from "../domain/wallProfileLayers";
 import type { Wall } from "../domain/wall";
 import type { FloorBeamEntity } from "../domain/floorBeam";
 import {
@@ -151,7 +151,7 @@ function collectFaceModeVerticesMm(
       continue;
     }
     const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-    const strips = profile ? resolveWallProfileLayerStripsMm(T, profile) : null;
+    const strips = profile ? resolveWallProfileLayerStripsForWallVisualization(T, profile) : null;
     if (strips && strips.length > 0) {
       let acc = -T / 2;
       const n = strips.length;
@@ -211,7 +211,7 @@ function collectFaceModeEdgeSegmentsMm(
       continue;
     }
     const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-    const strips = profile ? resolveWallProfileLayerStripsMm(T, profile) : null;
+    const strips = profile ? resolveWallProfileLayerStripsForWallVisualization(T, profile) : null;
     let off: number;
     if (strips && strips.length > 0) {
       if (face === "left") {

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./layer-modals.css";
@@ -11,6 +12,8 @@ export function WallCalculationModal() {
   const apply = useAppStore((s) => s.applyWallCalculationModal);
   const project = useAppStore((s) => s.currentProject);
   const selectedEntityIds = useAppStore((s) => s.selectedEntityIds);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const titleId = useId();
   const [clearWall, setClearWall] = useState(true);
@@ -26,6 +29,7 @@ export function WallCalculationModal() {
     if (!open) {
       return;
     }
+    clearApplyError();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -34,7 +38,7 @@ export function WallCalculationModal() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [open, close, clearApplyError]);
 
   if (!open) {
     return null;
@@ -119,6 +123,12 @@ export function WallCalculationModal() {
           </p>
         </section>
 
+        {applyError ? (
+          <p className="wcalc-hint" style={{ color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
+
         <div className="lm-actions wcalc-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
@@ -126,17 +136,22 @@ export function WallCalculationModal() {
           <button
             type="button"
             className="lm-btn lm-btn--primary"
+            disabled={isSubmitting}
             onClick={() =>
-              apply({
-                clearWallFirst: clearWall,
-                stage3Options: {
-                  includeOpeningFraming: stage3OpeningFraming,
-                  includeWallConnectionElements: stage3WallConnections,
-                },
+              void runApply(() => {
+                apply({
+                  clearWallFirst: clearWall,
+                  stage3Options: {
+                    includeOpeningFraming: stage3OpeningFraming,
+                    includeWallConnectionElements: stage3WallConnections,
+                  },
+                });
+                const s = useAppStore.getState();
+                return finishStoreModalApply(s.wallCalculationModalOpen, s.lastError);
               })
             }
           >
-            Применить
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

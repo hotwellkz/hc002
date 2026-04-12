@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 
 import type { EntityCopyStrategyId } from "@/core/domain/entityCopySession";
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./entity-copy-params-modal.css";
@@ -16,13 +17,16 @@ export function EntityCopyParamsModal() {
   const [strategy, setStrategy] = useState<EntityCopyStrategyId>("distributionMinusOne");
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
   useEffect(() => {
     if (modal) {
       setCountStr("1");
       setStrategy("distributionMinusOne");
       setLocalError(null);
+      clearApplyError();
     }
-  }, [modal]);
+  }, [modal, clearApplyError]);
 
   useEffect(() => {
     if (!modal) {
@@ -42,17 +46,20 @@ export function EntityCopyParamsModal() {
     return null;
   }
 
-  const submit = () => {
-    setLocalError(null);
-    const n = Number(countStr.replace(",", ".").trim());
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-      setLocalError("Введите целое положительное число копий.");
-      return;
-    }
-    apply({ strategy, count: n });
-  };
+  const submit = () =>
+    runApply(() => {
+      setLocalError(null);
+      const n = Number(countStr.replace(",", ".").trim());
+      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+        setLocalError("Введите целое положительное число копий.");
+        return false;
+      }
+      apply({ strategy, count: n });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.entityCopyParamsModal != null, s.lastError);
+    });
 
-  const err = localError ?? lastError;
+  const err = localError ?? applyError ?? lastError;
 
   return (
     <div className="ecpm-backdrop" role="presentation" onClick={close}>
@@ -70,7 +77,7 @@ export function EntityCopyParamsModal() {
               return;
             }
             e.preventDefault();
-            submit();
+            void submit();
           }
         }}
       >
@@ -134,11 +141,11 @@ export function EntityCopyParamsModal() {
           </p>
         ) : null}
         <div className="ecpm-actions">
-          <button type="button" className="ecpm-btn ecpm-btn--ghost" onClick={close}>
+          <button type="button" className="ecpm-btn ecpm-btn--ghost" onClick={close} disabled={isSubmitting}>
             Отмена
           </button>
-          <button type="button" className="ecpm-btn ecpm-btn--primary" onClick={submit}>
-            Применить
+          <button type="button" className="ecpm-btn ecpm-btn--primary" disabled={isSubmitting} onClick={() => void submit()}>
+            {isSubmitting ? "Применение…" : "Применить"}
           </button>
         </div>
       </div>

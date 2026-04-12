@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { SlabStructuralPurpose } from "@/core/domain/slab";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -12,6 +13,8 @@ export function AddSlabModal() {
   const purposeFromModal = useAppStore((s) => s.addSlabModalPurpose);
   const stickyByPurpose = useAppStore((s) => s.lastSlabPlacementParamsByPurpose);
   const session = useAppStore((s) => s.slabPlacementSession);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const role: SlabStructuralPurpose | null = session?.draft.purpose ?? purposeFromModal;
 
@@ -35,6 +38,12 @@ export function AddSlabModal() {
     setLevelMm(sticky.levelMm);
   }, [open, purposeFromModal, session, stickyByPurpose]);
 
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
@@ -42,12 +51,15 @@ export function AddSlabModal() {
     return null;
   }
 
-  const submit = () => {
-    apply({
-      depthMm: Number(depthMm),
-      levelMm: Number(levelMm),
+  const submit = () =>
+    runApply(() => {
+      apply({
+        depthMm: Number(depthMm),
+        levelMm: Number(levelMm),
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addSlabModalOpen, s.lastError);
     });
-  };
 
   const title = session ? "Параметры плиты" : role === "foundation" ? "Добавить плиту (фундамент)" : "Добавить плиту (перекрытие)";
 
@@ -95,12 +107,22 @@ export function AddSlabModal() {
         <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, lineHeight: 1.45 }}>
           Режим контура (прямоугольник / полилиния) выберите на правой панели после «Применить».
         </p>
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

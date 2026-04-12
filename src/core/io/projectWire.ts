@@ -12,6 +12,7 @@ import { normalizeWallCalculationsInProject } from "../domain/wallCalculationNor
 import { normalizeSurfaceTextureState } from "../domain/surfaceTextureOps";
 import { normalizeLayer, type Layer } from "../domain/layer";
 import { migrateRoofProfileAssemblyWire } from "../domain/roofProfileAssembly";
+import { migrateWallProfileWallManufacturingWire } from "../domain/wallManufacturing";
 import { migrateWireV0ToProject } from "./migrateWireV0";
 
 /** schema v1: slopeDirection хранил направление выдавливания; в v2 — направление стока (инверсия). */
@@ -31,10 +32,11 @@ function normalizeProfilesImported(profiles: readonly Profile[]): Profile[] {
     if (p.category !== "wall") {
       return p;
     }
-    if (p.markPrefix != null && String(p.markPrefix).trim() !== "") {
-      return p;
+    const withWallMode = migrateWallProfileWallManufacturingWire(p);
+    if (withWallMode.markPrefix != null && String(withWallMode.markPrefix).trim() !== "") {
+      return withWallMode;
     }
-    return { ...p, markPrefix: "W" };
+    return { ...withWallMode, markPrefix: "W" };
   });
 }
 

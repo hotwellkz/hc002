@@ -4,9 +4,12 @@ import type { Profile } from "./profile";
  * Настройки производственного расчёта для профиля категории «стена» (SIP и т.п.).
  * Глубина досок (joint/plate depth) по умолчанию берётся из ядра (EPS), а не из полной толщины стены.
  */
+/** Режим расчёта стенового профиля (явный; не смешивать листовую раскладку с каркасом). */
+export type WallCalculationMode = "sheet" | "sip" | "frame";
+
 export interface WallManufacturingSettings {
   /** Режим расчёта стенового профиля. */
-  readonly calculationModel?: "sip" | "frame";
+  readonly calculationModel?: WallCalculationMode;
   readonly panelNominalWidthMm: number;
   /** Номинальная высота листа SIP (мм); если задана, высота панели в расчёте не превышает min(между обвязками, это значение). */
   readonly panelNominalHeightMm?: number;
@@ -118,26 +121,56 @@ export function inferFrameMemberWidthMmFromProfile(profile: Profile): number | n
   return maxOf(sorted);
 }
 
-export function resolveWallCalculationModel(profile: Profile): "sip" | "frame" {
-  const explicit = profile.wallManufacturing?.calculationModel;
-  if (explicit === "sip" || explicit === "frame") {
-    return explicit;
-  }
+/**
+ * Эвристика для старых профилей без явного `calculationModel` (и для миграции при загрузке).
+ * SIP-сэндвич (ОСБ + утеплитель) → sip; чистый листовой ОСБ/обшивка → sheet; ГКЛ/каркас → frame.
+ */
+export function inferWallCalculationModelFromProfileLayers(profile: Profile): WallCalculationMode {
   if (profile.compositionMode !== "layered" || profile.layers.length < 2) {
     return "sip";
   }
   const layers = profile.layers.slice().sort((a, b) => a.orderIndex - b.orderIndex);
-  const first = layers[0]?.materialType;
-  const last = layers[layers.length - 1]?.materialType;
   const hasGypsum = layers.some((l) => l.materialType === "gypsum");
-  const hasOsbShell = first === "osb" && last === "osb";
   if (hasGypsum) {
     return "frame";
   }
-  if (hasOsbShell) {
+  const first = layers[0]?.materialType;
+  const last = layers[layers.length - 1]?.materialType;
+  const hasOsbShell = first === "osb" && last === "osb";
+  const coreDepth = inferCoreDepthMmFromProfile(profile);
+  const hasInsulationCore = coreDepth != null && coreDepth > 0;
+  if (hasOsbShell && hasInsulationCore) {
     return "sip";
   }
+  if (hasOsbShell && !hasInsulationCore) {
+    return "sheet";
+  }
   return "frame";
+}
+
+export function resolveWallCalculationModel(profile: Profile): WallCalculationMode {
+  const explicit = profile.wallManufacturing?.calculationModel;
+  if (explicit === "sheet" || explicit === "sip" || explicit === "frame") {
+    return explicit;
+  }
+  return inferWallCalculationModelFromProfileLayers(profile);
+}
+
+/** Сохранённые профили: выставить явный режим, если в данных нет допустимого значения. */
+export function migrateWallProfileWallManufacturingWire(profile: Profile): Profile {
+  if (profile.category !== "wall") {
+    return profile;
+  }
+  const wm = profile.wallManufacturing;
+  const cm = wm?.calculationModel;
+  if (cm === "sheet" || cm === "sip" || cm === "frame") {
+    return profile;
+  }
+  const inferred = inferWallCalculationModelFromProfileLayers(profile);
+  return {
+    ...profile,
+    wallManufacturing: { ...wm, calculationModel: inferred },
+  };
 }
 
 export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWallManufacturingSettings {
@@ -171,20 +204,21 @@ export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWa
       : DEFAULT_WALL_MANUFACTURING.jointBoardDepthMm);
 
   /**
-   * Каркас / ГКЛ (frame): модуль листа — `defaultWidthMm`; без него — явный `panelNominalWidthMm` в профиле
+   * Каркас / лист без каркаса (frame | sheet): модуль листа — `defaultWidthMm`; без него — явный `panelNominalWidthMm`
    * или запасной 1200 мм (не SIP-дефолт 1250).
    * SIP: сохранённый `panelNominalWidthMm` в профиле и профильные default* как раньше.
    */
+  const usesSheetModuleFromDefaults = calculationModel === "frame" || calculationModel === "sheet";
   const panelNominalWidthMm =
-    calculationModel === "frame" && profileSheetW != null
+    usesSheetModuleFromDefaults && profileSheetW != null
       ? profileSheetW
-      : calculationModel === "frame"
+      : usesSheetModuleFromDefaults
         ? base?.panelNominalWidthMm != null && base.panelNominalWidthMm > 0
           ? Math.round(base.panelNominalWidthMm)
           : 1200
         : base?.panelNominalWidthMm ?? profileSheetW ?? DEFAULT_WALL_MANUFACTURING.panelNominalWidthMm;
   const panelNominalHeightMm =
-    calculationModel === "frame" && profileSheetH != null
+    usesSheetModuleFromDefaults && profileSheetH != null
       ? profileSheetH
       : base?.panelNominalHeightMm ?? profileSheetH ?? DEFAULT_WALL_MANUFACTURING.panelNominalHeightMm;
 
@@ -229,21 +263,28 @@ export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWa
       : base?.plateBoardDepthMm ?? core;
 
   /**
-   * Для каркаса/ГКЛ всегда схема «Каркас / ГКЛ», не SIP: иначе в профиле мог остаться
-   * `sip_standard` и дверной проём строился бы с сегментами SIP-стоек (неверные длины/позиции).
+   * Для каркаса/ГКЛ — схема «Каркас / ГКЛ»; для листового режима без каркаса — SIP-пресеты не используются в расчёте
+   * (оставлены sip_standard в снимке для совместимости).
    */
   const doorOpeningFramingPreset: DoorOpeningFramingPreset =
-    calculationModel === "frame" ? "frame_gkl_door" : (base?.doorOpeningFramingPreset ?? "sip_standard");
+    calculationModel === "frame"
+      ? "frame_gkl_door"
+      : calculationModel === "sheet"
+        ? "sip_standard"
+        : (base?.doorOpeningFramingPreset ?? "sip_standard");
   const windowOpeningFramingPreset: WindowOpeningFramingPreset =
     calculationModel === "frame"
       ? base?.windowOpeningFramingPreset === "sip_standard" || base?.windowOpeningFramingPreset == null
         ? "frame_gkl_window"
         : base.windowOpeningFramingPreset
-      : (base?.windowOpeningFramingPreset ?? "sip_standard");
+      : calculationModel === "sheet"
+        ? "sip_standard"
+        : (base?.windowOpeningFramingPreset ?? "sip_standard");
 
   return {
     ...DEFAULT_WALL_MANUFACTURING,
     ...base,
+    calculationModel,
     frameMaterial,
     panelNominalWidthMm,
     panelNominalHeightMm,
@@ -263,7 +304,7 @@ export function resolveEffectiveWallManufacturing(profile: Profile): EffectiveWa
 
 /** Пресеты обрамления проёмов из профиля (после `resolveEffectiveWallManufacturing`). */
 export function resolveOpeningFramingPresets(profile: Profile): {
-  readonly model: "sip" | "frame";
+  readonly model: WallCalculationMode;
   readonly door: DoorOpeningFramingPreset;
   readonly window: WindowOpeningFramingPreset;
 } {

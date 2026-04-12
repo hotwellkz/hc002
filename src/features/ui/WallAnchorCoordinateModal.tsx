@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./wall-coordinate-modal.css";
@@ -9,6 +10,8 @@ export function WallAnchorCoordinateModal() {
   const close = useAppStore((s) => s.closeWallAnchorCoordinateModal);
   const apply = useAppStore((s) => s.applyWallAnchorCoordinateModal);
   const lastError = useAppStore((s) => s.lastError);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const titleId = useId();
   const [xStr, setXStr] = useState("0");
@@ -34,7 +37,8 @@ export function WallAnchorCoordinateModal() {
       setYStr("0");
     }
     setLocalError(null);
-  }, [open]);
+    clearApplyError();
+  }, [open, clearApplyError]);
 
   useEffect(() => {
     if (!open) {
@@ -63,18 +67,21 @@ export function WallAnchorCoordinateModal() {
       ? Math.round((((Math.atan2(dyParsed, dxParsed) * 180) / Math.PI) + 360) % 360)
       : "—";
 
-  const submit = () => {
-    setLocalError(null);
-    const dx = Number(xStr.replace(",", "."));
-    const dy = Number(yStr.replace(",", "."));
-    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-      setLocalError("Введите числовые значения X и Y (мм).");
-      return;
-    }
-    apply({ dxMm: dx, dyMm: dy });
-  };
+  const submit = () =>
+    runApply(() => {
+      setLocalError(null);
+      const dx = Number(xStr.replace(",", "."));
+      const dy = Number(yStr.replace(",", "."));
+      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+        setLocalError("Введите числовые значения X и Y (мм).");
+        return false;
+      }
+      apply({ dxMm: dx, dyMm: dy });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.wallAnchorCoordinateModalOpen, s.lastError);
+    });
 
-  const err = localError ?? lastError;
+  const err = localError ?? lastError ?? applyError;
 
   return (
     <div className="wcm-backdrop" role="presentation" onClick={close}>
@@ -144,8 +151,8 @@ export function WallAnchorCoordinateModal() {
           <button type="button" className="wcm-btn wcm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="submit" className="wcm-btn wcm-btn--primary">
-            Применить
+          <button type="submit" className="wcm-btn wcm-btn--primary" disabled={isSubmitting}>
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </form>

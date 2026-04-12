@@ -10,6 +10,7 @@ import {
 } from "@/core/domain/layerOps";
 import { normalizeVisibleLayerIds } from "@/core/domain/layerVisibility";
 import { computeLayerVerticalStack, getLayerVerticalSlice } from "@/core/domain/layerVerticalStack";
+import { useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./layer-modals.css";
@@ -121,24 +122,33 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
     [dragLayerId, moveLayerToStackIndex],
   );
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(onClose);
+
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
+
   if (!open) {
     return null;
   }
 
-  const applyCurrent = () => {
-    const n = name.trim();
-    if (!n || !activeLayer) {
-      return;
-    }
-    updateLayer(activeId, {
-      name: n,
-      domain,
-      elevationMm: Number.isFinite(elevationMm) ? elevationMm : activeLayer.elevationMm,
-      levelMode,
-      offsetFromBelowMm: Number.isFinite(offsetFromBelowMm) ? offsetFromBelowMm : 0,
-      manualHeightMm: Number.isFinite(manualHeightMm) ? manualHeightMm : 0,
+  const handleApplyCurrent = () =>
+    runApply(() => {
+      const n = name.trim();
+      if (!n || !activeLayer) {
+        return false;
+      }
+      updateLayer(activeId, {
+        name: n,
+        domain,
+        elevationMm: Number.isFinite(elevationMm) ? elevationMm : activeLayer.elevationMm,
+        levelMode,
+        offsetFromBelowMm: Number.isFinite(offsetFromBelowMm) ? offsetFromBelowMm : 0,
+        manualHeightMm: Number.isFinite(manualHeightMm) ? manualHeightMm : 0,
+      });
     });
-  };
 
   const dirtyCurrent =
     activeLayer &&
@@ -464,18 +474,24 @@ export function LayerParamsModal({ open, onClose }: LayerParamsModalProps) {
           </div>
         )}
 
+        {applyError ? (
+          <p className="lp-micro" role="alert" style={{ color: "var(--danger, #b91c1c)", marginTop: 8 }}>
+            {applyError}
+          </p>
+        ) : null}
+
         <div className="lm-actions lp-actions">
           <button
             type="button"
             className="lm-btn lm-btn--primary"
-            disabled={!canApply}
+            disabled={!canApply || isSubmitting}
             onClick={() => {
-              applyCurrent();
+              void handleApplyCurrent();
             }}
           >
-            Применить
+            {isSubmitting ? "Сохранение…" : "Применить"}
           </button>
-          <button type="button" className="lm-btn lm-btn--ghost" onClick={onClose}>
+          <button type="button" className="lm-btn lm-btn--ghost" onClick={onClose} disabled={isSubmitting}>
             Отмена
           </button>
         </div>

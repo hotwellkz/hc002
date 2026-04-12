@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { WallJointKind } from "@/core/domain/wallJoint";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -88,13 +89,16 @@ export function WallJointParamsModal() {
   const close = useAppStore((s) => s.closeWallJointParamsModal);
   const apply = useAppStore((s) => s.applyWallJointParamsModal);
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
   const [kind, setKind] = useState<WallJointKind>("CORNER_BUTT");
 
   useEffect(() => {
     if (open) {
       setKind("CORNER_BUTT");
+      clearApplyError();
     }
-  }, [open]);
+  }, [open, clearApplyError]);
 
   if (!open) {
     return null;
@@ -118,6 +122,11 @@ export function WallJointParamsModal() {
           <CardMiter selected={kind === "CORNER_MITER"} onSelect={() => setKind("CORNER_MITER")} />
           <CardTee selected={kind === "T_ABUTMENT"} onSelect={() => setKind("T_ABUTMENT")} />
         </div>
+        {applyError ? (
+          <p className="wj-sub" style={{ color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
@@ -125,11 +134,16 @@ export function WallJointParamsModal() {
           <button
             type="button"
             className="lm-btn lm-btn--primary"
-            onClick={() => {
-              apply(kind);
-            }}
+            disabled={isSubmitting}
+            onClick={() =>
+              void runApply(() => {
+                apply(kind);
+                const s = useAppStore.getState();
+                return finishStoreModalApply(s.wallJointParamsModalOpen, s.lastError);
+              })
+            }
           >
-            Применить
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

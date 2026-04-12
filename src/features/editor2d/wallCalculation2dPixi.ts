@@ -32,7 +32,7 @@ function fillQuadMm(
 }
 
 /**
- * Расчётная SIP-раскладка: зелёный fill — только core; детали по ролям; обвязка отдельным тоном.
+ * Расчётная SIP-раскладка: заливка ядра (приглушённая); детали по ролям; обвязка отдельным тоном.
  */
 export function drawWallCalculationOverlay2d(
   g: Graphics,

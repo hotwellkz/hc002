@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./layer-modals.css";
@@ -12,6 +13,8 @@ export function SlabEditModal() {
 
   const slab = modal ? project.slabs.find((x) => x.id === modal.slabId) : undefined;
 
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
   const [depthMm, setDepthMm] = useState(1000);
   const [levelMm, setLevelMm] = useState(0);
 
@@ -22,6 +25,12 @@ export function SlabEditModal() {
     setDepthMm(slab.depthMm);
     setLevelMm(slab.levelMm);
   }, [modal, slab]);
+
+  useEffect(() => {
+    if (modal && slab) {
+      clearApplyError();
+    }
+  }, [modal, slab, clearApplyError]);
 
   if (!modal) {
     return null;
@@ -50,12 +59,15 @@ export function SlabEditModal() {
     );
   }
 
-  const submit = () => {
-    apply({
-      depthMm: Number(depthMm),
-      levelMm: Number(levelMm),
+  const submit = () =>
+    runApply(() => {
+      apply({
+        depthMm: Number(depthMm),
+        levelMm: Number(levelMm),
+      });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.slabEditModal != null, s.lastError);
     });
-  };
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -90,12 +102,22 @@ export function SlabEditModal() {
             onChange={(e) => setLevelMm(Number(e.target.value))}
           />
         </label>
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Сохранить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Сохранить"}
           </button>
         </div>
       </div>

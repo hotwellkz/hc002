@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import type { OpeningAlongAnchor, OpeningAlongAlignment } from "@/core/domain/openingWindowTypes";
 import type { SaveDoorParamsPayload } from "@/core/domain/openingDoorMutations";
 import { defaultOpeningSipConstruction } from "@/core/domain/openingFramingGenerate";
@@ -44,6 +45,14 @@ export function DoorParamsModal() {
   const [alignment, setAlignment] = useState<OpeningAlongAlignment>("center");
   const [levelStr, setLevelStr] = useState("0");
   const [error, setError] = useState<string | null>(null);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
+
+  useEffect(() => {
+    if (addOpen || edit) {
+      clearApplyError();
+    }
+  }, [addOpen, edit, clearApplyError]);
 
   useEffect(() => {
     if (addOpen && !editMode) {
@@ -113,33 +122,41 @@ export function DoorParamsModal() {
         }
       : null;
 
-  const submitAdd = () => {
-    if (widthMm == null || heightMm == null || trimMm == null) {
-      setError("Проверьте размеры двери и наличника.");
-      return;
-    }
-    setError(null);
-    applyAdd({ widthMm, heightMm, doorType, doorSwing, doorTrimMm: trimMm, isEmptyOpening: isEmpty });
-  };
+  const submitAdd = () =>
+    runApply(() => {
+      if (widthMm == null || heightMm == null || trimMm == null) {
+        setError("Проверьте размеры двери и наличника.");
+        return false;
+      }
+      setError(null);
+      applyAdd({ widthMm, heightMm, doorType, doorSwing, doorTrimMm: trimMm, isEmptyOpening: isEmpty });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addDoorModalOpen, s.lastError);
+    });
 
-  const submitEdit = () => {
-    if (widthMm == null || heightMm == null || trimMm == null || !positionSpec) {
-      setError("Проверьте числовые поля.");
-      return;
-    }
-    const payload: SaveDoorParamsPayload = {
-      widthMm,
-      heightMm,
-      isEmptyOpening: isEmpty,
-      doorType,
-      doorSwing,
-      doorTrimMm: trimMm,
-      position: positionSpec,
-      sipConstruction,
-    };
-    setError(null);
-    applyEdit(payload);
-  };
+  const submitEdit = () =>
+    runApply(() => {
+      if (widthMm == null || heightMm == null || trimMm == null || !positionSpec) {
+        setError("Проверьте числовые поля.");
+        return false;
+      }
+      const payload: SaveDoorParamsPayload = {
+        widthMm,
+        heightMm,
+        isEmptyOpening: isEmpty,
+        doorType,
+        doorSwing,
+        doorTrimMm: trimMm,
+        position: positionSpec,
+        sipConstruction,
+      };
+      setError(null);
+      applyEdit(payload);
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.doorEditModal != null, s.lastError);
+    });
+
+  const formError = error ?? applyError;
 
   return (
     <div className="wp-backdrop" role="presentation" onClick={() => (editMode ? closeEdit() : closeAdd())}>
@@ -160,7 +177,7 @@ export function DoorParamsModal() {
         {activeTab === "form" ? (
           <div className="wp-body">
             <div className="wp-form">
-              {error ? <p className="wp-error">{error}</p> : null}
+              {formError ? <p className="wp-error">{formError}</p> : null}
               <div className="wp-field-row">
                 <div className="lm-field wp-field">
                   <label className="lm-label">Высота (мм)</label>
@@ -216,7 +233,7 @@ export function DoorParamsModal() {
         {activeTab === "position" ? (
           <div className="wp-body wp-body--single">
             <div className="wp-form">
-              {error ? <p className="wp-error">{error}</p> : null}
+              {formError ? <p className="wp-error">{formError}</p> : null}
               <div className="lm-field wp-field">
                 <label className="lm-label">От</label>
                 <select className="lm-input" value={anchorAlongWall} onChange={(e) => setAnchorAlongWall(e.target.value as OpeningAlongAnchor)}>
@@ -248,7 +265,7 @@ export function DoorParamsModal() {
         {activeTab === "sip" ? (
           <div className="wp-body wp-body--single">
             <div className="wp-form">
-              {error ? <p className="wp-error">{error}</p> : null}
+              {formError ? <p className="wp-error">{formError}</p> : null}
               <p className="wp-muted">Черновая вкладка SIP для двери. Параметры сохраняются вместе с проёмом.</p>
             </div>
           </div>
@@ -258,8 +275,13 @@ export function DoorParamsModal() {
           <button type="button" className="lm-btn lm-btn--ghost" onClick={() => (editMode ? closeEdit() : closeAdd())}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={editMode ? submitEdit : submitAdd}>
-            {editMode ? "Сохранить" : "Применить"}
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            disabled={isSubmitting}
+            onClick={() => void (editMode ? submitEdit() : submitAdd())}
+          >
+            {isSubmitting ? "…" : editMode ? "Сохранить" : "Применить"}
           </button>
         </div>
       </div>

@@ -12,7 +12,7 @@ import type { WallCalculationResult } from "@/core/domain/wallCalculation";
 import { getProfileById } from "@/core/domain/profileOps";
 import {
   MIN_WALL_2D_LAYER_LINE_STROKE_PX,
-  resolveWallProfileLayerStripsMm,
+  resolveWallProfileLayerStripsForWallVisualization,
   type WallProfileLayerStripMm,
 } from "@/core/domain/wallProfileLayers";
 import {
@@ -20,7 +20,7 @@ import {
   wallCalcCorePlan2dFill,
 } from "@/features/editor2d/wallCalculationPlan2dColors";
 import { collectWallCalculationPlanQuads } from "@/features/editor2d/wallCalculationPlan2dQuads";
-import { fillColor2dForMaterialType } from "@/features/editor2d/materials2d";
+import { fillColor2dForMaterialType, plan2dLayerFillAlpha } from "@/features/editor2d/materials2d";
 import { openingSlotCornersMm } from "@/features/editor2d/openingPlanGeometry2d";
 import { quadCornersAlongWallMm } from "@/features/editor2d/wallPlanGeometry2d";
 
@@ -101,7 +101,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
   const profile = wall.profileId ? getProfileById(project, wall.profileId) : undefined;
   const solidWallFill = profile?.layers[0] ? fillColor2dForMaterialType(profile.layers[0].materialType) : 0x5aa7ff;
   const stripsResolved: WallProfileLayerStripMm[] | null = profile
-    ? resolveWallProfileLayerStripsMm(T, profile)
+    ? resolveWallProfileLayerStripsForWallVisualization(T, profile)
     : null;
 
   const layered = stripsResolved != null && stripsResolved.length >= 2;
@@ -132,7 +132,7 @@ export function WallDetailTopViewPlan(props: WallDetailTopViewPlanProps) {
         <polygon
           key={`strip-${strip.layerId}-${off0}`}
           points={pts}
-          fill={pixiHexToCss(fillHex, 0.92)}
+          fill={pixiHexToCss(fillHex, plan2dLayerFillAlpha(strip.materialType, 0.92))}
           stroke={pixiHexToCss(0x0f1218, edgeAlpha)}
           strokeWidth={MIN_WALL_2D_LAYER_LINE_STROKE_PX}
           vectorEffect="non-scaling-stroke"

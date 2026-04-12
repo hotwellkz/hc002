@@ -17,7 +17,7 @@ import type { SlabEntity } from "./slab";
 import type { Project } from "./project";
 import type { Wall } from "./wall";
 import { wallLengthMm } from "./wallCalculationGeometry";
-import { resolveWallProfileLayerStripsMm } from "./wallProfileLayers";
+import { resolveWallProfileLayerStripsForWallVisualization } from "./wallProfileLayers";
 import { openingWallSlotCornersInset0Mm } from "../geometry/openingWallSlotCorners";
 import { projectPointOntoRayForward } from "../geometry/rayProjection2d";
 import { layerIdsForSnapGeometry, wallStripQuadCornersMm } from "../geometry/snap2dPrimitives";
@@ -158,7 +158,7 @@ function wallStripQuadsMm(w: Wall, project: Project): Point2D[][] {
   }
   const quads: Point2D[][] = [];
   const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-  const strips = profile ? resolveWallProfileLayerStripsMm(T, profile) : null;
+  const strips = profile ? resolveWallProfileLayerStripsForWallVisualization(T, profile) : null;
   if (strips && strips.length > 0) {
     let acc = -T / 2;
     for (const strip of strips) {

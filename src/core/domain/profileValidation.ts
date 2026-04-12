@@ -1,4 +1,5 @@
 import type { Profile } from "./profile";
+import { resolveWallCalculationModel } from "./wallManufacturing";
 import { resolveRoofProfileAssembly, validateRoofProfileAssemblyForCalculation } from "./roofProfileAssembly";
 
 /** Сообщения об ошибках для UI (без alert). */
@@ -69,11 +70,13 @@ export function validateProfile(p: Profile): string[] {
       errors.push("Префикс марки: только буквы, цифры, «_» и «-» (без пробелов).");
     }
     const wm = p.wallManufacturing;
-    if (wm?.studSpacingMm != null && !(wm.studSpacingMm > 0 && Number.isFinite(wm.studSpacingMm))) {
-      errors.push("Шаг каркаса должен быть числом больше 0.");
-    }
-    if (wm?.frameMemberWidthMm != null && !(wm.frameMemberWidthMm > 0 && Number.isFinite(wm.frameMemberWidthMm))) {
-      errors.push("Ширина профиля каркаса должна быть числом больше 0.");
+    if (resolveWallCalculationModel(p) === "frame") {
+      if (wm?.studSpacingMm != null && !(wm.studSpacingMm > 0 && Number.isFinite(wm.studSpacingMm))) {
+        errors.push("Шаг каркаса должен быть числом больше 0.");
+      }
+      if (wm?.frameMemberWidthMm != null && !(wm.frameMemberWidthMm > 0 && Number.isFinite(wm.frameMemberWidthMm))) {
+        errors.push("Ширина профиля каркаса должна быть числом больше 0.");
+      }
     }
   }
 

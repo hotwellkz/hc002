@@ -56,6 +56,27 @@ describe("wallToRenderSpecs (послойно)", () => {
     expect(specs[0]!.width).toBeCloseTo(w.thicknessMm * 0.001, 6);
   });
 
+  it("листовый материал (sheet): послойно только без EPS", () => {
+    const p = createDemoProject();
+    const w = p.walls[0]!;
+    const profile = {
+      ...p.profiles[0]!,
+      wallManufacturing: { ...p.profiles[0]!.wallManufacturing, calculationModel: "sheet" as const },
+    };
+    /** Без проёмов — по одному сегменту на слой (как в тесте SIP выше). */
+    const proj = {
+      ...p,
+      openings: [],
+      profiles: [profile],
+      walls: p.walls.map((x) => (x.id === w.id ? { ...x } : x)),
+    };
+    const specs = wallToRenderSpecs(w, proj, true);
+    expect(specs.some((s) => s.materialType === "eps")).toBe(false);
+    expect(specs.filter((s) => s.materialType === "osb").length).toBe(2);
+    const sumMm = specs.reduce((acc, s) => acc + s.width / 0.001, 0);
+    expect(sumMm).toBeCloseTo(w.thicknessMm, 3);
+  });
+
   it("при сохранённом расчёте стены и show3dCalculation не показывает непрерывный EPS слой оболочки", () => {
     const p = createDemoProject();
     const w = p.walls[0]!;

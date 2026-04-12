@@ -6,7 +6,7 @@ import {
   foundationStripOrthoRingFootprintContoursFromEntityMm,
   foundationStripSegmentFootprintQuadMm,
 } from "../domain/foundationStripGeometry";
-import { resolveWallProfileLayerStripsMm } from "../domain/wallProfileLayers";
+import { resolveWallProfileLayerStripsForWallVisualization } from "../domain/wallProfileLayers";
 import {
   collectEntityCopySnapPointsForFullScene,
   foundationPileSnapPointsWorldMm,
@@ -89,7 +89,7 @@ export function collectWallPlanVertexSnapCandidatesMm(project: Project, layerIds
     }
     raw.push({ x: sx, y: sy }, { x: ex, y: ey });
     const profile = w.profileId ? getProfileById(project, w.profileId) : undefined;
-    const strips = profile ? resolveWallProfileLayerStripsMm(T, profile) : null;
+    const strips = profile ? resolveWallProfileLayerStripsForWallVisualization(T, profile) : null;
     if (strips && strips.length > 0) {
       let acc = -T / 2;
       for (const strip of strips) {

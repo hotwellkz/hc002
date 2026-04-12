@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { finishStoreModalApply, storeModalApplyNoop, useModalApplyClose } from "@/shared/modalSubmit";
 import { getLayerById } from "@/core/domain/layerOps";
 import { computedLayerBaseMm } from "@/core/domain/layerVerticalStack";
 import { useAppStore } from "@/store/useAppStore";
@@ -13,6 +14,8 @@ export function AddWallModal() {
   const openProfiles = useAppStore((s) => s.openProfilesModal);
   const project = useAppStore((s) => s.currentProject);
   const wallToolSession = useAppStore((s) => s.wallPlacementSession);
+
+  const { runApply, isSubmitting, applyError, clearApplyError } = useModalApplyClose(storeModalApplyNoop);
 
   const [profileId, setProfileId] = useState("");
   const [heightMm, setHeightMm] = useState(2500);
@@ -40,6 +43,12 @@ export function AddWallModal() {
     );
     setElevationMm(active ? computedLayerBaseMm(p, active.id) : 0);
   }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      clearApplyError();
+    }
+  }, [open, clearApplyError]);
 
   if (!open) {
     return null;
@@ -83,21 +92,24 @@ export function AddWallModal() {
     );
   }
 
-  const submit = () => {
-    const id = profileId.trim();
-    if (!id) {
-      return;
-    }
-    const h = Number(heightMm);
-    const el = Number(elevationMm);
-    if (!(Number.isFinite(h) && h > 0)) {
-      return;
-    }
-    if (!Number.isFinite(el)) {
-      return;
-    }
-    apply({ profileId: id, heightMm: h, baseElevationMm: el });
-  };
+  const submit = () =>
+    runApply(() => {
+      const id = profileId.trim();
+      if (!id) {
+        return false;
+      }
+      const h = Number(heightMm);
+      const el = Number(elevationMm);
+      if (!(Number.isFinite(h) && h > 0)) {
+        return false;
+      }
+      if (!Number.isFinite(el)) {
+        return false;
+      }
+      apply({ profileId: id, heightMm: h, baseElevationMm: el });
+      const s = useAppStore.getState();
+      return finishStoreModalApply(s.addWallModalOpen, s.lastError);
+    });
 
   return (
     <div className="lm-backdrop" role="presentation" onClick={close}>
@@ -142,12 +154,22 @@ export function AddWallModal() {
             onChange={(e) => setElevationMm(Number(e.target.value))}
           />
         </label>
+        {applyError ? (
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12, color: "var(--danger, #b91c1c)" }} role="alert">
+            {applyError}
+          </p>
+        ) : null}
         <div className="lm-actions">
           <button type="button" className="lm-btn lm-btn--ghost" onClick={close}>
             Отмена
           </button>
-          <button type="button" className="lm-btn lm-btn--primary" onClick={submit}>
-            Применить
+          <button
+            type="button"
+            className="lm-btn lm-btn--primary"
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "…" : "Применить"}
           </button>
         </div>
       </div>

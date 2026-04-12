@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createDemoProject } from "./demoProject";
-import { coreLayerNormalOffsetsMm, resolveWallProfileLayerStripsMm } from "./wallProfileLayers";
+import {
+  coreLayerNormalOffsetsMm,
+  resolveWallProfileLayerStripsForWallVisualization,
+  resolveWallProfileLayerStripsMm,
+} from "./wallProfileLayers";
 
 describe("resolveWallProfileLayerStripsMm", () => {
   it("суммирует толщины к толщине стены (SIP демо)", () => {
@@ -20,6 +24,32 @@ describe("resolveWallProfileLayerStripsMm", () => {
     const solid = { ...p.profiles[0]!, compositionMode: "solid" as const };
     const strips = resolveWallProfileLayerStripsMm(174, solid);
     expect(strips).toBeNull();
+  });
+});
+
+describe("resolveWallProfileLayerStripsForWallVisualization", () => {
+  it("режим sheet: без слоёв EPS/XPS/insulation, две оболочки на полную толщину стены", () => {
+    const p = createDemoProject();
+    const base = p.profiles[0]!;
+    const sheetProfile = {
+      ...base,
+      wallManufacturing: { ...base.wallManufacturing, calculationModel: "sheet" as const },
+    };
+    const w = p.walls[0]!;
+    const v = resolveWallProfileLayerStripsForWallVisualization(w.thicknessMm, sheetProfile);
+    expect(v).not.toBeNull();
+    expect(v!.map((s) => s.materialType)).toEqual(["osb", "osb"]);
+    expect(v!.some((s) => s.materialType === "eps")).toBe(false);
+    expect(v!.reduce((a, s) => a + s.thicknessMm, 0)).toBeCloseTo(w.thicknessMm, 4);
+  });
+
+  it("не sheet — совпадает с resolveWallProfileLayerStripsMm (SIP демо)", () => {
+    const p = createDemoProject();
+    const profile = p.profiles[0]!;
+    const w = p.walls[0]!;
+    const a = resolveWallProfileLayerStripsMm(w.thicknessMm, profile);
+    const b = resolveWallProfileLayerStripsForWallVisualization(w.thicknessMm, profile);
+    expect(a).toEqual(b);
   });
 });
 

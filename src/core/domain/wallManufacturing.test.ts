@@ -4,6 +4,7 @@ import { newEntityId } from "./ids";
 import type { Profile } from "./profile";
 import {
   inferFrameMemberWidthMmFromProfile,
+  inferWallCalculationModelFromProfileLayers,
   resolveEffectiveWallManufacturing,
 } from "./wallManufacturing";
 
@@ -110,5 +111,50 @@ describe("resolveEffectiveWallManufacturing", () => {
       },
     });
     expect(resolveEffectiveWallManufacturing(p).doorOpeningFramingPreset).toBe("frame_gkl_door");
+  });
+
+  it("для sheet модуль листа как у frame — из defaultWidthMm", () => {
+    const p = minimalWallProfile({
+      defaultWidthMm: 1250,
+      defaultHeightMm: 2500,
+      compositionMode: "layered",
+      layers: [
+        { id: newEntityId(), orderIndex: 0, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+      ],
+      wallManufacturing: {
+        calculationModel: "sheet",
+      },
+    });
+    const m = resolveEffectiveWallManufacturing(p);
+    expect(m.panelNominalWidthMm).toBe(1250);
+    expect(m.panelNominalHeightMm).toBe(2500);
+  });
+
+  it("inferWallCalculationModel: ОСБ+EPS+ОСБ → sip; два ОСБ без ядра → sheet", () => {
+    const t = new Date().toISOString();
+    const sipLike: Profile = {
+      id: newEntityId(),
+      name: "S",
+      category: "wall",
+      markPrefix: "W",
+      compositionMode: "layered",
+      layers: [
+        { id: newEntityId(), orderIndex: 0, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+        { id: newEntityId(), orderIndex: 1, materialName: "EPS", materialType: "eps", thicknessMm: 100 },
+        { id: newEntityId(), orderIndex: 2, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+      ],
+      createdAt: t,
+      updatedAt: t,
+    };
+    const sheetLike: Profile = {
+      ...sipLike,
+      id: newEntityId(),
+      layers: [
+        { id: newEntityId(), orderIndex: 0, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+        { id: newEntityId(), orderIndex: 1, materialName: "OSB", materialType: "osb", thicknessMm: 9 },
+      ],
+    };
+    expect(inferWallCalculationModelFromProfileLayers(sipLike)).toBe("sip");
+    expect(inferWallCalculationModelFromProfileLayers(sheetLike)).toBe("sheet");
   });
 });
