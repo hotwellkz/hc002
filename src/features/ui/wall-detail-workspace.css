@@ -340,3 +340,133 @@
   border-radius: 6px;
   padding: 4px 8px;
 }
+
+/* Мини-план на листе отчёта «Вид стены» */
+.wd-mini-plan-frame {
+  fill: none;
+  stroke: none;
+  stroke-width: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.wd-mini-wall {
+  stroke: #334155;
+  stroke-linecap: square;
+  vector-effect: non-scaling-stroke;
+}
+
+.wd-mini-wall--hi {
+  stroke: #1d4ed8;
+  vector-effect: non-scaling-stroke;
+}
+
+.wd-mini-arrow {
+  fill: none;
+  stroke: #1d4ed8;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.wd-mini-arrow-head {
+  fill: #1d4ed8;
+  stroke: none;
+}
+
+/* =========================
+   Report/PDF mode overrides
+   ========================= */
+
+.wd-canvas-wrap--report {
+  --color-dimension-line: #475569;
+  --color-dimension-text: #0f172a;
+}
+
+.wd-canvas--report .wd-dim-line,
+.wd-canvas--report .wd-dim-cap {
+  stroke-width: 1.7;
+}
+
+.wd-canvas--report .wd-opening {
+  stroke-width: 2.25;
+}
+
+.wd-canvas--report .wd-wall {
+  stroke-width: 1.35;
+}
+
+.wd-canvas--report .wd-panel-outline {
+  stroke-width: 1.35;
+  opacity: 0.78;
+}
+
+.wd-canvas--report .wd-sheet-panel-seam {
+  stroke-width: 1.55;
+  opacity: 0.95;
+}
+
+.wd-canvas--report .wd-frame-stud-line {
+  stroke-width: 0.85;
+  opacity: 0.82;
+}
+
+.wd-canvas--report .wd-panel-mark {
+  font-size: 48px;
+  font-weight: 800;
+}
+
+.wd-canvas--report .wd-open-label {
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.wd-canvas--report .wd-piece-n {
+  font-size: 12px;
+}
+
+/* Размерные цифры — увеличить именно в отчётах */
+.wd-canvas--report .wd-dim-text,
+.wd-canvas--report .wd-dim-text-out {
+  font-size: 44px;
+  font-weight: 700;
+}
+
+.wd-canvas--report .wd-dim-text-v {
+  font-size: 40px;
+  font-weight: 650;
+}
+
+.wd-canvas--report .wd-dim-text-v.wd-dim-text-v--opening {
+  font-size: 34px;
+}
+
+.wd-canvas--report .wd-subtitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.wd-canvas--report .wd-wall-title {
+  font-size: 56px;
+  font-weight: 800;
+  /* В отчёте заголовок может пересекать элементы чертежа. Делаем обводку по контуру текста, чтобы не «съедался». */
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 8px;
+  stroke-linejoin: round;
+}
+
+.wd-canvas--report .wd-mini-plan-frame {
+  stroke-width: 1.6;
+}
+
+.wd-canvas--report .wd-mini-wall {
+  stroke-width: 1.35;
+}
+
+.wd-canvas--report .wd-mini-wall--hi {
+  stroke: #0f172a;
+  stroke-width: 2.4;
+}
+
+.wd-canvas--report .wd-mini-arrow {
+  stroke-width: 2.6;
+}
