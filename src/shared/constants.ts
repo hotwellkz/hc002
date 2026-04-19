@@ -1,1 +1,1 @@
-export const APP_NAME = "SIP House Designer";
+export const APP_NAME = "HouseKit Pro";

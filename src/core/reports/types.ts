@@ -1,4 +1,5 @@
 import type { Point2D } from "../geometry/types";
+import type { ElevationCardinal } from "./geometry/elevation2d";
 
 /** Статус готовности отчёта для дерева и панели предупреждений. */
 export type ReportStatus = "ready" | "warning" | "blocked" | "soon";
@@ -24,6 +25,10 @@ export interface ReportCompileParams {
   readonly coverSubtitle?: string;
   /** Короткая пометка в строке листа (штамп). */
   readonly coverStampTag?: string;
+  /** Цветной фасад 3D: data URL снимка сцены. */
+  readonly facadeColor3dImageHref?: string | null;
+  /** Лист «Вид стены»: data URL растрового снимка. */
+  readonly wallDetailSheetImageHref?: string | null;
 }
 
 export type ReportPrimitive =
@@ -168,6 +173,9 @@ export type ReportViewKind =
   | "wall_plan"
   | "sip_starting_board_plan"
   | "project_cover_3d"
+  | "facade_color_elevation"
+  | "wall_detail_sheet"
+  | "building_elevation"
   | "placeholder";
 
 export interface ReportDefinition {
@@ -188,6 +196,10 @@ export interface ReportDefinition {
   readonly implemented: boolean;
   readonly viewKind: ReportViewKind;
   readonly sheetTemplateId: SheetTemplateId;
+  /** Для фасадных листов: направление камеры. */
+  readonly elevationCardinal?: ElevationCardinal;
+  /** Для листа «Вид стены»: id стены в проекте. */
+  readonly wallId?: string | null;
 }
 
 export interface ExportBundleSection {
