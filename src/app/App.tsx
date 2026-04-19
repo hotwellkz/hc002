@@ -1,8 +1,9 @@
 import { Navigate, Route, Routes, BrowserRouter } from "react-router-dom";
 
-import { HouseKitLandingPage } from "@/features/marketing/HouseKitLandingPage";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { RegisterCompanyPage } from "@/features/auth/RegisterCompanyPage";
+import { RegisterPage } from "@/features/auth/RegisterPage";
+import { HouseKitLandingPage } from "@/features/marketing/HouseKitLandingPage";
+import { WorkspaceProjectsPage } from "@/features/workspace/WorkspaceProjectsPage";
 
 import { EditorAppView } from "./EditorAppView";
 
@@ -12,8 +13,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HouseKitLandingPage />} />
         <Route path="/app" element={<EditorAppView />} />
+        <Route path="/app/projects" element={<WorkspaceProjectsPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterCompanyPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/demo" element={<Navigate to="/app?demo=true" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

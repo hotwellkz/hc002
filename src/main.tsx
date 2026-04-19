@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "@/styles/theme.css";
 import "@/styles/ui-primitives.css";
 
+import { AuthProvider } from "@/features/auth/AuthProvider";
 import { bootstrapThemeFromStorage } from "@/store/useUiThemeStore";
 
 import App from "./app/App";
@@ -23,6 +24,8 @@ if (!el) {
 
 createRoot(el).render(
   <StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </StrictMode>,
 );

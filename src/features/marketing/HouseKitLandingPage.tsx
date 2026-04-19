@@ -113,7 +113,7 @@ export function HouseKitLandingPage() {
               Войти
             </Link>
             <Link className="hk-btn hk-btn-primary" to="/register">
-              Создать компанию
+              Зарегистрироваться
             </Link>
           </div>
 
@@ -147,7 +147,7 @@ export function HouseKitLandingPage() {
               Войти
             </Link>
             <Link className="hk-btn hk-btn-primary" to="/register" onClick={closeMobile}>
-              Создать компанию
+              Зарегистрироваться
             </Link>
           </div>
         </div>
@@ -276,7 +276,8 @@ export function HouseKitLandingPage() {
               Работайте командой в одной компании
             </h2>
             <p className="hk-section-lead">
-              Создавайте компанию, приглашайте сотрудников, храните проекты в облаке и управляйте доступами.
+              После регистрации вы сможете создать рабочее пространство компании, пригласить сотрудников и хранить
+              проекты в облаке.
             </p>
             {/**
              * TODO: визуализация облачной компании — связать с Firestore Company / CompanyMember / роли.
@@ -320,7 +321,7 @@ export function HouseKitLandingPage() {
             <p>Расчёт СИП-панелей, чертежи СИП-дома и спецификация СИП-дома — начните с демо или нового проекта.</p>
             <div className="hk-cta-btns">
               <Link className="hk-btn hk-btn-primary hk-btn-lg" to="/register">
-                Создать компанию
+                Зарегистрироваться
               </Link>
               <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/demo">
                 Открыть демо

@@ -2,6 +2,8 @@ import { useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { initProjectPersistence } from "@/data/projectPersistence";
+import { useAuth } from "@/features/auth/AuthProvider";
+import { EditorCloudAuthBanner } from "@/features/auth/EditorCloudAuthBanner";
 import { projectCommands } from "@/features/project/commands";
 import { AppShell } from "@/features/ui/AppShell";
 import { ThemeRoot } from "@/features/ui/ThemeRoot";
@@ -68,11 +70,9 @@ function InfoBanner() {
  * После гидрации персистентности подгружает демо-проект, если в URL есть ?demo=true
  * (маршрут /demo редиректит сюда).
  */
-function useDemoQueryBootstrap() {
-  const [searchParams] = useSearchParams();
-
+function useDemoQueryBootstrap(isDemo: boolean) {
   useEffect(() => {
-    if (searchParams.get("demo") !== "true") {
+    if (!isDemo) {
       return;
     }
     let ran = false;
@@ -92,10 +92,15 @@ function useDemoQueryBootstrap() {
       ran = true;
       unsub();
     };
-  }, [searchParams]);
+  }, [isDemo]);
 }
 
 export function EditorAppView() {
+  const { status: authStatus, isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get("demo") === "true";
+  const showCloudAuthHint = authStatus === "ready" && !isDemo && !isAuthenticated;
+
   useEffect(() => {
     void initProjectPersistence();
   }, []);
@@ -104,10 +109,11 @@ export function EditorAppView() {
     document.title = EDITOR_TITLE;
   }, []);
 
-  useDemoQueryBootstrap();
+  useDemoQueryBootstrap(isDemo);
 
   return (
     <>
+      {showCloudAuthHint ? <EditorCloudAuthBanner /> : null}
       <ThemeRoot>
         <AppShell />
       </ThemeRoot>
