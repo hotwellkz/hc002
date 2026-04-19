@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import type { ProjectMeta } from "@/core/company/orgTypes";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { AppWorkspaceNav } from "@/features/workspace/AppWorkspaceNav";
 import {
   createProject,
   deleteProject,
@@ -157,6 +158,8 @@ export function WorkspaceProjectsPage() {
             <span className="ws-projects-brand-title">HouseKit Pro</span>
             <span className="ws-projects-brand-sub">by HotWell.kz</span>
           </Link>
+
+          <AppWorkspaceNav />
 
           <header className="ws-projects-header">
             <div>

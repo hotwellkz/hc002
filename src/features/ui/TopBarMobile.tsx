@@ -1,7 +1,9 @@
-import { CloudUpload, FolderOpen, Menu, Redo2, Save, Undo2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { CloudUpload, FolderOpen, LogOut, Menu, Redo2, Save, Undo2, Users } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+import { signOutEverywhere } from "@/features/auth/authActions";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { canEditCloudProjects } from "@/features/company/companyTeamService";
 import { projectCommands } from "@/features/project/commands";
 import { APP_NAME } from "@/shared/constants";
 import { LucideToolIcon } from "@/shared/ui/LucideToolIcon";
@@ -14,7 +16,12 @@ import "./top-bar.css";
  * Инструменты плана и тема — в мобильном меню (bottom sheet).
  */
 export function TopBarMobile() {
-  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get("demo") === "true";
+  const { user, profile, isAuthenticated, activeCompanyMember } = useAuth();
+  const showWorkspaceNav = isAuthenticated && !isDemo;
+  const canCloudPersist = canEditCloudProjects(activeCompanyMember?.role);
   const name = useAppStore((s) => s.currentProject.meta.name);
   const dirty = useAppStore((s) => s.dirty);
   const cloudWorkspace = useAppStore((s) => s.cloudWorkspace);
@@ -45,10 +52,14 @@ export function TopBarMobile() {
   })();
 
   const onCloudSave = () => {
-    if (!effectiveUid) {
+    if (!effectiveUid || !canCloudPersist) {
       return;
     }
     void useAppStore.getState().saveCurrentProjectToCloud(effectiveUid, profile?.activeCompanyId ?? null);
+  };
+
+  const onLogout = () => {
+    void signOutEverywhere().then(() => navigate("/"));
   };
 
   return (
@@ -66,6 +77,16 @@ export function TopBarMobile() {
         <Link className="tb-mobile-icon-btn" to="/app/projects" aria-label="Проекты" title="Проекты">
           <LucideToolIcon icon={FolderOpen} className="tb-keys-icon" />
         </Link>
+        {showWorkspaceNav ? (
+          <Link className="tb-mobile-icon-btn" to="/app/team" aria-label="Команда" title="Команда">
+            <LucideToolIcon icon={Users} className="tb-keys-icon" />
+          </Link>
+        ) : null}
+        {showWorkspaceNav ? (
+          <button type="button" className="tb-mobile-icon-btn" aria-label="Выйти" title="Выйти" onClick={onLogout}>
+            <LucideToolIcon icon={LogOut} className="tb-keys-icon" />
+          </button>
+        ) : null}
         <div className="tb-mobile-title" title={`${APP_NAME} — ${name}`}>
           <span className="tb-mobile-brand">{APP_NAME}</span>
           <span className="tb-mobile-project">
@@ -98,8 +119,9 @@ export function TopBarMobile() {
             <button
               type="button"
               className="tb-mobile-icon-btn"
-              title="Сохранить в облако"
+              title={!canCloudPersist ? "У вас роль просмотра. Сохранение недоступно." : "Сохранить в облако"}
               aria-label="Сохранить в облако"
+              disabled={!canCloudPersist}
               onClick={onCloudSave}
             >
               <LucideToolIcon icon={CloudUpload} className="tb-keys-icon" />

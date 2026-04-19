@@ -59,6 +59,10 @@
   white-space: nowrap;
 }
 
+.tb-ws-logout {
+  font-size: var(--text-body-sm, 0.875rem);
+}
+
 .tb-project-name {
   overflow: hidden;
   text-overflow: ellipsis;

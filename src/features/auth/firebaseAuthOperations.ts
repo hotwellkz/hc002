@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import type { Firestore } from "firebase/firestore";
 
+import type { Company, CompanyMember, UserProfile } from "@/core/company/orgTypes";
 import { tryGetFirebaseAuth } from "@/firebase/authClient";
 import { tryGetFirestoreDb } from "@/firebase/app";
 
@@ -16,6 +17,7 @@ import {
   createCompanyWorkspaceForNewUser,
   ensureGoogleUserHasWorkspace,
   loadCompany,
+  loadCompanyMember,
   loadUserProfile,
 } from "./firestoreOrgWrites";
 
@@ -83,15 +85,23 @@ export async function firebaseSignInWithGoogle(): Promise<User> {
   return cred.user;
 }
 
-export async function fetchProfileAndCompanyForUser(user: User) {
+export async function fetchProfileAndCompanyForUser(user: User): Promise<{
+  profile: UserProfile | null;
+  company: Company | null;
+  activeCompanyMember: CompanyMember | null;
+}> {
   const db = tryGetFirestoreDb() as Firestore | null;
   if (!db) {
-    return { profile: null, company: null };
+    return { profile: null, company: null, activeCompanyMember: null };
   }
   const profile = await loadUserProfile(db, user.uid);
   if (!profile?.activeCompanyId) {
-    return { profile, company: null };
+    return { profile, company: null, activeCompanyMember: null };
   }
-  const company = await loadCompany(db, profile.activeCompanyId);
-  return { profile, company };
+  const cid = profile.activeCompanyId;
+  const [company, activeCompanyMember] = await Promise.all([
+    loadCompany(db, cid),
+    loadCompanyMember(db, cid, user.uid),
+  ]);
+  return { profile, company, activeCompanyMember };
 }

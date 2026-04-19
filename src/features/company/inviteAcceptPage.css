@@ -1,0 +1,82 @@
+.invite-page {
+  min-height: 100vh;
+  padding: 72px 20px 48px;
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(34, 211, 238, 0.12), transparent 55%),
+    linear-gradient(165deg, #070a10 0%, #0c1220 45%, #080b12 100%);
+  color: rgba(241, 245, 249, 0.94);
+}
+
+.invite-page-inner {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.invite-page-card {
+  padding: 28px 26px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(22px);
+}
+
+.invite-page-title {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.invite-page-lead {
+  margin: 0 0 18px;
+  color: rgba(148, 163, 184, 0.96);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.invite-page-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invite-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(241, 245, 249, 0.92);
+  font-weight: 600;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+}
+
+.invite-page-btn--primary {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: linear-gradient(145deg, rgba(34, 211, 238, 0.22), rgba(14, 165, 233, 0.12));
+}
+
+.invite-page-alert {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.35);
+  color: rgba(254, 226, 226, 0.98);
+  margin-bottom: 14px;
+  font-size: 0.92rem;
+}
+
+.invite-page-link {
+  color: rgba(34, 211, 238, 0.95);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.invite-page-link:hover {
+  text-decoration: underline;
+}

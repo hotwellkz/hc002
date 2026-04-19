@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Keyboard, List, MoreHorizontal, Redo2, Save, Undo2 } from "lucide-react";
 
+import { signOutEverywhere } from "@/features/auth/authActions";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { canEditCloudProjects } from "@/features/company/companyTeamService";
 import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
@@ -171,10 +173,14 @@ function TopBarOverflowMenu({
 
 export function TopBar() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get("demo") === "true";
+  const { user, profile, isAuthenticated, activeCompanyMember } = useAuth();
   const cloudWorkspace = useAppStore((s) => s.cloudWorkspace);
   const cloudManualSavePhase = useAppStore((s) => s.cloudManualSavePhase);
   const isMobile = useMobileLayout();
+  const showWorkspaceNav = isAuthenticated && !isDemo;
+  const canCloudPersist = canEditCloudProjects(activeCompanyMember?.role);
   if (isMobile) {
     return <TopBarMobile />;
   }
@@ -230,10 +236,14 @@ export function TopBar() {
   })();
 
   const onCloudSave = () => {
-    if (!effectiveUid) {
+    if (!effectiveUid || !canCloudPersist) {
       return;
     }
     void useAppStore.getState().saveCurrentProjectToCloud(effectiveUid, profile?.activeCompanyId ?? null);
+  };
+
+  const onLogout = () => {
+    void signOutEverywhere().then(() => navigate("/"));
   };
 
   const saveFileLabel = cloudWorkspace ? "Сохранить файл" : "Сохранить…";
@@ -265,6 +275,18 @@ export function TopBar() {
         id: "cloudSave",
         label: "Сохранить в облако",
         onClick: onCloudSave,
+      });
+    }
+    if (showWorkspaceNav) {
+      overflowActions.push({
+        id: "team",
+        label: "Команда",
+        onClick: () => navigate("/app/team"),
+      });
+      overflowActions.push({
+        id: "logout",
+        label: "Выйти",
+        onClick: onLogout,
       });
     }
   }
@@ -314,13 +336,29 @@ export function TopBar() {
             Проекты
           </Link>
         ) : null}
+        {showCloudExtras && showWorkspaceNav ? (
+          <>
+            <Link className="btn tb-cloud-link" to="/app/team">
+              Команда
+            </Link>
+            <button type="button" className="btn tb-ws-logout" onClick={onLogout}>
+              Выйти
+            </button>
+          </>
+        ) : null}
         {showCloudExtras && cloudWorkspace && cloudStatusText ? (
           <span className="tb-cloud-status" title={cloudStatusText}>
             {cloudStatusText}
           </span>
         ) : null}
         {showCloudExtras && cloudWorkspace && effectiveUid ? (
-          <button type="button" className="btn tb-cloud-save" onClick={onCloudSave}>
+          <button
+            type="button"
+            className="btn tb-cloud-save"
+            onClick={onCloudSave}
+            disabled={!canCloudPersist || cloudManualSavePhase === "saving"}
+            title={!canCloudPersist ? "У вас роль просмотра. Сохранение недоступно." : undefined}
+          >
             Сохранить в облако
           </button>
         ) : null}

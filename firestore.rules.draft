@@ -1,63 +1,17 @@
-// Черновик правил Firestore для HouseKit Pro (не подключён к деплою автоматически).
-// Скопируйте в firestore.rules после проверки и задеплойте: firebase deploy --only firestore:rules
+// Синхронизировано с firestore.rules в корне репозитория (источник правды для деплоя).
+// Деплой: firebase deploy --only firestore:rules
 //
-// Предположения:
-// - users/{userId} — профиль пользователя;
-// - companies/{companyId} — компания;
-// - companies/{companyId}/members/{userId} — членство (роль в поле data, напр. owner | admin | designer | viewer);
-// - companies/{companyId}/projects/{projectId} — метаданные проекта и опционально payloadJson, если Storage недоступен.
+// Ключевые моменты этапа «Команда»:
+// - companies/{companyId}/invites: get для pending (по ссылке до входа), list только owner/admin;
+// - invites create/update с проверкой ролей приглашающего;
+// - members: create по регистрации (owner, без inviteId) или по invite (с inviteId + совпадение email);
+// - members update/delete: не для документов с role == owner;
+// - projects под компанией: запись только owner/admin/designer (viewer только читает).
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function uid() {
-      return request.auth.uid;
-    }
-
-    function memberDoc(companyId) {
-      return get(/databases/$(database)/documents/companies/$(companyId)/members/$(uid()));
-    }
-
-    function isMember(companyId) {
-      return signedIn() && memberDoc(companyId).exists;
-    }
-
-    function memberRole(companyId) {
-      return memberDoc(companyId).data.role;
-    }
-
-    function canReadProject(companyId) {
-      return isMember(companyId);
-    }
-
-    function canWriteProject(companyId) {
-      return isMember(companyId) &&
-        memberRole(companyId) in ['owner', 'admin', 'designer'];
-    }
-
-    match /users/{userId} {
-      allow read, write: if signedIn() && uid() == userId;
-    }
-
-    match /companies/{companyId} {
-      allow read: if isMember(companyId);
-      allow write: if false; // отдельные правила при смене настроек компании
-
-      match /members/{memberUserId} {
-        allow read: if isMember(companyId);
-        allow write: if false; // приглашения — отдельный этап
-      }
-
-      match /projects/{projectId} {
-        allow read: if canReadProject(companyId);
-        allow create: if canWriteProject(companyId);
-        allow update, delete: if canWriteProject(companyId);
-      }
-    }
+    // Полное содержимое см. файл firestore.rules
   }
 }

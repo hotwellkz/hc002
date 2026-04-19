@@ -1,8 +1,10 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Box, BrickWall, ClipboardList, DraftingCompass, FileText, Info, LayoutGrid, Layers, Menu, Spline } from "lucide-react";
 
+import { signOutEverywhere } from "@/features/auth/authActions";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { canEditCloudProjects } from "@/features/company/companyTeamService";
 import { Editor2DToolbarMobileSheet } from "@/features/editor2d/Editor2DToolbarMobile";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
@@ -29,7 +31,10 @@ const SHEET_TITLES: Record<MobileSheetId, string> = {
 };
 
 function MainMenuSheet() {
-  const { user, profile } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isDemo = searchParams.get("demo") === "true";
+  const { user, profile, activeCompanyMember, isAuthenticated } = useAuth();
   const closeMobileSheet = useAppStore((s) => s.closeMobileSheet);
   const cloudWorkspace = useAppStore((s) => s.cloudWorkspace);
   const openLayerManager = useAppStore((s) => s.openLayerManager);
@@ -37,6 +42,8 @@ function MainMenuSheet() {
   const openHotkeys = useEditorShortcutsStore((s) => s.openShortcutsSettings);
 
   const effectiveUid = user?.uid ?? profile?.id ?? null;
+  const showWorkspaceNav = isAuthenticated && !isDemo;
+  const canCloudPersist = canEditCloudProjects(activeCompanyMember?.role);
 
   const run = (fn: () => void) => {
     fn();
@@ -44,10 +51,15 @@ function MainMenuSheet() {
   };
 
   const onCloudSave = () => {
-    if (!effectiveUid) {
+    if (!effectiveUid || !canCloudPersist) {
       return;
     }
     void useAppStore.getState().saveCurrentProjectToCloud(effectiveUid, profile?.activeCompanyId ?? null);
+  };
+
+  const onLogout = () => {
+    void signOutEverywhere().then(() => navigate("/"));
+    closeMobileSheet();
   };
 
   const saveFileLabel = cloudWorkspace ? "Сохранить файл" : "Сохранить…";
@@ -57,6 +69,16 @@ function MainMenuSheet() {
       <Link className="mobile-menu-btn mobile-menu-link" to="/app/projects" onClick={() => closeMobileSheet()}>
         Проекты
       </Link>
+      {showWorkspaceNav ? (
+        <Link className="mobile-menu-btn mobile-menu-link" to="/app/team" onClick={() => closeMobileSheet()}>
+          Команда
+        </Link>
+      ) : null}
+      {showWorkspaceNav ? (
+        <button type="button" className="mobile-menu-btn" onClick={onLogout}>
+          Выйти
+        </button>
+      ) : null}
       <button type="button" className="mobile-menu-btn" onClick={() => run(() => projectCommands.createNew())}>
         Новый проект
       </button>
@@ -64,7 +86,13 @@ function MainMenuSheet() {
         Открыть…
       </button>
       {cloudWorkspace && effectiveUid ? (
-        <button type="button" className="mobile-menu-btn" onClick={() => run(onCloudSave)}>
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          disabled={!canCloudPersist}
+          title={!canCloudPersist ? "У вас роль просмотра. Сохранение недоступно." : undefined}
+          onClick={() => run(onCloudSave)}
+        >
           Сохранить в облако
         </button>
       ) : null}

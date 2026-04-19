@@ -1,0 +1,35 @@
+.app-ws-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+
+.app-ws-nav-link {
+  color: rgba(34, 211, 238, 0.95);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.app-ws-nav-link:hover {
+  text-decoration: underline;
+}
+
+.app-ws-nav-logout {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(241, 245, 249, 0.92);
+  font-weight: 600;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-ws-nav-logout:hover {
+  background: rgba(255, 255, 255, 0.1);
+}

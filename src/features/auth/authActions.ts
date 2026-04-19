@@ -1,3 +1,4 @@
+import { tryGetFirestoreDb } from "@/firebase/app";
 import { tryGetFirebaseAuth } from "@/firebase/authClient";
 
 import {
@@ -7,7 +8,8 @@ import {
   firebaseSignUpWithCompany,
   isGoogleSignInAvailable,
 } from "./firebaseAuthOperations";
-import { mockSignIn, mockSignOut, mockSignUpWithCompany } from "./mockAuthService";
+import { createCompanyWorkspaceForExistingUser } from "./firestoreOrgWrites";
+import { mockSignIn, mockSignOut, mockSignUpWithCompany, mockCreateCompanyForLoggedInUser } from "./mockAuthService";
 
 export function getAuthMode(): "firebase" | "mock" {
   return tryGetFirebaseAuth() != null ? "firebase" : "mock";
@@ -48,4 +50,14 @@ export function googleSignInSupported(): boolean {
 
 export async function signInWithGoogle(): Promise<void> {
   await firebaseSignInWithGoogle();
+}
+
+export async function createWorkspaceForLoggedInUser(companyName: string): Promise<void> {
+  const auth = tryGetFirebaseAuth();
+  const db = tryGetFirestoreDb();
+  if (auth?.currentUser && db) {
+    await createCompanyWorkspaceForExistingUser(db, auth.currentUser, companyName);
+    return;
+  }
+  await mockCreateCompanyForLoggedInUser(companyName);
 }

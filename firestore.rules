@@ -1,11 +1,139 @@
 rules_version = '2';
 
-// ВАЖНО: для продакшена замените на правила с Firebase Auth или серверной проверкой.
-// Сейчас разрешено чтение/запись документов в коллекции `projects` — удобно для разработки SPA без Auth.
+// HouseKit Pro — Firestore security rules
+// Деплой: firebase deploy --only firestore:rules
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function authEmail() {
+      return request.auth.token.email;
+    }
+
+    function memberPathExists(companyId) {
+      return exists(/databases/$(database)/documents/companies/$(companyId)/members/$(uid()));
+    }
+
+    function memberDoc(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)/members/$(uid()));
+    }
+
+    function isMember(companyId) {
+      return signedIn() && memberPathExists(companyId);
+    }
+
+    function memberRole(companyId) {
+      return memberDoc(companyId).data.role;
+    }
+
+    function canWriteCompanyProjects(companyId) {
+      return isMember(companyId) &&
+        memberRole(companyId) in ['owner', 'admin', 'designer'];
+    }
+
+    function canManageTeam(companyId) {
+      return isMember(companyId) && memberRole(companyId) in ['owner', 'admin'];
+    }
+
+    function canInviteAllRoles(companyId) {
+      return isMember(companyId) && memberRole(companyId) == 'owner';
+    }
+
+    function canInviteDesignerViewer(companyId) {
+      return isMember(companyId) && memberRole(companyId) == 'admin';
+    }
+
+    function inviteDoc(companyId, inviteId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)/invites/$(inviteId));
+    }
+
+    // --- Профиль пользователя ---
+    match /users/{userId} {
+      allow read, write: if signedIn() && uid() == userId;
+    }
+
+    // --- Компания ---
+    match /companies/{companyId} {
+      allow create: if signedIn()
+        && request.resource.data.ownerUserId == uid()
+        && request.resource.data.id == companyId;
+
+      allow read: if signedIn() && (
+        resource.data.ownerUserId == uid()
+        || memberPathExists(companyId)
+      );
+
+      allow update: if signedIn() && resource.data.ownerUserId == uid();
+      allow delete: if false;
+
+      match /members/{memberUserId} {
+        allow create: if signedIn() && memberUserId == uid()
+          && request.resource.data.userId == uid()
+          && request.resource.data.companyId == companyId
+          && (
+            (
+              !request.resource.data.keys().hasAll(['inviteId'])
+              && request.resource.data.role == 'owner'
+            )
+            ||
+            (
+              request.resource.data.keys().hasAll(['inviteId'])
+              && request.resource.data.inviteId is string
+              && inviteDoc(companyId, request.resource.data.inviteId).data.email == authEmail()
+              && inviteDoc(companyId, request.resource.data.inviteId).data.status == 'pending'
+              && request.resource.data.role == inviteDoc(companyId, request.resource.data.inviteId).data.role
+            )
+          );
+
+        allow read: if isMember(companyId);
+
+        allow update: if canManageTeam(companyId) && resource.data.role != 'owner';
+
+        allow delete: if canManageTeam(companyId) && resource.data.role != 'owner';
+      }
+
+      match /invites/{inviteId} {
+        allow get: if resource.data.status == 'pending'
+          || (signedIn() && resource.data.email == authEmail())
+          || (isMember(companyId) && canManageTeam(companyId));
+
+        allow list: if isMember(companyId) && canManageTeam(companyId);
+
+        allow create: if canManageTeam(companyId)
+          && (
+            (canInviteAllRoles(companyId) && request.resource.data.role in ['admin', 'designer', 'viewer'])
+            ||
+            (canInviteDesignerViewer(companyId) && request.resource.data.role in ['designer', 'viewer'])
+          )
+          && request.resource.data.invitedBy == uid()
+          && request.resource.data.status == 'pending';
+
+        allow update: if (signedIn()
+            && resource.data.email == authEmail()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'accepted')
+          || (canManageTeam(companyId)
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'cancelled');
+      }
+
+      match /projects/{projectId} {
+        allow read: if isMember(companyId);
+        allow create: if canWriteCompanyProjects(companyId);
+        allow update, delete: if canWriteCompanyProjects(companyId);
+      }
+    }
+
     match /projects/{projectId} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
   }
 }

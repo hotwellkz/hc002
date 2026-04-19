@@ -42,6 +42,8 @@ export async function createCompanyWorkspaceForNewUser(
     role: "owner",
     status: "active",
     createdAt: now,
+    joinedAt: now,
+    displayName: user.displayName?.trim() || undefined,
   };
 
   const profile: UserProfile = {
@@ -74,6 +76,71 @@ export async function loadCompany(db: Firestore, companyId: string): Promise<Com
     return null;
   }
   return snap.data() as Company;
+}
+
+export async function loadCompanyMember(db: Firestore, companyId: string, userId: string): Promise<CompanyMember | null> {
+  const snap = await getDoc(doc(db, "companies", companyId, "members", userId));
+  if (!snap.exists()) {
+    return null;
+  }
+  return snap.data() as CompanyMember;
+}
+
+/**
+ * Для пользователя с профилем без activeCompanyId: создаёт компанию и делает пользователя owner.
+ */
+export async function createCompanyWorkspaceForExistingUser(
+  db: Firestore,
+  user: User,
+  companyName: string,
+): Promise<{ companyId: string }> {
+  const uid = user.uid;
+  const email = user.email?.trim() ?? "";
+  if (!email) {
+    throw new Error("У аккаунта нет email — нельзя создать компанию.");
+  }
+  const profile = await loadUserProfile(db, uid);
+  if (!profile) {
+    throw new Error("Сначала обновите профиль.");
+  }
+  if (profile.activeCompanyId) {
+    throw new Error("Рабочее пространство уже создано.");
+  }
+  const now = new Date().toISOString();
+  const companyRef = doc(collection(db, "companies"));
+  const companyId = companyRef.id;
+
+  const company: Company = {
+    id: companyId,
+    name: resolvedCompanyName(companyName),
+    ownerUserId: uid,
+    createdAt: now,
+    plan: "beta",
+  };
+
+  const member: CompanyMember = {
+    id: `${companyId}_${uid}`,
+    companyId,
+    userId: uid,
+    email,
+    role: "owner",
+    status: "active",
+    createdAt: now,
+    joinedAt: now,
+    displayName: user.displayName?.trim() || profile.name,
+  };
+
+  const nextProfile: UserProfile = {
+    ...profile,
+    activeCompanyId: companyId,
+  };
+
+  const batch = writeBatch(db);
+  batch.set(companyRef, company);
+  batch.set(doc(db, "users", uid), nextProfile);
+  batch.set(doc(db, "companies", companyId, "members", uid), member);
+  await batch.commit();
+  return { companyId };
 }
 
 /**

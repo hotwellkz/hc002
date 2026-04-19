@@ -4,7 +4,7 @@
  * TODO: удалить или защитить, когда везде используется Firebase.
  */
 
-import type { Company, UserProfile } from "@/core/company/orgTypes";
+import type { Company, CompanyMember, UserProfile } from "@/core/company/orgTypes";
 
 import { DEFAULT_COMPANY_NAME, resolvedCompanyName } from "./firestoreOrgWrites";
 
@@ -102,6 +102,23 @@ export async function mockSignUpWithCompany(input: {
     company,
   };
   writeStore(store);
+  try {
+    localStorage.setItem(`hk_mock_company_${companyId}`, JSON.stringify(company));
+    const ownerMember: CompanyMember = {
+      id: `${companyId}_${uid}`,
+      companyId,
+      userId: uid,
+      email,
+      role: "owner",
+      status: "active",
+      createdAt: now,
+      joinedAt: now,
+      displayName: profile.name,
+    };
+    localStorage.setItem(`housekit.mock.team.v1.${companyId}`, JSON.stringify({ members: [ownerMember], invites: [] }));
+  } catch {
+    /* ignore quota */
+  }
   sessionStorage.setItem("hk_mock_session_uid", email);
   emit();
 }
@@ -122,6 +139,114 @@ export async function mockSignOut(): Promise<void> {
   emit();
 }
 
+/** Пользователь уже в сессии, но без activeCompanyId (редкий случай). */
+export async function mockCreateCompanyForLoggedInUser(companyName: string): Promise<void> {
+  const raw = sessionStorage.getItem("hk_mock_session_uid");
+  if (!raw) {
+    throw new Error("Сначала войдите в аккаунт.");
+  }
+  const store = readStore();
+  const rec = store.users[raw];
+  if (!rec) {
+    throw new Error("Сессия недействительна.");
+  }
+  if (rec.profile.activeCompanyId) {
+    throw new Error("Рабочее пространство уже создано.");
+  }
+  const uid = rec.profile.id;
+  const email = rec.profile.email;
+  const now = new Date().toISOString();
+  const companyId = crypto.randomUUID();
+  const company: Company = {
+    id: companyId,
+    name: resolvedCompanyName(companyName),
+    ownerUserId: uid,
+    createdAt: now,
+    plan: "beta",
+  };
+  const profile: UserProfile = {
+    ...rec.profile,
+    activeCompanyId: companyId,
+  };
+  store.users[raw] = {
+    ...rec,
+    profile,
+    company,
+  };
+  writeStore(store);
+  try {
+    localStorage.setItem(`hk_mock_company_${companyId}`, JSON.stringify(company));
+    const ownerMember: CompanyMember = {
+      id: `${companyId}_${uid}`,
+      companyId,
+      userId: uid,
+      email,
+      role: "owner",
+      status: "active",
+      createdAt: now,
+      joinedAt: now,
+      displayName: profile.name,
+    };
+    localStorage.setItem(`housekit.mock.team.v1.${companyId}`, JSON.stringify({ members: [ownerMember], invites: [] }));
+  } catch {
+    /* ignore */
+  }
+  emit();
+}
+
 export function mockDefaultCompanyNameForRegister(): string {
   return DEFAULT_COMPANY_NAME;
+}
+
+/** Синхронизировано с companyTeamService mock-хранилищем `housekit.mock.team.v1.{companyId}`. */
+export function mockJoinInvitedCompany(userEmail: string, companyId: string): void {
+  const key = userEmail.trim().toLowerCase();
+  const companyRaw = localStorage.getItem(`hk_mock_company_${companyId}`);
+  if (!companyRaw) {
+    throw new Error("Компания не найдена (mock). Пересоздайте приглашение.");
+  }
+  const company = JSON.parse(companyRaw) as Company;
+  const store = readStore();
+  const rec = store.users[key];
+  if (!rec) {
+    throw new Error("Пользователь не найден в mock-хранилище.");
+  }
+  store.users[key] = {
+    ...rec,
+    profile: { ...rec.profile, activeCompanyId: companyId },
+    company,
+  };
+  writeStore(store);
+  sessionStorage.setItem("hk_mock_session_uid", key);
+  emit();
+}
+
+export function mockGetActiveCompanyMember(profile: UserProfile, company: Company): CompanyMember {
+  if (profile.activeCompanyId !== company.id) {
+    throw new Error("mockGetActiveCompanyMember: компания не совпадает с профилем.");
+  }
+  const raw = localStorage.getItem(`housekit.mock.team.v1.${company.id}`);
+  if (raw) {
+    try {
+      const p = JSON.parse(raw) as { members?: CompanyMember[] };
+      const m = p.members?.find((x) => x.userId === profile.id);
+      if (m) {
+        return m;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const now = profile.createdAt;
+  return {
+    id: `${company.id}_${profile.id}`,
+    companyId: company.id,
+    userId: profile.id,
+    email: profile.email,
+    role: company.ownerUserId === profile.id ? "owner" : "designer",
+    status: "active",
+    createdAt: now,
+    joinedAt: now,
+    displayName: profile.name,
+  };
 }

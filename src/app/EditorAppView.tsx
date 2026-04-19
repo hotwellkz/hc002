@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { initProjectPersistence } from "@/data/projectPersistence";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { EditorCloudAuthBanner } from "@/features/auth/EditorCloudAuthBanner";
+import { EditorNoCompanyBanner } from "@/features/auth/EditorNoCompanyBanner";
 import { loadProject } from "@/features/workspace/projectCloudService";
 import { projectCommands } from "@/features/project/commands";
 import { AppShell } from "@/features/ui/AppShell";
@@ -111,6 +112,7 @@ export function EditorAppView() {
   const initRan = useRef(false);
 
   const showCloudAuthHint = authStatus === "ready" && !isDemo && !isAuthenticated;
+  const showNoCompanyBanner = authStatus === "ready" && !isDemo && isAuthenticated && !profile?.activeCompanyId;
 
   useEffect(() => {
     document.title = EDITOR_TITLE;
@@ -191,6 +193,7 @@ export function EditorAppView() {
   return (
     <>
       {showCloudAuthHint ? <EditorCloudAuthBanner /> : null}
+      {showNoCompanyBanner ? <EditorNoCompanyBanner /> : null}
       {showCloudLoader ? (
         <div className="editor-cloud-loader" role="status" aria-live="polite">
           Загружаем проект…

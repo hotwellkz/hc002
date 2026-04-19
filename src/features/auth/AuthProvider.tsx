@@ -1,11 +1,11 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
-import type { Company, UserProfile } from "@/core/company/orgTypes";
+import type { Company, CompanyMember, UserProfile } from "@/core/company/orgTypes";
 import { tryGetFirebaseAuth } from "@/firebase/authClient";
 
 import { fetchProfileAndCompanyForUser } from "./firebaseAuthOperations";
-import { mockGetSession, subscribeMockAuth } from "./mockAuthService";
+import { mockGetActiveCompanyMember, mockGetSession, subscribeMockAuth } from "./mockAuthService";
 
 export type AuthStatus = "loading" | "ready";
 
@@ -15,6 +15,8 @@ export type AuthContextValue = {
   readonly user: FirebaseUser | null;
   readonly profile: UserProfile | null;
   readonly activeCompany: Company | null;
+  /** Участник текущей компании (роль для UI и прав). */
+  readonly activeCompanyMember: CompanyMember | null;
   /** Есть ли сессия (Firebase user или mock-профиль). */
   readonly isAuthenticated: boolean;
   readonly refreshSession: () => Promise<void>;
@@ -28,18 +30,19 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     user: FirebaseUser | null;
     profile: UserProfile | null;
     company: Company | null;
-  }>({ status: "loading", user: null, profile: null, company: null });
+    activeCompanyMember: CompanyMember | null;
+  }>({ status: "loading", user: null, profile: null, company: null, activeCompanyMember: null });
 
   useEffect(() => {
     const auth = tryGetFirebaseAuth();
     if (auth) {
       const unsub = onAuthStateChanged(auth, async (user) => {
         if (!user) {
-          setBundle({ status: "ready", user: null, profile: null, company: null });
+          setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
           return;
         }
-        const { profile, company } = await fetchProfileAndCompanyForUser(user);
-        setBundle({ status: "ready", user, profile, company });
+        const { profile, company, activeCompanyMember } = await fetchProfileAndCompanyForUser(user);
+        setBundle({ status: "ready", user, profile, company, activeCompanyMember });
       });
       return () => unsub();
     }
@@ -47,13 +50,15 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     const refresh = () => {
       const s = mockGetSession();
       if (!s) {
-        setBundle({ status: "ready", user: null, profile: null, company: null });
+        setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
       } else {
+        const activeCompanyMember = mockGetActiveCompanyMember(s.profile, s.company);
         setBundle({
           status: "ready",
           user: null,
           profile: s.profile,
           company: s.company,
+          activeCompanyMember,
         });
       }
     };
@@ -66,22 +71,24 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (auth) {
       const u = auth.currentUser;
       if (!u) {
-        setBundle({ status: "ready", user: null, profile: null, company: null });
+        setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
         return;
       }
-      const { profile, company } = await fetchProfileAndCompanyForUser(u);
-      setBundle({ status: "ready", user: u, profile, company });
+      const { profile, company, activeCompanyMember } = await fetchProfileAndCompanyForUser(u);
+      setBundle({ status: "ready", user: u, profile, company, activeCompanyMember });
       return;
     }
     const s = mockGetSession();
     if (!s) {
-      setBundle({ status: "ready", user: null, profile: null, company: null });
+      setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
     } else {
+      const activeCompanyMember = mockGetActiveCompanyMember(s.profile, s.company);
       setBundle({
         status: "ready",
         user: null,
         profile: s.profile,
         company: s.company,
+        activeCompanyMember,
       });
     }
   }, []);
@@ -95,6 +102,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       user: bundle.user,
       profile: bundle.profile,
       activeCompany: bundle.company,
+      activeCompanyMember: bundle.activeCompanyMember,
       isAuthenticated,
       refreshSession,
     };
