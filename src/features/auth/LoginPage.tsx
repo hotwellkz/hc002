@@ -10,7 +10,7 @@ import "./AuthPages.css";
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnUrl = sanitizeInternalReturnUrl(searchParams.get("returnUrl")) ?? "/app";
+  const returnUrl = sanitizeInternalReturnUrl(searchParams.get("returnUrl")) ?? "/app/projects";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,7 +102,7 @@ export function LoginPage() {
 
           <p className="auth-footer-text">
             Нет аккаунта?{" "}
-            <Link className="auth-inline-link" to="/register">
+            <Link className="auth-inline-link" to="/register?returnUrl=/app/projects">
               Зарегистрироваться
             </Link>
           </p>

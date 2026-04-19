@@ -1,6 +1,8 @@
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Box, BrickWall, ClipboardList, DraftingCompass, FileText, Info, LayoutGrid, Layers, Menu, Spline } from "lucide-react";
 
+import { useAuth } from "@/features/auth/AuthProvider";
 import { Editor2DToolbarMobileSheet } from "@/features/editor2d/Editor2DToolbarMobile";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
@@ -27,26 +29,47 @@ const SHEET_TITLES: Record<MobileSheetId, string> = {
 };
 
 function MainMenuSheet() {
+  const { user, profile } = useAuth();
   const closeMobileSheet = useAppStore((s) => s.closeMobileSheet);
+  const cloudWorkspace = useAppStore((s) => s.cloudWorkspace);
   const openLayerManager = useAppStore((s) => s.openLayerManager);
   const openProfiles = useAppStore((s) => s.openProfilesModal);
   const openHotkeys = useEditorShortcutsStore((s) => s.openShortcutsSettings);
+
+  const effectiveUid = user?.uid ?? profile?.id ?? null;
 
   const run = (fn: () => void) => {
     fn();
     closeMobileSheet();
   };
 
+  const onCloudSave = () => {
+    if (!effectiveUid) {
+      return;
+    }
+    void useAppStore.getState().saveCurrentProjectToCloud(effectiveUid, profile?.activeCompanyId ?? null);
+  };
+
+  const saveFileLabel = cloudWorkspace ? "Сохранить файл" : "Сохранить…";
+
   return (
     <div className="mobile-menu-list">
+      <Link className="mobile-menu-btn mobile-menu-link" to="/app/projects" onClick={() => closeMobileSheet()}>
+        Проекты
+      </Link>
       <button type="button" className="mobile-menu-btn" onClick={() => run(() => projectCommands.createNew())}>
         Новый проект
       </button>
       <button type="button" className="mobile-menu-btn" onClick={() => run(() => void projectCommands.open())}>
         Открыть…
       </button>
+      {cloudWorkspace && effectiveUid ? (
+        <button type="button" className="mobile-menu-btn" onClick={() => run(onCloudSave)}>
+          Сохранить в облако
+        </button>
+      ) : null}
       <button type="button" className="mobile-menu-btn" onClick={() => run(() => void projectCommands.save())}>
-        Сохранить…
+        {saveFileLabel}
       </button>
       <button type="button" className="mobile-menu-btn" onClick={() => run(() => projectCommands.bootstrapDemo())}>
         Демо-проект

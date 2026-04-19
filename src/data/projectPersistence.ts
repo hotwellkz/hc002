@@ -38,8 +38,8 @@ async function flushAutosave(): Promise<void> {
     return;
   }
   const db = tryGetFirestoreDb();
-  const { persistenceReady, firestoreEnabled, currentProject } = useAppStore.getState();
-  if (!db || !persistenceReady || !firestoreEnabled) {
+  const { persistenceReady, firestoreEnabled, currentProject, cloudWorkspace } = useAppStore.getState();
+  if (!db || !persistenceReady || !firestoreEnabled || cloudWorkspace != null) {
     return;
   }
   const savedWire = projectToWire(currentProject);
@@ -74,6 +74,9 @@ function subscribeAutosave(): void {
     if (!state.persistenceReady || !state.firestoreEnabled) {
       return;
     }
+    if (state.cloudWorkspace != null) {
+      return;
+    }
     if (state.currentProject === prev.currentProject) {
       return;
     }
@@ -81,14 +84,41 @@ function subscribeAutosave(): void {
   });
 }
 
+export type InitProjectPersistenceOptions = {
+  /** Не подменять текущий проект из legacy-коллекции `projects` (для /app?projectId или демо). */
+  readonly skipHydrate?: boolean;
+};
+
 /**
  * Стартовая загрузка: lastOpened → последний документ → новый проект в Firestore.
  */
-export async function initProjectPersistence(): Promise<void> {
+export async function initProjectPersistence(opts?: InitProjectPersistenceOptions): Promise<void> {
   if (initStarted) {
     return;
   }
   initStarted = true;
+
+  if (opts?.skipHydrate) {
+    if (!isFirebaseConfigured()) {
+      console.warn("[SIP] Firebase не настроен: задайте VITE_FIREBASE_* в .env — проект только в памяти до обновления страницы.");
+      useAppStore.setState({
+        persistenceReady: true,
+        firestoreEnabled: false,
+        persistenceStatus: "idle",
+        lastError: null,
+      });
+    } else {
+      const dbSkip = tryGetFirestoreDb();
+      useAppStore.setState({
+        persistenceReady: true,
+        firestoreEnabled: !!dbSkip,
+        persistenceStatus: "idle",
+        lastError: null,
+      });
+    }
+    subscribeAutosave();
+    return;
+  }
 
   if (!isFirebaseConfigured()) {
     console.warn("[SIP] Firebase не настроен: задайте VITE_FIREBASE_* в .env — проект только в памяти до обновления страницы.");

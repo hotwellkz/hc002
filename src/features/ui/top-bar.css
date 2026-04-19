@@ -46,6 +46,19 @@
   white-space: nowrap;
 }
 
+.tb-cloud-link {
+  text-decoration: none;
+}
+
+.tb-cloud-status {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tb-project-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -306,7 +319,14 @@ html[data-theme="dark"] .tb-overflow-trigger:hover {
 }
 
 /* Мобильная шапка */
-.shell-top.shell-top--mobile {
+.tb-mobile-cloud-status {
+  padding: 4px 12px 8px 52px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+}
+
+.shell-top--mobile {
   display: block;
   min-height: 46px;
   padding: 0 8px;

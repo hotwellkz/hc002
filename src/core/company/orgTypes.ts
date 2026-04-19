@@ -37,7 +37,7 @@ export interface CompanyInvite {
   readonly expiresAt: string;
 }
 
-/** Метаданные облачного проекта (полный project.json — следующий этап). */
+/** Метаданные облачного проекта (Firestore companies/{companyId}/projects/{projectId}). */
 export interface ProjectMeta {
   readonly id: string;
   readonly companyId: string;
@@ -47,4 +47,8 @@ export interface ProjectMeta {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly previewImageUrl?: string;
+  /** Путь к project.json в Firebase Storage, если используется Storage. */
+  readonly storagePath?: string;
+  /** Версия обёртки cloud JSON (см. cloudProjectPayload). */
+  readonly schemaVersion?: number;
 }

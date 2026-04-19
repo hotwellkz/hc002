@@ -2,6 +2,8 @@ import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { Box, FileText, LayoutGrid, Menu, X } from "lucide-react";
 
+import { useAuth } from "@/features/auth/AuthProvider";
+
 import "./houseKitLanding.css";
 
 const LANDING_TITLE = "HouseKit Pro — программа для проектирования СИП-домов онлайн";
@@ -61,6 +63,24 @@ const PIPELINE = [
   "Спецификация",
 ];
 
+const REGISTER_WITH_RETURN = "/register?returnUrl=/app/projects";
+
+function LandingStartProjectLink({ className }: { readonly className?: string }) {
+  const { isAuthenticated, status } = useAuth();
+  if (status === "loading") {
+    return (
+      <Link className={className} to={REGISTER_WITH_RETURN}>
+        Начать проект
+      </Link>
+    );
+  }
+  return (
+    <Link className={className} to={isAuthenticated ? "/app/projects" : REGISTER_WITH_RETURN}>
+      Начать проект
+    </Link>
+  );
+}
+
 /**
  * Маркетинговая стартовая страница. Дальше: Firebase Auth, Company, облачные проекты (см. TODO в auth-страницах).
  */
@@ -112,7 +132,7 @@ export function HouseKitLandingPage() {
             <Link className="hk-btn hk-btn-ghost" to="/login">
               Войти
             </Link>
-            <Link className="hk-btn hk-btn-primary" to="/register">
+            <Link className="hk-btn hk-btn-primary" to={REGISTER_WITH_RETURN}>
               Зарегистрироваться
             </Link>
           </div>
@@ -146,7 +166,7 @@ export function HouseKitLandingPage() {
             <Link className="hk-btn hk-btn-ghost" to="/login" onClick={closeMobile}>
               Войти
             </Link>
-            <Link className="hk-btn hk-btn-primary" to="/register" onClick={closeMobile}>
+            <Link className="hk-btn hk-btn-primary" to={REGISTER_WITH_RETURN} onClick={closeMobile}>
               Зарегистрироваться
             </Link>
           </div>
@@ -163,9 +183,7 @@ export function HouseKitLandingPage() {
                 онлайн-сервисе.
               </p>
               <div className="hk-hero-ctas">
-                <Link className="hk-btn hk-btn-primary hk-btn-lg" to="/app">
-                  Начать проект
-                </Link>
+                <LandingStartProjectLink className="hk-btn hk-btn-primary hk-btn-lg" />
                 <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/demo">
                   Посмотреть демо
                 </Link>
@@ -320,7 +338,7 @@ export function HouseKitLandingPage() {
             <h2 id="hk-cta-title">Попробуйте HouseKit Pro для СИП-домов</h2>
             <p>Расчёт СИП-панелей, чертежи СИП-дома и спецификация СИП-дома — начните с демо или нового проекта.</p>
             <div className="hk-cta-btns">
-              <Link className="hk-btn hk-btn-primary hk-btn-lg" to="/register">
+              <Link className="hk-btn hk-btn-primary hk-btn-lg" to={REGISTER_WITH_RETURN}>
                 Зарегистрироваться
               </Link>
               <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/demo">

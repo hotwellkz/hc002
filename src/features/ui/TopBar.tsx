@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Keyboard, List, MoreHorizontal, Redo2, Save, Undo2 } from "lucide-react";
 
+import { useAuth } from "@/features/auth/AuthProvider";
 import { Editor2DScopeToolbar } from "@/features/ui/Editor2DScopeToolbar";
 import { Editor3DToolbar } from "@/features/ui/Editor3DToolbar";
 import { LayerToolbar } from "@/features/ui/LayerToolbar";
@@ -168,6 +170,10 @@ function TopBarOverflowMenu({
 }
 
 export function TopBar() {
+  const navigate = useNavigate();
+  const { user, profile } = useAuth();
+  const cloudWorkspace = useAppStore((s) => s.cloudWorkspace);
+  const cloudManualSavePhase = useAppStore((s) => s.cloudManualSavePhase);
   const isMobile = useMobileLayout();
   if (isMobile) {
     return <TopBarMobile />;
@@ -205,8 +211,40 @@ export function TopBar() {
     };
   }, []);
 
+  const effectiveUid = user?.uid ?? profile?.id ?? null;
+
+  const cloudStatusText = (() => {
+    if (!cloudWorkspace) {
+      return null;
+    }
+    if (cloudManualSavePhase === "saving") {
+      return "Сохраняем…";
+    }
+    if (cloudManualSavePhase === "error") {
+      return "Ошибка сохранения";
+    }
+    if (dirty) {
+      return "Есть несохранённые изменения";
+    }
+    return "Сохранено";
+  })();
+
+  const onCloudSave = () => {
+    if (!effectiveUid) {
+      return;
+    }
+    void useAppStore.getState().saveCurrentProjectToCloud(effectiveUid, profile?.activeCompanyId ?? null);
+  };
+
+  const saveFileLabel = cloudWorkspace ? "Сохранить файл" : "Сохранить…";
+
   const overflowActions: OverflowAction[] = [];
   if (mode === "medium" || mode === "narrow" || mode === "compact") {
+    overflowActions.push({
+      id: "projects",
+      label: "Проекты",
+      onClick: () => navigate("/app/projects"),
+    });
     overflowActions.push({
       id: "new",
       label: "Новый",
@@ -222,6 +260,13 @@ export function TopBar() {
       label: "Демо",
       onClick: () => projectCommands.bootstrapDemo(),
     });
+    if (cloudWorkspace && effectiveUid) {
+      overflowActions.push({
+        id: "cloudSave",
+        label: "Сохранить в облако",
+        onClick: onCloudSave,
+      });
+    }
   }
   if (mode === "compact") {
     overflowActions.push({
@@ -240,6 +285,7 @@ export function TopBar() {
   const showTextFileButtons = mode === "wide" || mode === "comfortable";
   const saveAsIconOnly = mode === "compact";
   const showHotkeysAndProfiles = mode !== "compact";
+  const showCloudExtras = mode === "wide" || mode === "comfortable";
 
   return (
     <header className="shell-top shell-top--with-mode-tabs" data-topbar-mode={mode}>
@@ -263,6 +309,21 @@ export function TopBar() {
         ) : null}
       </div>
       <div className="shell-top-right row tb-group tb-group--right">
+        {showCloudExtras ? (
+          <Link className="btn tb-cloud-link" to="/app/projects">
+            Проекты
+          </Link>
+        ) : null}
+        {showCloudExtras && cloudWorkspace && cloudStatusText ? (
+          <span className="tb-cloud-status" title={cloudStatusText}>
+            {cloudStatusText}
+          </span>
+        ) : null}
+        {showCloudExtras && cloudWorkspace && effectiveUid ? (
+          <button type="button" className="btn tb-cloud-save" onClick={onCloudSave}>
+            Сохранить в облако
+          </button>
+        ) : null}
         <button
           type="button"
           className="tb-prof-btn"
@@ -320,15 +381,15 @@ export function TopBar() {
           <button
             type="button"
             className="tb-prof-btn"
-            title="Сохранить…"
-            aria-label="Сохранить"
+            title={saveFileLabel}
+            aria-label={saveFileLabel}
             onClick={() => void projectCommands.save()}
           >
             <LucideToolIcon icon={Save} className="tb-keys-icon" />
           </button>
         ) : (
           <button type="button" className="btn" onClick={() => void projectCommands.save()}>
-            Сохранить…
+            {saveFileLabel}
           </button>
         )}
         {showTextFileButtons ? (

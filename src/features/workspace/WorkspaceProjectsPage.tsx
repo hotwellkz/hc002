@@ -1,17 +1,153 @@
-import { Link } from "react-router-dom";
+import { type FormEvent, useCallback, useEffect, useId, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
+import type { ProjectMeta } from "@/core/company/orgTypes";
 import { useAuth } from "@/features/auth/AuthProvider";
+import {
+  createProject,
+  deleteProject,
+  listProjects,
+  renameProject,
+} from "@/features/workspace/projectCloudService";
 
 import "./workspaceProjects.css";
 
-/**
- * Будущая домашняя страница облачных проектов. Маршрут /app/projects — без ссылки в основной навигации редактора.
- * TODO: список ProjectMeta из Firestore, кнопка «Новый проект» с созданием документа и открытием в /app.
- */
-export function WorkspaceProjectsPage() {
-  const { profile, activeCompany, isAuthenticated, status } = useAuth();
+function formatRuDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) {
+      return iso;
+    }
+    return new Intl.DateTimeFormat("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(d);
+  } catch {
+    return iso;
+  }
+}
 
-  const companyLabel = activeCompany?.name ?? "—";
+function editorLabel(updatedBy: string, currentUserId: string | null): string {
+  if (!currentUserId) {
+    return updatedBy;
+  }
+  if (updatedBy === currentUserId) {
+    return "Вы";
+  }
+  if (updatedBy.length <= 12) {
+    return updatedBy;
+  }
+  return `${updatedBy.slice(0, 8)}…`;
+}
+
+export function WorkspaceProjectsPage() {
+  const navigate = useNavigate();
+  const modalTitleId = useId();
+  const { profile, activeCompany, isAuthenticated, status, user } = useAuth();
+
+  const companyId = profile?.activeCompanyId ?? null;
+  const userId = user?.uid ?? profile?.id ?? null;
+  const companyName = activeCompany?.name ?? "—";
+
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("Новый проект");
+  const [createBusy, setCreateBusy] = useState(false);
+
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<ProjectMeta | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!companyId || !isAuthenticated) {
+      setProjects([]);
+      setListLoading(false);
+      return;
+    }
+    setListLoading(true);
+    setListError(null);
+    try {
+      const rows = await listProjects(companyId, companyId);
+      setProjects(rows);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Не удалось загрузить проекты.");
+    } finally {
+      setListLoading(false);
+    }
+  }, [companyId, isAuthenticated]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const openCreate = () => {
+    setCreateName("Новый проект");
+    setCreateOpen(true);
+  };
+
+  const onSubmitCreate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!companyId || !userId) {
+      return;
+    }
+    setCreateBusy(true);
+    setListError(null);
+    try {
+      const meta = await createProject(companyId, userId, createName.trim() || "Новый проект", companyId);
+      setCreateOpen(false);
+      navigate(`/app?projectId=${encodeURIComponent(meta.id)}`);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Не удалось создать проект.");
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const openRename = (m: ProjectMeta) => {
+    setRenameTarget(m);
+    setRenameValue(m.name);
+    setRenameOpen(true);
+  };
+
+  const onSubmitRename = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!companyId || !renameTarget) {
+      return;
+    }
+    setRenameBusy(true);
+    setListError(null);
+    try {
+      await renameProject(companyId, renameTarget.id, renameValue, companyId);
+      setRenameOpen(false);
+      setRenameTarget(null);
+      await refresh();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Не удалось переименовать проект.");
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const onDelete = async (m: ProjectMeta) => {
+    if (!companyId) {
+      return;
+    }
+    const ok = window.confirm(`Удалить проект «${m.name}»? Это действие нельзя отменить.`);
+    if (!ok) {
+      return;
+    }
+    setListError(null);
+    try {
+      await deleteProject(companyId, m.id, companyId);
+      await refresh();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Не удалось удалить проект.");
+    }
+  };
 
   return (
     <div className="ws-projects-page">
@@ -22,7 +158,17 @@ export function WorkspaceProjectsPage() {
             <span className="ws-projects-brand-sub">by HotWell.kz</span>
           </Link>
 
-          <h1 className="ws-projects-title">Проекты</h1>
+          <header className="ws-projects-header">
+            <div>
+              <h1 className="ws-projects-title">Проекты</h1>
+              <p className="ws-projects-subtitle">Рабочее пространство: {companyName}</p>
+            </div>
+            {isAuthenticated && companyId && userId ? (
+              <button type="button" className="ws-projects-btn ws-projects-btn--primary" onClick={openCreate}>
+                Новый проект
+              </button>
+            ) : null}
+          </header>
 
           {status === "loading" ? (
             <p className="ws-projects-muted">Загрузка…</p>
@@ -33,32 +179,142 @@ export function WorkspaceProjectsPage() {
               </Link>
               , чтобы увидеть проекты компании.
             </p>
+          ) : !companyId ? (
+            <p className="ws-projects-muted">Не выбрана активная компания. Обновите профиль или войдите снова.</p>
           ) : (
             <>
-              <p className="ws-projects-company">
-                Компания: <strong>{companyLabel}</strong>
-              </p>
               {profile?.email ? (
-                <p className="ws-projects-muted">Вы вошли как {profile.email}</p>
+                <p className="ws-projects-muted ws-projects-user-line">Вы вошли как {profile.email}</p>
               ) : null}
-              <button type="button" className="ws-projects-btn" disabled>
-                Новый проект
-              </button>
-              <p className="ws-projects-note">
-                Облачное сохранение проектов будет подключено на следующем этапе.
-              </p>
-              <ul className="ws-projects-list" aria-label="Список проектов">
-                <li className="ws-projects-empty">Пока нет проектов в облаке</li>
-              </ul>
+
+              {listError ? (
+                <div className="ws-projects-alert" role="alert">
+                  {listError}
+                </div>
+              ) : null}
+
+              {listLoading ? (
+                <p className="ws-projects-muted">Загружаем список…</p>
+              ) : projects.length === 0 ? (
+                <div className="ws-projects-empty-block">
+                  <p className="ws-projects-empty-title">Пока нет проектов</p>
+                  <p className="ws-projects-empty-text">Создайте первый проект СИП-дома</p>
+                  <button type="button" className="ws-projects-btn ws-projects-btn--primary ws-projects-btn--large" onClick={openCreate}>
+                    Новый проект
+                  </button>
+                </div>
+              ) : (
+                <ul className="ws-projects-grid" aria-label="Список проектов">
+                  {projects.map((p) => (
+                    <li key={p.id}>
+                      <article className="ws-project-card">
+                        <div className="ws-project-card-top">
+                          <h2 className="ws-project-card-title">{p.name}</h2>
+                          <details className="ws-project-details">
+                            <summary className="ws-project-details-summary" aria-label="Действия с проектом">
+                              ⋮
+                            </summary>
+                            <div className="ws-project-details-menu" role="menu">
+                              <button type="button" className="ws-project-menu-item" role="menuitem" onClick={() => openRename(p)}>
+                                Переименовать
+                              </button>
+                              <button type="button" className="ws-project-menu-item ws-project-menu-item--danger" role="menuitem" onClick={() => void onDelete(p)}>
+                                Удалить
+                              </button>
+                            </div>
+                          </details>
+                        </div>
+                        <p className="ws-project-meta">
+                          Последнее изменение: <strong>{formatRuDate(p.updatedAt)}</strong>
+                        </p>
+                        <p className="ws-project-meta">Кто изменил: {editorLabel(p.updatedBy, userId)}</p>
+                        <button
+                          type="button"
+                          className="ws-projects-btn ws-projects-btn--primary ws-project-open"
+                          onClick={() => navigate(`/app?projectId=${encodeURIComponent(p.id)}`)}
+                        >
+                          Открыть
+                        </button>
+                      </article>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               <p className="ws-projects-footer-link">
                 <Link className="ws-projects-link" to="/app">
-                  Открыть редактор
+                  Открыть редактор без облачного проекта
                 </Link>
               </p>
             </>
           )}
         </article>
       </div>
+
+      {createOpen ? (
+        <div className="ws-modal-root" role="presentation">
+          <button type="button" className="ws-modal-backdrop" aria-label="Закрыть" onClick={() => !createBusy && setCreateOpen(false)} />
+          <div className="ws-modal" role="dialog" aria-modal="true" aria-labelledby={modalTitleId}>
+            <h2 id={modalTitleId} className="ws-modal-title">
+              Новый проект
+            </h2>
+            <form className="ws-modal-form" onSubmit={(e) => void onSubmitCreate(e)}>
+              <label className="ws-modal-label">
+                Название проекта
+                <input
+                  className="ws-modal-input"
+                  value={createName}
+                  onChange={(ev) => setCreateName(ev.target.value)}
+                  autoFocus
+                  disabled={createBusy}
+                />
+              </label>
+              <div className="ws-modal-actions">
+                <button type="button" className="ws-projects-btn" onClick={() => setCreateOpen(false)} disabled={createBusy}>
+                  Отмена
+                </button>
+                <button type="submit" className="ws-projects-btn ws-projects-btn--primary" disabled={createBusy}>
+                  {createBusy ? "Создаём…" : "Создать"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {renameOpen && renameTarget ? (
+        <div className="ws-modal-root" role="presentation">
+          <button type="button" className="ws-modal-backdrop" aria-label="Закрыть" onClick={() => !renameBusy && setRenameOpen(false)} />
+          <div className="ws-modal" role="dialog" aria-modal="true" aria-labelledby={`${modalTitleId}-rename`}>
+            <h2 id={`${modalTitleId}-rename`} className="ws-modal-title">
+              Переименовать проект
+            </h2>
+            <form
+              className="ws-modal-form"
+              onSubmit={(e) => void onSubmitRename(e)}
+            >
+              <label className="ws-modal-label">
+                Название проекта
+                <input
+                  className="ws-modal-input"
+                  value={renameValue}
+                  onChange={(ev) => setRenameValue(ev.target.value)}
+                  autoFocus
+                  disabled={renameBusy}
+                />
+              </label>
+              <div className="ws-modal-actions">
+                <button type="button" className="ws-projects-btn" onClick={() => setRenameOpen(false)} disabled={renameBusy}>
+                  Отмена
+                </button>
+                <button type="submit" className="ws-projects-btn ws-projects-btn--primary" disabled={renameBusy}>
+                  {renameBusy ? "Сохраняем…" : "Сохранить"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,14 +1,17 @@
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { signUpWithCompany } from "./authActions";
 import { friendlyAuthError } from "./authErrors";
 import { DEFAULT_COMPANY_NAME } from "./firestoreOrgWrites";
+import { sanitizeInternalReturnUrl } from "./returnUrl";
 
 import "./AuthPages.css";
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnUrl = sanitizeInternalReturnUrl(searchParams.get("returnUrl")) ?? "/app/projects";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +31,7 @@ export function RegisterPage() {
         password,
         companyName: cn,
       });
-      void navigate("/app", { replace: true });
+      void navigate(returnUrl, { replace: true });
     } catch (err) {
       setError(friendlyAuthError(err));
     } finally {

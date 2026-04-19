@@ -1,0 +1,22 @@
+.editor-cloud-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 22, 0.72);
+  backdrop-filter: blur(6px);
+  color: rgba(241, 245, 249, 0.95);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.editor-cloud-loader-error {
+  max-width: 360px;
+  text-align: center;
+  padding: 20px;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}

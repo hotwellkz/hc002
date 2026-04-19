@@ -249,7 +249,7 @@ import { setLastOpenedProjectId } from "@/data/lastOpenedProjectId";
 import { createProjectInDb, updateProjectSnapshot } from "@/data/projectFirestoreRepository";
 import { syncProjectToFirestore } from "@/data/projectFirestoreSync";
 import { tryGetFirestoreDb } from "@/firebase/app";
-import { deserializeProject } from "@/core/io/serialization";
+import { deserializeProject, serializeProject } from "@/core/io/serialization";
 import { pickAndLoadProject, saveProjectWithFallback } from "@/core/io/projectFile";
 import { validateProjectSchema } from "@/core/validation/validateProjectSchema";
 import type { Editor3dPickPayload } from "@/core/domain/editor3dPickPayload";
@@ -577,6 +577,10 @@ interface AppState {
   readonly persistenceReady: boolean;
   readonly persistenceStatus: "idle" | "loading" | "saving" | "saved" | "error";
   readonly firestoreEnabled: boolean;
+  /** Открытый облачный проект (companies/.../projects). */
+  readonly cloudWorkspace: { readonly companyId: string; readonly projectId: string } | null;
+  /** Ручное сохранение в облако (не автосейв). */
+  readonly cloudManualSavePhase: "idle" | "saving" | "error";
   /** Размер canvas 2D для привязки и модалки координат (не персистится). */
   readonly viewportCanvas2dPx: { readonly width: number; readonly height: number } | null;
   /** Режим редактирования смещения выбранного проёма по размерным линиям. */
@@ -686,7 +690,13 @@ interface AppActions {
   createNewProject: () => void;
   openProject: () => Promise<void>;
   saveProject: () => Promise<void>;
-  importProjectJson: (json: string) => void;
+  importProjectJson: (json: string, opts?: { readonly skipLegacyFirestoreSync?: boolean }) => void;
+  applyCloudLoadedProject: (
+    project: Project,
+    ctx: { readonly companyId: string; readonly projectId: string },
+  ) => void;
+  clearCloudWorkspace: () => void;
+  saveCurrentProjectToCloud: (userId: string, activeCompanyId: string | undefined | null) => Promise<void>;
   /** Новые сущности плана в будущем создавать на активном слое. */
   getActiveLayerIdForNewEntities: () => string;
   createLayer: (input: { readonly name: string; readonly elevationMm: number; readonly domain?: LayerDomain }) => void;
@@ -1701,6 +1711,8 @@ export const useAppStore = create<AppStore>((set, get) => {
     persistenceReady: false,
     persistenceStatus: "loading",
     firestoreEnabled: false,
+    cloudWorkspace: null,
+    cloudManualSavePhase: "idle",
     viewportCanvas2dPx: null,
     openingMoveModeActive: false,
     wallDetailWallId: null,
@@ -8991,6 +9003,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           viewport3d: p.viewState.viewport3d,
           activeTab: p.viewState.activeTab,
           dirty: false,
+          cloudWorkspace: null,
+          cloudManualSavePhase: "idle",
           lastError: null,
           selectedEntityIds: [],
           history: initialProjectHistory,
@@ -9069,6 +9083,8 @@ export const useAppStore = create<AppStore>((set, get) => {
           viewport3d: p.viewState.viewport3d,
           activeTab: p.viewState.activeTab,
           dirty: false,
+          cloudWorkspace: null,
+          cloudManualSavePhase: "idle",
           lastError: null,
           selectedEntityIds: [],
           history: initialProjectHistory,
@@ -9152,6 +9168,8 @@ export const useAppStore = create<AppStore>((set, get) => {
         viewport3d: loaded.viewState.viewport3d,
         activeTab: loaded.viewState.activeTab,
         dirty: false,
+        cloudWorkspace: null,
+        cloudManualSavePhase: "idle",
         lastError: null,
         selectedEntityIds: [],
         history: initialProjectHistory,
@@ -9226,7 +9244,7 @@ export const useAppStore = create<AppStore>((set, get) => {
     },
 
     saveProject: async () => {
-      const { currentProject } = get();
+      const { currentProject, cloudWorkspace } = get();
       const { ok, errors } = validateProjectSchema(currentProject);
       if (!ok) {
         set({
@@ -9236,6 +9254,9 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
       await saveProjectWithFallback(currentProject);
       set({ dirty: false, lastError: null });
+      if (cloudWorkspace != null) {
+        return;
+      }
       const db = tryGetFirestoreDb();
       if (get().firestoreEnabled && db) {
         try {
@@ -9252,7 +9273,7 @@ export const useAppStore = create<AppStore>((set, get) => {
       }
     },
 
-    importProjectJson: (json) => {
+    importProjectJson: (json, opts) => {
       try {
         const loaded = deserializeProject(json);
         const { ok, errors } = validateProjectSchema(loaded);
@@ -9330,20 +9351,63 @@ export const useAppStore = create<AppStore>((set, get) => {
           floorInsulationAreaMode: "rectangle",
           activeTool: "select",
         });
-        void (async () => {
-          try {
-            await syncProjectToFirestore(loaded);
-          } catch (e) {
-            console.error(e);
-            set({
-              lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось синхронизировать с Firestore",
-              persistenceStatus: "error",
-            });
-          }
-        })();
+        if (!opts?.skipLegacyFirestoreSync) {
+          void (async () => {
+            try {
+              await syncProjectToFirestore(loaded);
+            } catch (e) {
+              console.error(e);
+              set({
+                lastError: e instanceof Error ? `Firestore: ${e.message}` : "Не удалось синхронизировать с Firestore",
+                persistenceStatus: "error",
+              });
+            }
+          })();
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Ошибка импорта";
         set({ lastError: msg });
+      }
+    },
+
+    applyCloudLoadedProject: (project, ctx) => {
+      get().importProjectJson(serializeProject(project), { skipLegacyFirestoreSync: true });
+      set({
+        cloudWorkspace: ctx,
+        cloudManualSavePhase: "idle",
+        dirty: false,
+      });
+    },
+
+    clearCloudWorkspace: () => set({ cloudWorkspace: null, cloudManualSavePhase: "idle" }),
+
+    saveCurrentProjectToCloud: async (userId, activeCompanyId) => {
+      const ws = get().cloudWorkspace;
+      if (!ws) {
+        set({ lastError: "Нет привязки к облачному проекту." });
+        return;
+      }
+      if (!activeCompanyId || activeCompanyId !== ws.companyId) {
+        set({ lastError: "Нет доступа к компании для сохранения." });
+        return;
+      }
+      const { saveProject: saveCloud } = await import("@/features/workspace/projectCloudService");
+      set({ cloudManualSavePhase: "saving", lastError: null });
+      try {
+        const { currentProject } = get();
+        const { ok, errors } = validateProjectSchema(currentProject);
+        if (!ok) {
+          set({
+            cloudManualSavePhase: "error",
+            lastError: errors?.map((e) => e.message ?? "schema").join("; ") ?? "Ошибка схемы",
+          });
+          return;
+        }
+        await saveCloud(ws.companyId, ws.projectId, userId, currentProject, activeCompanyId);
+        set({ dirty: false, cloudManualSavePhase: "idle", lastError: null, infoMessage: "Проект сохранён в облаке." });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Ошибка сохранения в облако";
+        set({ cloudManualSavePhase: "error", lastError: msg });
       }
     },
   };
