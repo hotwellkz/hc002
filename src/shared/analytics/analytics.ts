@@ -1,10 +1,14 @@
 /**
  * Подключение Google Analytics 4 и Яндекс.Метрики.
  *
- * - ID берутся из VITE_GA_MEASUREMENT_ID и VITE_YANDEX_METRICA_ID.
- * - Если переменные пусты или невалидны — скрипты НЕ подключаются и события молча игнорируются.
- * - Все события из приложения проходят через trackEvent(name, params), которая
- *   рассылает их в обе системы (если они подключены).
+ * - GA: ID берётся из VITE_GA_MEASUREMENT_ID. Если пусто — GA не подключается.
+ * - Яндекс.Метрика: основной счётчик вшит инлайн в index.html (ID 108673725),
+ *   чтобы грузиться как можно раньше и успевать отправить просмотр даже при
+ *   мгновенном уходе со страницы. Этот модуль только подхватывает уже
+ *   инициализированный window.ym для trackEvent/trackPageView. Если по какой-то
+ *   причине снипета нет, но задан VITE_YANDEX_METRICA_ID — поднимаем счётчик
+ *   программно (legacy-сценарий).
+ * - Если ничего не подключено, trackEvent/trackPageView безопасно молчат.
  *
  * См. список поддерживаемых событий в analyticsConfig.ts (AnalyticsEventName).
  */
@@ -15,6 +19,12 @@ import {
   isValidGaMeasurementId,
   isValidYandexMetricaId,
 } from "./analyticsConfig";
+
+/**
+ * ID счётчика, встроенного инлайн-снипетом в index.html.
+ * Должен совпадать со значением в <script> блоке Yandex.Metrika counter.
+ */
+const INLINE_YANDEX_METRICA_ID = 108_673_725;
 
 let initDone = false;
 let gaId: string | null = null;
@@ -84,6 +94,18 @@ export function initAnalytics(): void {
     gaId = rawGa;
     bootstrapGa(rawGa);
   }
+
+  // Приоритет 1: счётчик уже поднят инлайн-снипетом в index.html.
+  // Тогда просто фиксируем ID (из env, если задан, иначе — дефолтный инлайн-ID),
+  // чтобы trackEvent/trackPageView ходили в уже работающий ym(), без повторного init.
+  const inlineYmReady =
+    typeof (window as unknown as { ym?: unknown }).ym === "function";
+  if (inlineYmReady) {
+    ymId = isValidYandexMetricaId(rawYm) ? Number(rawYm) : INLINE_YANDEX_METRICA_ID;
+    return;
+  }
+
+  // Приоритет 2 (legacy): инлайн-снипета нет, но задан env — поднимаем счётчик сами.
   if (isValidYandexMetricaId(rawYm)) {
     ymId = Number(rawYm);
     bootstrapYandex(ymId);

@@ -6,12 +6,14 @@ import { HouseKitLandingPage } from "@/features/marketing/HouseKitLandingPage";
 import { InviteAcceptPage } from "@/features/company/InviteAcceptPage";
 import { TeamPage } from "@/features/company/TeamPage";
 import { WorkspaceProjectsPage } from "@/features/workspace/WorkspaceProjectsPage";
+import { SeoRouteGuard } from "@/shared/seo/SeoRouteGuard";
 
 import { EditorAppView } from "./EditorAppView";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <SeoRouteGuard />
       <Routes>
         <Route path="/" element={<HouseKitLandingPage />} />
         <Route path="/app" element={<EditorAppView />} />

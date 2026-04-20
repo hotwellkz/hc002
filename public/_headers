@@ -1,0 +1,31 @@
+# HouseKit Pro — Netlify HTTP-заголовки.
+# Главный приоритет: приватные маршруты должны получать X-Robots-Tag: noindex, nofollow
+# на уровне HTTP, до исполнения JS. Это страхует от случаев, когда краулер не запускает
+# React (тогда он видит общий index.html, который без заголовка помечен index,follow).
+
+/app
+  X-Robots-Tag: noindex, nofollow
+/app/*
+  X-Robots-Tag: noindex, nofollow
+/login
+  X-Robots-Tag: noindex, nofollow
+/register
+  X-Robots-Tag: noindex, nofollow
+/invite/*
+  X-Robots-Tag: noindex, nofollow
+/demo
+  X-Robots-Tag: noindex, nofollow
+
+# Разумный кэш для неизменяемых брендовых ассетов.
+/og-image.png
+  Cache-Control: public, max-age=604800, must-revalidate
+/og-image.svg
+  Cache-Control: public, max-age=604800, must-revalidate
+/favicon.svg
+  Cache-Control: public, max-age=604800, must-revalidate
+
+# Базовые security-заголовки для всех ответов.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
