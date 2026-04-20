@@ -54,6 +54,7 @@ export function TopBarMobile() {
 
   const companyIdForCloud = profile?.activeCompanyId ?? null;
   const canShowCloudControls = isAuthenticated && !isDemo && !!companyIdForCloud;
+  const isViewerRole = canShowCloudControls && activeCompanyMember?.role === "viewer";
 
   const onCloudSave = () => {
     if (!effectiveUid || !canCloudPersist || !companyIdForCloud) {
@@ -101,6 +102,7 @@ export function TopBarMobile() {
             {name}
             {dirty ? " *" : ""}
           </span>
+          {isViewerRole ? <span className="tb-readonly-badge">Только просмотр</span> : null}
         </div>
         <div className="tb-mobile-actions">
           <button

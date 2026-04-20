@@ -144,6 +144,29 @@ export async function createCompanyWorkspaceForExistingUser(
 }
 
 /**
+ * Создаёт users/{uid} без новой компании — для пользователей,
+ * которые присоединяются к существующей компании по приглашению.
+ * activeCompanyId поставит сам acceptCompanyInvite в той же транзакции.
+ */
+export async function createInvitedUserProfile(
+  db: Firestore,
+  user: User,
+  displayName: string,
+): Promise<void> {
+  const uid = user.uid;
+  const email = user.email ?? "";
+  const profile: UserProfile = {
+    id: uid,
+    email,
+    name: displayName.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+  const batch = writeBatch(db);
+  batch.set(doc(db, "users", uid), profile);
+  await batch.commit();
+}
+
+/**
  * Первый вход через Google: если профиля нет — создаём рабочее пространство с именем по умолчанию.
  */
 export async function ensureGoogleUserHasWorkspace(db: Firestore, user: User): Promise<void> {

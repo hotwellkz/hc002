@@ -48,7 +48,7 @@ function emit(): void {
   listeners.forEach((l) => l());
 }
 
-export function mockGetSession(): { profile: UserProfile; company: Company } | null {
+export function mockGetSession(): { profile: UserProfile; company: Company | null } | null {
   const raw = sessionStorage.getItem("hk_mock_session_uid");
   if (!raw) {
     return null;
@@ -58,6 +58,11 @@ export function mockGetSession(): { profile: UserProfile; company: Company } | n
   if (!rec) {
     sessionStorage.removeItem("hk_mock_session_uid");
     return null;
+  }
+  // Промежуточное состояние: пользователь зарегистрирован по приглашению,
+  // но accept ещё не выставил активную компанию.
+  if (!rec.profile.activeCompanyId || !rec.company.id) {
+    return { profile: rec.profile, company: null };
   }
   return { profile: rec.profile, company: rec.company };
 }
@@ -119,6 +124,55 @@ export async function mockSignUpWithCompany(input: {
   } catch {
     /* ignore quota */
   }
+  sessionStorage.setItem("hk_mock_session_uid", email);
+  emit();
+}
+
+/**
+ * Регистрация без создания компании — для приглашённых пользователей.
+ * Компанию подключит mockJoinInvitedCompany через acceptCompanyInvite.
+ */
+export async function mockSignUpInvitedUser(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<void> {
+  const email = input.email.trim().toLowerCase();
+  if (!email || !input.password) {
+    throw new Error("Заполните email и пароль.");
+  }
+  if (input.password.length < 6) {
+    throw new Error("Пароль слишком слабый. Используйте не менее 6 символов.");
+  }
+  const store = readStore();
+  if (store.users[email]) {
+    // Не создаём заново — просто переходим в режим логина для существующего пользователя.
+    sessionStorage.setItem("hk_mock_session_uid", email);
+    emit();
+    return;
+  }
+  const uid = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const profile: UserProfile = {
+    id: uid,
+    email,
+    name: input.name.trim() || undefined,
+    createdAt: now,
+  };
+  // У приглашённого пользователя компании ещё нет — заполним заглушку, accept выставит активную.
+  const placeholderCompany: Company = {
+    id: "",
+    name: "",
+    ownerUserId: uid,
+    createdAt: now,
+    plan: "beta",
+  };
+  store.users[email] = {
+    password: input.password,
+    profile,
+    company: placeholderCompany,
+  };
+  writeStore(store);
   sessionStorage.setItem("hk_mock_session_uid", email);
   emit();
 }

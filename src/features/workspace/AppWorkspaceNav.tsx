@@ -1,10 +1,14 @@
-import { Link, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 
 import { signOutEverywhere } from "@/features/auth/authActions";
 import { useAuth } from "@/features/auth/AuthProvider";
 
 import "./appWorkspaceNav.css";
 
+/**
+ * Вкладки рабочего пространства компании: Проекты / Команда.
+ * Активная вкладка определяется по текущему URL.
+ */
 export function AppWorkspaceNav() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -20,12 +24,28 @@ export function AppWorkspaceNav() {
 
   return (
     <nav className="app-ws-nav" aria-label="Рабочее пространство">
-      <Link className="app-ws-nav-link" to="/app/projects">
-        Проекты
-      </Link>
-      <Link className="app-ws-nav-link" to="/app/team">
-        Команда
-      </Link>
+      <div className="app-ws-tabs" role="tablist">
+        <NavLink
+          to="/app/projects"
+          className={({ isActive }) =>
+            isActive ? "app-ws-tab app-ws-tab--active" : "app-ws-tab"
+          }
+          role="tab"
+          end
+        >
+          Проекты
+        </NavLink>
+        <NavLink
+          to="/app/team"
+          className={({ isActive }) =>
+            isActive ? "app-ws-tab app-ws-tab--active" : "app-ws-tab"
+          }
+          role="tab"
+          end
+        >
+          Команда
+        </NavLink>
+      </div>
       <button type="button" className="app-ws-nav-logout" onClick={() => void onLogout()}>
         Выйти
       </button>

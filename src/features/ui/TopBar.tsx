@@ -240,6 +240,7 @@ export function TopBar() {
 
   const companyIdForCloud = profile?.activeCompanyId ?? null;
   const canShowCloudControls = isAuthenticated && !isDemo && !!companyIdForCloud;
+  const isViewerRole = canShowCloudControls && activeCompanyMember?.role === "viewer";
 
   const onCloudSave = () => {
     if (!effectiveUid || !canCloudPersist || !companyIdForCloud) {
@@ -329,6 +330,14 @@ export function TopBar() {
           {name}
           {dirty ? " *" : ""}
         </span>
+        {isViewerRole ? (
+          <span
+            className="tb-readonly-badge"
+            title="У вашей роли только просмотр. Сохранение и редактирование облачного проекта недоступны."
+          >
+            Только просмотр
+          </span>
+        ) : null}
       </div>
       <div className="shell-top-center shell-top-tools tb-group tb-group--center">
         {activeTab === "2d" ? (

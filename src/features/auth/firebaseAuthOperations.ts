@@ -15,6 +15,7 @@ import { tryGetFirestoreDb } from "@/firebase/app";
 
 import {
   createCompanyWorkspaceForNewUser,
+  createInvitedUserProfile,
   ensureGoogleUserHasWorkspace,
   loadCompany,
   loadCompanyMember,
@@ -49,6 +50,40 @@ export async function firebaseSignUpWithCompany(input: {
   }
   try {
     await createCompanyWorkspaceForNewUser(db, user, input.name, input.companyName);
+  } catch (e) {
+    try {
+      await user.delete();
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+  return user;
+}
+
+/**
+ * Регистрация нового пользователя без создания компании.
+ * Используется в потоке /register?invite=<token> — компания уже существует,
+ * пользователя добавит acceptCompanyInvite.
+ */
+export async function firebaseSignUpInvitedUser(input: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<User> {
+  const auth = tryGetFirebaseAuth();
+  const db = tryGetFirestoreDb() as Firestore | null;
+  if (!auth || !db) {
+    throw new Error("Firebase недоступен.");
+  }
+  const cred = await createUserWithEmailAndPassword(auth, input.email.trim(), input.password);
+  const user = cred.user;
+  const display = input.name.trim();
+  if (display.length > 0) {
+    await updateProfile(user, { displayName: display });
+  }
+  try {
+    await createInvitedUserProfile(db, user, input.name);
   } catch (e) {
     try {
       await user.delete();

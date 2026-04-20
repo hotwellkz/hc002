@@ -48,6 +48,41 @@ export function canEditCloudProjects(role: CompanyMember["role"] | undefined): b
   return role === "owner" || role === "admin" || role === "designer";
 }
 
+/**
+ * Кодирует пару (companyId, inviteId) в один url-safe токен.
+ * Используется для коротких приглашений вида /register?invite=<token>.
+ */
+export function encodeInviteToken(companyId: string, inviteId: string): string {
+  const raw = `${companyId}:${inviteId}`;
+  if (typeof btoa === "function") {
+    return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  return Buffer.from(raw, "utf-8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodeInviteToken(token: string): { readonly companyId: string; readonly inviteId: string } | null {
+  if (!token) {
+    return null;
+  }
+  try {
+    const padded = token.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (token.length % 4)) % 4);
+    const decoded =
+      typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("utf-8");
+    const idx = decoded.indexOf(":");
+    if (idx <= 0 || idx === decoded.length - 1) {
+      return null;
+    }
+    return { companyId: decoded.slice(0, idx), inviteId: decoded.slice(idx + 1) };
+  } catch {
+    return null;
+  }
+}
+
+export function buildInviteRegistrationUrl(origin: string, companyId: string, inviteId: string): string {
+  const token = encodeInviteToken(companyId, inviteId);
+  return `${origin}/register?invite=${token}`;
+}
+
 export function inviteRoleAllowedForActor(
   actorRole: CompanyMember["role"],
   targetRole: CompanyInvite["role"],

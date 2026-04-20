@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
       if (!s) {
         setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
       } else {
-        const activeCompanyMember = mockGetActiveCompanyMember(s.profile, s.company);
+        const activeCompanyMember = s.company ? mockGetActiveCompanyMember(s.profile, s.company) : null;
         setBundle({
           status: "ready",
           user: null,
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     if (!s) {
       setBundle({ status: "ready", user: null, profile: null, company: null, activeCompanyMember: null });
     } else {
-      const activeCompanyMember = mockGetActiveCompanyMember(s.profile, s.company);
+      const activeCompanyMember = s.company ? mockGetActiveCompanyMember(s.profile, s.company) : null;
       setBundle({
         status: "ready",
         user: null,

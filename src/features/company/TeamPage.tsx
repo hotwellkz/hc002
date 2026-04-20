@@ -5,6 +5,7 @@ import type { CompanyInvite, CompanyMember } from "@/core/company/orgTypes";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { AppWorkspaceNav } from "@/features/workspace/AppWorkspaceNav";
 import {
+  buildInviteRegistrationUrl,
   cancelCompanyInvite,
   canInviteEmployees,
   canManageTeam,
@@ -115,7 +116,7 @@ export function TeamPage() {
     try {
       const row = await createCompanyInvite(companyId, userId, inviteEmail, inviteRole);
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/invite/${encodeURIComponent(row.id)}?companyId=${encodeURIComponent(companyId)}`;
+      const url = buildInviteRegistrationUrl(origin, companyId, row.id);
       setInviteDoneUrl(url);
       await refresh();
     } catch (err) {
