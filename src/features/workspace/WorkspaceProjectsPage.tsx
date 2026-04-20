@@ -241,10 +241,16 @@ export function WorkspaceProjectsPage() {
               ) : projects.length === 0 ? (
                 <div className="ws-projects-empty-block">
                   <p className="ws-projects-empty-title">Пока нет проектов</p>
-                  <p className="ws-projects-empty-text">Создайте первый проект СИП-дома</p>
-                  <button type="button" className="ws-projects-btn ws-projects-btn--primary ws-projects-btn--large" onClick={openCreate}>
-                    Новый проект
-                  </button>
+                  <p className="ws-projects-empty-text">
+                    {canCreateProject
+                      ? "Создайте первый проект СИП-дома"
+                      : "У вашей роли только просмотр — дождитесь, пока проекты появятся у команды."}
+                  </p>
+                  {canCreateProject ? (
+                    <button type="button" className="ws-projects-btn ws-projects-btn--primary ws-projects-btn--large" onClick={openCreate}>
+                      Новый проект
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <ul className="ws-projects-grid" aria-label="Список проектов">
@@ -253,19 +259,21 @@ export function WorkspaceProjectsPage() {
                       <article className="ws-project-card">
                         <div className="ws-project-card-top">
                           <h2 className="ws-project-card-title">{p.name}</h2>
-                          <details className="ws-project-details">
-                            <summary className="ws-project-details-summary" aria-label="Действия с проектом">
-                              ⋮
-                            </summary>
-                            <div className="ws-project-details-menu" role="menu">
-                              <button type="button" className="ws-project-menu-item" role="menuitem" onClick={() => openRename(p)}>
-                                Переименовать
-                              </button>
-                              <button type="button" className="ws-project-menu-item ws-project-menu-item--danger" role="menuitem" onClick={() => void onDelete(p)}>
-                                Удалить
-                              </button>
-                            </div>
-                          </details>
+                          {canCreateProject ? (
+                            <details className="ws-project-details">
+                              <summary className="ws-project-details-summary" aria-label="Действия с проектом">
+                                ⋮
+                              </summary>
+                              <div className="ws-project-details-menu" role="menu">
+                                <button type="button" className="ws-project-menu-item" role="menuitem" onClick={() => openRename(p)}>
+                                  Переименовать
+                                </button>
+                                <button type="button" className="ws-project-menu-item ws-project-menu-item--danger" role="menuitem" onClick={() => void onDelete(p)}>
+                                  Удалить
+                                </button>
+                              </div>
+                            </details>
+                          ) : null}
                         </div>
                         <p className="ws-project-meta">
                           Последнее изменение: <strong>{formatRuDate(p.updatedAt)}</strong>

@@ -95,9 +95,28 @@ service cloud.firestore {
 
         allow read: if isMember(companyId);
 
-        allow update: if canManageTeam(companyId) && resource.data.role != 'owner';
+        // Owner меняет роли admin/designer/viewer.
+        // Admin — только designer/viewer. Владельца трогать нельзя, и нельзя
+        // повысить кого-либо до owner через обычный update.
+        allow update: if canManageTeam(companyId)
+          && resource.data.role != 'owner'
+          && (
+            (memberRole(companyId) == 'owner'
+              && request.resource.data.role in ['admin', 'designer', 'viewer'])
+            || (memberRole(companyId) == 'admin'
+              && resource.data.role in ['designer', 'viewer']
+              && request.resource.data.role in ['designer', 'viewer'])
+          );
 
-        allow delete: if canManageTeam(companyId) && resource.data.role != 'owner';
+        // Owner может удалять admin/designer/viewer. Admin — только
+        // designer/viewer. Владельца удалять нельзя.
+        allow delete: if canManageTeam(companyId)
+          && resource.data.role != 'owner'
+          && (
+            memberRole(companyId) == 'owner'
+            || (memberRole(companyId) == 'admin'
+              && resource.data.role in ['designer', 'viewer'])
+          );
       }
 
       match /invites/{inviteId} {

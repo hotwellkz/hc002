@@ -5,6 +5,7 @@ import { initProjectPersistence, setCloudHydrating } from "@/data/projectPersist
 import { useAuth } from "@/features/auth/AuthProvider";
 import { EditorCloudAuthBanner } from "@/features/auth/EditorCloudAuthBanner";
 import { EditorNoCompanyBanner } from "@/features/auth/EditorNoCompanyBanner";
+import { EditorReadOnlyBanner } from "@/features/auth/EditorReadOnlyBanner";
 import { canEditCloudProjects } from "@/features/company/companyTeamService";
 import { EditorCloudExportModal } from "@/features/workspace/EditorCloudExportModal";
 import { loadProject } from "@/features/workspace/projectCloudService";
@@ -117,6 +118,13 @@ export function EditorAppView() {
 
   const showCloudAuthHint = authStatus === "ready" && !isDemo && !isAuthenticated;
   const showNoCompanyBanner = authStatus === "ready" && !isDemo && isAuthenticated && !profile?.activeCompanyId;
+  const showReadOnlyBanner =
+    authStatus === "ready"
+    && !isDemo
+    && isAuthenticated
+    && !!profile?.activeCompanyId
+    && !!projectId
+    && activeCompanyMember?.role === "viewer";
 
   useEffect(() => {
     document.title = EDITOR_TITLE;
@@ -224,6 +232,7 @@ export function EditorAppView() {
     <>
       {showCloudAuthHint ? <EditorCloudAuthBanner /> : null}
       {showNoCompanyBanner ? <EditorNoCompanyBanner /> : null}
+      {showReadOnlyBanner ? <EditorReadOnlyBanner /> : null}
       {showCloudLoader ? (
         <div className="editor-cloud-loader" role="status" aria-live="polite">
           Загружаем проект…

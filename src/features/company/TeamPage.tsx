@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { CompanyInvite, CompanyMember } from "@/core/company/orgTypes";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { RoleSelect, type RoleOption } from "@/features/company/RoleSelect";
 import { AppWorkspaceNav } from "@/features/workspace/AppWorkspaceNav";
 import {
   buildInviteRegistrationUrl,
@@ -35,6 +36,13 @@ const INVITE_ROLE_LABELS: Record<CompanyInvite["role"], string> = {
   admin: "Администратор",
   designer: "Проектировщик",
   viewer: "Просмотр",
+};
+
+const ROLE_DESCRIPTIONS: Record<CompanyMember["role"], string> = {
+  owner: "Полный доступ, управление компанией и командой",
+  admin: "Управление командой и проектами, кроме владельца",
+  designer: "Создание и редактирование проектов",
+  viewer: "Только просмотр проектов, без изменений",
 };
 
 function formatRuDate(iso: string): string {
@@ -74,6 +82,7 @@ export function TeamPage() {
   const [inviteActionId, setInviteActionId] = useState<string | null>(null);
   const [inviteActionInfo, setInviteActionInfo] = useState<string | null>(null);
   const [showAcceptedHistory, setShowAcceptedHistory] = useState(false);
+  const [memberActionInfo, setMemberActionInfo] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!companyId || !isAuthenticated) {
@@ -146,13 +155,27 @@ export function TeamPage() {
     }
   };
 
-  const onChangeRole = async (targetUid: string, next: CompanyMember["role"]) => {
+  const onChangeRole = async (target: CompanyMember, next: CompanyMember["role"]) => {
     if (!companyId || !manage) {
+      setError("Недостаточно прав.");
+      return;
+    }
+    if (target.role === "owner") {
+      setError("Нельзя изменить роль владельца компании.");
+      return;
+    }
+    // Админ не может менять собственную роль на owner, а также не трогает владельца.
+    if (role === "admin" && next === "admin" && target.role !== "admin") {
+      // admin назначает другого admin — разрешено (менять designer/viewer → admin).
+    }
+    if (next === target.role) {
       return;
     }
     setError(null);
+    setMemberActionInfo(null);
     try {
-      await updateMemberRole(companyId, targetUid, next);
+      await updateMemberRole(companyId, target.userId, next);
+      setMemberActionInfo(`Роль изменена: ${target.email} — ${ROLE_LABELS[next]}.`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось изменить роль.");
@@ -161,6 +184,11 @@ export function TeamPage() {
 
   const onRemove = async (target: CompanyMember) => {
     if (!companyId || !userId || !manage) {
+      setError("Недостаточно прав.");
+      return;
+    }
+    if (target.role === "owner") {
+      setError("Нельзя удалить владельца компании.");
       return;
     }
     const ok = window.confirm(`Удалить ${target.email} из команды?`);
@@ -168,8 +196,10 @@ export function TeamPage() {
       return;
     }
     setError(null);
+    setMemberActionInfo(null);
     try {
       await removeCompanyMember(companyId, target.userId);
+      setMemberActionInfo(`Сотрудник удалён: ${target.email}.`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось удалить участника.");
@@ -285,6 +315,12 @@ export function TeamPage() {
                 </div>
               ) : null}
 
+              {memberActionInfo ? (
+                <div className="team-page-info" role="status" aria-live="polite">
+                  {memberActionInfo}
+                </div>
+              ) : null}
+
               {loading ? (
                 <p className="team-page-muted">Загружаем…</p>
               ) : (
@@ -298,36 +334,54 @@ export function TeamPage() {
                               <h2 className="team-member-name">{m.displayName?.trim() || m.email}</h2>
                               <p className="team-member-email">{m.email}</p>
                             </div>
-                            {manage && m.role !== "owner" && m.userId !== userId ? (
-                              <details className="team-member-menu">
-                                <summary className="team-member-menu-sum" aria-label="Действия">
-                                  ⋮
-                                </summary>
-                                <div className="team-member-menu-body">
-                                  <label className="team-member-role-label">
-                                    Роль
-                                    <select
-                                      className="team-member-role-select"
-                                      value={m.role}
-                                      onChange={(ev) =>
-                                        void onChangeRole(m.userId, ev.target.value as CompanyMember["role"])
-                                      }
+                            {manage && m.role !== "owner" && m.userId !== userId ? (() => {
+                              const allowedRoleValues: CompanyMember["role"][] =
+                                role === "owner"
+                                  ? ["admin", "designer", "viewer"]
+                                  : ["designer", "viewer"];
+                              const roleOptions: RoleOption<CompanyMember["role"]>[] = allowedRoleValues.map((r) => ({
+                                value: r,
+                                label: ROLE_LABELS[r],
+                                description: ROLE_DESCRIPTIONS[r],
+                              }));
+                              // Если текущая роль участника (например, admin) недоступна актёру admin —
+                              // добавляем её как disabled, чтобы видно было, что менять нельзя.
+                              if (!allowedRoleValues.includes(m.role)) {
+                                roleOptions.unshift({
+                                  value: m.role,
+                                  label: ROLE_LABELS[m.role],
+                                  description: ROLE_DESCRIPTIONS[m.role],
+                                  disabled: true,
+                                });
+                              }
+                              return (
+                                <details className="team-member-menu">
+                                  <summary className="team-member-menu-sum" aria-label="Действия">
+                                    ⋮
+                                  </summary>
+                                  <div className="team-member-menu-body">
+                                    <div className="team-member-role-row">
+                                      <span className="team-member-role-label-text">Роль</span>
+                                      <RoleSelect
+                                        value={m.role}
+                                        options={roleOptions}
+                                        onChange={(next) => void onChangeRole(m, next)}
+                                        ariaLabel={`Роль ${m.email}`}
+                                        size="sm"
+                                        align="end"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="team-page-btn team-page-btn--danger"
+                                      onClick={() => void onRemove(m)}
                                     >
-                                      {(Object.keys(ROLE_LABELS) as CompanyMember["role"][])
-                                        .filter((r) => r !== "owner")
-                                        .map((r) => (
-                                          <option key={r} value={r}>
-                                            {ROLE_LABELS[r]}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  </label>
-                                  <button type="button" className="team-page-btn team-page-btn--danger" onClick={() => void onRemove(m)}>
-                                    Удалить из команды
-                                  </button>
-                                </div>
-                              </details>
-                            ) : null}
+                                      Удалить из команды
+                                    </button>
+                                  </div>
+                                </details>
+                              );
+                            })() : null}
                           </div>
                           <p className="team-member-meta">
                             Роль: <strong>{ROLE_LABELS[m.role]}</strong>
@@ -491,23 +545,22 @@ export function TeamPage() {
                     disabled={inviteBusy}
                   />
                 </label>
-                <label className="team-modal-label">
-                  Роль
-                  <select
-                    className="team-modal-input"
+                <div className="team-modal-field">
+                  <RoleSelect
+                    label="Роль"
                     value={inviteRole}
-                    onChange={(ev) => setInviteRole(ev.target.value as CompanyInvite["role"])}
-                    disabled={inviteBusy}
-                  >
-                    {(Object.keys(INVITE_ROLE_LABELS) as CompanyInvite["role"][])
+                    options={(Object.keys(INVITE_ROLE_LABELS) as CompanyInvite["role"][])
                       .filter((r) => inviteRoleAllowedForActor(role ?? "viewer", r))
-                      .map((r) => (
-                        <option key={r} value={r}>
-                          {INVITE_ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                      .map<RoleOption<CompanyInvite["role"]>>((r) => ({
+                        value: r,
+                        label: INVITE_ROLE_LABELS[r],
+                        description: ROLE_DESCRIPTIONS[r],
+                      }))}
+                    onChange={(next) => setInviteRole(next)}
+                    disabled={inviteBusy}
+                    ariaLabel="Роль приглашённого сотрудника"
+                  />
+                </div>
                 <div className="team-modal-actions">
                   <button type="button" className="team-page-btn" onClick={() => setInviteOpen(false)} disabled={inviteBusy}>
                     Отмена
