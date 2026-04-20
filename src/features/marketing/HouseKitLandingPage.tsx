@@ -7,6 +7,7 @@ import { trackEvent } from "@/shared/analytics/analytics";
 import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import "./houseKitLanding.css";
+import "./seoArticlePage.css";
 
 const LANDING_TITLE = "HouseKit Pro — программа для проектирования СИП-домов онлайн";
 const LANDING_DESCRIPTION =
@@ -335,6 +336,63 @@ export function HouseKitLandingPage() {
             </p>
           </section>
 
+          <section className="hk-section" id="pillars" aria-labelledby="hk-pillars-title">
+            <h2 id="hk-pillars-title" className="hk-section-title">
+              Возможности HouseKit Pro для разных задач
+            </h2>
+            <p className="hk-section-lead">
+              Три направления, которые в HouseKit Pro работают в одной связке: проектирование СИП-дома, расчёт панелей и
+              формирование отчётов.
+            </p>
+            <div className="hk-seo-pillars-grid">
+              <Link
+                to="/sip-house-design-software"
+                className="hk-seo-pillar"
+                onClick={() =>
+                  trackEvent("click_seo_internal_link", {
+                    slug: "landing",
+                    to: "/sip-house-design-software",
+                    placement: "pillars",
+                  })
+                }
+              >
+                <h3>Проектирование СИП-домов</h3>
+                <p>2D-план, 3D-модель, стены, крыша и стропильная система в одной программе.</p>
+                <span className="hk-seo-pillar-cta">Подробнее</span>
+              </Link>
+              <Link
+                to="/sip-panel-calculator"
+                className="hk-seo-pillar"
+                onClick={() =>
+                  trackEvent("click_seo_internal_link", {
+                    slug: "landing",
+                    to: "/sip-panel-calculator",
+                    placement: "pillars",
+                  })
+                }
+              >
+                <h3>Расчёт СИП-панелей</h3>
+                <p>Раскладка панелей, размеры, ведомость и данные для производства — из модели дома.</p>
+                <span className="hk-seo-pillar-cta">Подробнее</span>
+              </Link>
+              <Link
+                to="/reports"
+                className="hk-seo-pillar"
+                onClick={() =>
+                  trackEvent("click_seo_internal_link", {
+                    slug: "landing",
+                    to: "/reports",
+                    placement: "pillars",
+                  })
+                }
+              >
+                <h3>PDF-отчёты</h3>
+                <p>Комплекты листов и спецификации СИП-дома для цеха, монтажа и заказчика.</p>
+                <span className="hk-seo-pillar-cta">Подробнее</span>
+              </Link>
+            </div>
+          </section>
+
           <section className="hk-section" id="features" aria-labelledby="hk-features-title">
             <h2 id="hk-features-title" className="hk-section-title">
               Возможности HouseKit Pro
@@ -478,6 +536,44 @@ export function HouseKitLandingPage() {
       <footer className="hk-footer">
         <div className="hk-footer-inner">
           <div className="hk-footer-brand">HouseKit Pro by HotWell.kz</div>
+          <nav className="hk-footer-seo-nav" aria-label="SEO-навигация">
+            <Link
+              to="/sip-house-design-software"
+              onClick={() =>
+                trackEvent("click_seo_internal_link", {
+                  slug: "landing",
+                  to: "/sip-house-design-software",
+                  placement: "footer",
+                })
+              }
+            >
+              Проектирование СИП-домов
+            </Link>
+            <Link
+              to="/sip-panel-calculator"
+              onClick={() =>
+                trackEvent("click_seo_internal_link", {
+                  slug: "landing",
+                  to: "/sip-panel-calculator",
+                  placement: "footer",
+                })
+              }
+            >
+              Расчёт СИП-панелей
+            </Link>
+            <Link
+              to="/reports"
+              onClick={() =>
+                trackEvent("click_seo_internal_link", {
+                  slug: "landing",
+                  to: "/reports",
+                  placement: "footer",
+                })
+              }
+            >
+              PDF-отчёты
+            </Link>
+          </nav>
           <div>
             <a href="https://housekit.pro" rel="noreferrer">
               housekit.pro

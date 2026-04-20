@@ -1,0 +1,314 @@
+/* SEO article pages — дополнение к houseKitLanding.css.
+   Всё в том же dark Glass Morphism 2.0, cyan accent. */
+
+/* ——— Breadcrumbs ——— */
+.seo-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 4px;
+  font-size: 0.85rem;
+  color: var(--hk-muted);
+}
+
+.seo-breadcrumbs a {
+  color: var(--hk-muted);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.seo-breadcrumbs a:hover {
+  color: var(--hk-accent);
+  border-color: var(--hk-accent-dim);
+}
+
+.seo-breadcrumbs [aria-current="page"] {
+  color: rgba(226, 232, 240, 0.92);
+  font-weight: 500;
+}
+
+.seo-breadcrumbs span[aria-hidden] {
+  color: rgba(148, 163, 184, 0.5);
+}
+
+/* ——— Hero overrides ——— */
+.seo-hero h1 {
+  font-size: clamp(1.75rem, 4.2vw, 2.4rem);
+}
+
+.seo-hero-highlights {
+  padding: 24px 22px;
+}
+
+.seo-hero-highlights ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+  position: relative;
+}
+
+.seo-hero-highlights li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.seo-hero-bullet {
+  color: var(--hk-accent);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+  transform: translateY(2px);
+}
+
+/* ——— Numbered steps ——— */
+.seo-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  counter-reset: seo-steps;
+}
+
+@media (min-width: 900px) {
+  .seo-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.seo-steps-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: var(--hk-glass-bg);
+  border: 1px solid var(--hk-glass-border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.seo-steps-num {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 0.95rem;
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  color: rgba(224, 249, 255, 0.98);
+  letter-spacing: 0.02em;
+}
+
+.seo-steps-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.seo-steps-body h3 {
+  margin: 4px 0 6px;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--hk-text);
+}
+
+.seo-steps-body p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--hk-muted);
+}
+
+/* ——— Bullets (audience / outcomes) ——— */
+.seo-bullets-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.seo-bullets-item {
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.seo-bullets-item::before {
+  content: "✓";
+  color: var(--hk-accent);
+  font-weight: 700;
+  margin-right: 12px;
+  font-size: 0.95rem;
+}
+
+/* ——— Related links ——— */
+.seo-related-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 46px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.seo-related-card:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+
+.seo-related-card h3 {
+  color: var(--hk-text);
+}
+
+.seo-related-card p {
+  color: var(--hk-muted);
+}
+
+.seo-related-arrow {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  color: var(--hk-accent);
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.seo-related-card:hover .seo-related-arrow {
+  transform: translateX(4px);
+}
+
+/* ——— Footer (SEO-навигация) ——— */
+.seo-footer-inner {
+  gap: 12px;
+}
+
+.seo-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 18px;
+  font-size: 0.88rem;
+}
+
+.seo-footer-nav a {
+  color: rgba(226, 232, 240, 0.92);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.seo-footer-nav a:hover {
+  color: var(--hk-accent);
+  border-color: var(--hk-accent-dim);
+}
+
+/* ——— Landing: блок SEO-возможностей ——— */
+.hk-seo-pillars-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .hk-seo-pillars-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.hk-seo-pillar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 22px 44px;
+  border-radius: 16px;
+  background: var(--hk-glass-bg);
+  border: 1px solid var(--hk-glass-border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hk-seo-pillar:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+
+.hk-seo-pillar h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--hk-text);
+}
+
+.hk-seo-pillar p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--hk-muted);
+}
+
+.hk-seo-pillar-cta {
+  position: absolute;
+  left: 22px;
+  bottom: 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--hk-accent);
+}
+
+.hk-seo-pillar-cta::after {
+  content: " →";
+  transition: transform 0.15s ease;
+}
+
+/* Landing footer nav — лёгкая подстройка (ширина) */
+.hk-footer-seo-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 16px;
+  font-size: 0.86rem;
+  margin-top: 4px;
+}
+
+.hk-footer-seo-nav a {
+  color: rgba(226, 232, 240, 0.9);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.hk-footer-seo-nav a:hover {
+  color: var(--hk-accent);
+  border-color: var(--hk-accent-dim);
+}

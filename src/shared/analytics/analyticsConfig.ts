@@ -26,6 +26,11 @@ export type AnalyticsEventName =
   | "click_faq_item"
   | "registration_success"
   | "create_project"
-  | "open_demo";
+  | "open_demo"
+  // Публичные SEO-страницы (/sip-house-design-software, /sip-panel-calculator, /reports).
+  | "click_seo_start_project"
+  | "click_seo_demo"
+  | "click_seo_internal_link"
+  | "click_seo_faq_item";
 
 export type AnalyticsEventParams = Readonly<Record<string, string | number | boolean | null>>;

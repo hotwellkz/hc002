@@ -22,6 +22,7 @@ describe("isPrivateRoute", () => {
   it("публичные маркетинговые страницы — индексируем", () => {
     expect(isPrivateRoute("/sip-house-design-software")).toBe(false);
     expect(isPrivateRoute("/sip-panel-calculator")).toBe(false);
+    expect(isPrivateRoute("/reports")).toBe(false);
     expect(isPrivateRoute("/for-construction-companies")).toBe(false);
   });
 });

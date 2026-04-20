@@ -10,8 +10,17 @@ import { applyDocumentSeo, type DocumentSeoInput } from "./documentSeo";
  * корректные title/description и noindex для приватных маршрутов.
  */
 export function useDocumentSeo(input: DocumentSeoInput): void {
-  const { title, description, canonical, robots } = input;
+  const { title, description, canonical, robots, ogTitle, ogDescription, ogImage, ogUrl } = input;
   useEffect(() => {
-    return applyDocumentSeo({ title, description, canonical, robots });
-  }, [title, description, canonical, robots]);
+    return applyDocumentSeo({
+      title,
+      description,
+      canonical,
+      robots,
+      ogTitle,
+      ogDescription,
+      ogImage,
+      ogUrl,
+    });
+  }, [title, description, canonical, robots, ogTitle, ogDescription, ogImage, ogUrl]);
 }
