@@ -22,6 +22,7 @@ import {
   removeCompanyMember,
   updateMemberRole,
 } from "@/features/company/companyTeamService";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import "./teamPage.css";
 
@@ -58,6 +59,11 @@ function formatRuDate(iso: string): string {
 }
 
 export function TeamPage() {
+  useDocumentSeo({
+    title: "Команда — HouseKit Pro",
+    robots: "noindex",
+  });
+
   const modalId = useId();
   const { profile, activeCompany, isAuthenticated, status, user, activeCompanyMember } = useAuth();
 

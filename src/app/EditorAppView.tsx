@@ -12,6 +12,8 @@ import { loadProject } from "@/features/workspace/projectCloudService";
 import { projectCommands } from "@/features/project/commands";
 import { AppShell } from "@/features/ui/AppShell";
 import { ThemeRoot } from "@/features/ui/ThemeRoot";
+import { trackEvent } from "@/shared/analytics/analytics";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 import { useAppStore } from "@/store/useAppStore";
 
 import "./editorCloudLoader.css";
@@ -91,6 +93,7 @@ function useDemoQueryBootstrap(isDemo: boolean) {
         return;
       }
       ran = true;
+      trackEvent("open_demo");
       projectCommands.bootstrapDemo();
     };
     run();
@@ -126,9 +129,10 @@ export function EditorAppView() {
     && !!projectId
     && activeCompanyMember?.role === "viewer";
 
-  useEffect(() => {
-    document.title = EDITOR_TITLE;
-  }, []);
+  useDocumentSeo({
+    title: EDITOR_TITLE,
+    robots: "noindex",
+  });
 
   useEffect(() => {
     if (authStatus !== "ready") {

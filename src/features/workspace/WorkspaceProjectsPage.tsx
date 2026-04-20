@@ -11,6 +11,8 @@ import {
   listProjects,
   renameProject,
 } from "@/features/workspace/projectCloudService";
+import { trackEvent } from "@/shared/analytics/analytics";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import "./workspaceProjects.css";
 
@@ -46,6 +48,11 @@ export function WorkspaceProjectsPage() {
   const navigate = useNavigate();
   const modalTitleId = useId();
   const { profile, activeCompany, activeCompanyMember, isAuthenticated, status, user } = useAuth();
+
+  useDocumentSeo({
+    title: "Проекты — HouseKit Pro",
+    robots: "noindex",
+  });
 
   const companyId = profile?.activeCompanyId ?? null;
   const userId = user?.uid ?? profile?.id ?? null;
@@ -130,6 +137,7 @@ export function WorkspaceProjectsPage() {
       if (import.meta.env.DEV) {
         console.debug("[projects] create success", meta.id);
       }
+      trackEvent("create_project", { project_id: meta.id });
       setCreateOpen(false);
       navigate(`/app?projectId=${encodeURIComponent(meta.id)}`);
     } catch (err) {

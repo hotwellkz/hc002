@@ -5,11 +5,13 @@ import "@/styles/theme.css";
 import "@/styles/ui-primitives.css";
 
 import { AuthProvider } from "@/features/auth/AuthProvider";
+import { initAnalytics } from "@/shared/analytics/analytics";
 import { bootstrapThemeFromStorage } from "@/store/useUiThemeStore";
 
 import App from "./app/App";
 
 bootstrapThemeFromStorage();
+initAnalytics();
 
 if (import.meta.env.DEV) {
   void import("@/core/domain/lumberCutList").then((m) => {

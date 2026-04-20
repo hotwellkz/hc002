@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06080f"/>
+      <stop offset="0.45" stop-color="#0a1020"/>
+      <stop offset="1" stop-color="#070910"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0.18" cy="0.0" r="0.7">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.9" cy="0.1" r="0.55">
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0.18"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow1)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <g font-family="Inter, system-ui, sans-serif" fill="#f1f5f9">
+    <text x="80" y="120" font-size="22" letter-spacing="6" fill="#94a3b8" font-weight="600">HOUSEKIT PRO · BY HOTWELL.KZ</text>
+
+    <text x="80" y="245" font-size="64" font-weight="700" letter-spacing="-1.5">@>3@0<<0 4;O ?@>5:B8@>20=8O</text>
+    <text x="80" y="320" font-size="64" font-weight="700" letter-spacing="-1.5">!-4><>2 >=;09=</text>
+
+    <text x="80" y="395" font-size="28" fill="#cbd5e1" font-weight="500">2D-?;0= · 3D-<>45;L · !B5=K · @KH0 · !B@>?8;0</text>
+    <text x="80" y="435" font-size="28" fill="#cbd5e1" font-weight="500">PDF->BGQBK · !?5F8D8:0F8O <0B5@80;>2</text>
+
+    <g transform="translate(80,510)">
+      <rect rx="16" ry="16" width="280" height="68" fill="url(#accent)" stroke="#22d3ee" stroke-opacity="0.5"/>
+      <text x="140" y="44" font-size="22" font-weight="600" text-anchor="middle" fill="#ecfeff">housekit.pro</text>
+    </g>
+  </g>
+
+  <g transform="translate(770,150)">
+    <rect rx="28" ry="28" width="360" height="360" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.12"/>
+    <g transform="translate(40,50)" stroke="#22d3ee" stroke-width="2" fill="none" stroke-opacity="0.85">
+      <path d="M0 200 L140 90 L280 200 L280 280 L0 280 Z"/>
+      <path d="M0 200 L140 90 L280 200" />
+      <path d="M40 280 L40 210 L100 210 L100 280" />
+      <path d="M180 280 L180 220 L240 220 L240 280" />
+    </g>
+    <g transform="translate(40,360)" font-family="Inter, system-ui, sans-serif" fill="#cbd5e1" font-size="18" font-weight="600">
+      <text>3D 4>< · 2D ?;0= · PDF</text>
+    </g>
+  </g>
+</svg>

@@ -4,10 +4,16 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { CompanyInvite } from "@/core/company/orgTypes";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { acceptCompanyInvite, getCompanyInvite } from "@/features/company/companyTeamService";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import "./inviteAcceptPage.css";
 
 export function InviteAcceptPage() {
+  useDocumentSeo({
+    title: "Приглашение в команду — HouseKit Pro",
+    robots: "noindex",
+  });
+
   const { inviteId } = useParams<{ inviteId: string }>();
   const [searchParams] = useSearchParams();
   const companyId = searchParams.get("companyId");

@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 import { Box, FileText, LayoutGrid, Menu, X } from "lucide-react";
 
 import { useAuth } from "@/features/auth/AuthProvider";
+import { trackEvent } from "@/shared/analytics/analytics";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import "./houseKitLanding.css";
 
 const LANDING_TITLE = "HouseKit Pro — программа для проектирования СИП-домов онлайн";
 const LANDING_DESCRIPTION =
-  "HouseKit Pro by HotWell.kz — онлайн-система для проектирования СИП-домов, 3D-моделей, чертежей, PDF-отчётов и спецификаций.";
+  "Онлайн-сервис для проектирования СИП-домов: 2D-план, 3D-модель, стены, крыша, стропильная система, PDF-отчёты и спецификации материалов.";
+const LANDING_CANONICAL = "https://housekit.pro/";
 
 const PAIN_CARDS = [
   {
@@ -63,19 +66,66 @@ const PIPELINE = [
   "Спецификация",
 ];
 
+const FAQ_ITEMS: ReadonlyArray<{ readonly q: string; readonly a: string }> = [
+  {
+    q: "Для чего нужен HouseKit Pro?",
+    a: "HouseKit Pro — это онлайн-программа для проектирования СИП-домов: 2D-план и 3D-модель, расчёт СИП-панелей, чертежи стен, крыши и стропильной системы, PDF-отчёты и спецификации материалов в одном сервисе.",
+  },
+  {
+    q: "Можно ли проектировать СИП-дома онлайн?",
+    a: "Да. Сервис работает в браузере: вы создаёте план, проверяете 3D, формируете отчёты и спецификации без установки и привязки к рабочему месту.",
+  },
+  {
+    q: "Формирует ли программа PDF-отчёты?",
+    a: "Да. HouseKit Pro генерирует комплекты PDF-отчётов: листы стен и крыши, фасады, спецификации СИП-панелей и материалов — напрямую из актуальной модели проекта.",
+  },
+  {
+    q: "Можно ли рассчитать СИП-панели и материалы?",
+    a: "Да. На основе геометрии модели программа делает раскладку и расчёт СИП-панелей, ведомость пиломатериалов, стартовую доску, фундамент и стропильную систему — всё попадает в спецификацию.",
+  },
+  {
+    q: "Подходит ли сервис для строительных компаний?",
+    a: "Да. HouseKit Pro используют строительные компании и производители СИП-домов: один источник истины для проектировщика, цеха и монтажной бригады, единый комплект отчётов и спецификаций.",
+  },
+  {
+    q: "Можно ли работать командой в одной компании?",
+    a: "Да. После регистрации создаётся рабочее пространство компании: можно пригласить сотрудников, разграничить роли и хранить проекты в облаке.",
+  },
+];
+
 const REGISTER_WITH_RETURN = "/register?returnUrl=/app/projects";
+
+function buildFaqJsonLd(items: ReadonlyArray<{ readonly q: string; readonly a: string }>): string {
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((it) => ({
+      "@type": "Question",
+      name: it.q,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: it.a,
+      },
+    })),
+  });
+}
 
 function LandingStartProjectLink({ className }: { readonly className?: string }) {
   const { isAuthenticated, status } = useAuth();
+  const handleClick = () => trackEvent("click_start_project", { auth: status });
   if (status === "loading") {
     return (
-      <Link className={className} to={REGISTER_WITH_RETURN}>
+      <Link className={className} to={REGISTER_WITH_RETURN} onClick={handleClick}>
         Начать проект
       </Link>
     );
   }
   return (
-    <Link className={className} to={isAuthenticated ? "/app/projects" : REGISTER_WITH_RETURN}>
+    <Link
+      className={className}
+      to={isAuthenticated ? "/app/projects" : REGISTER_WITH_RETURN}
+      onClick={handleClick}
+    >
       Начать проект
     </Link>
   );
@@ -86,15 +136,15 @@ function LandingStartProjectLink({ className }: { readonly className?: string })
  */
 export function HouseKitLandingPage() {
   const navId = useId();
+  const faqJsonLdId = useId();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  useEffect(() => {
-    document.title = LANDING_TITLE;
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) {
-      metaDesc.setAttribute("content", LANDING_DESCRIPTION);
-    }
-  }, []);
+  useDocumentSeo({
+    title: LANDING_TITLE,
+    description: LANDING_DESCRIPTION,
+    canonical: LANDING_CANONICAL,
+    robots: "index",
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,13 +176,22 @@ export function HouseKitLandingPage() {
             <a href="#reports">Отчёты</a>
             <a href="#for-who">Для кого</a>
             <a href="#demo">Демо</a>
+            <a href="#faq">FAQ</a>
           </nav>
 
           <div className="hk-header-actions">
-            <Link className="hk-btn hk-btn-ghost" to="/login">
+            <Link
+              className="hk-btn hk-btn-ghost"
+              to="/login"
+              onClick={() => trackEvent("click_login", { source: "header" })}
+            >
               Войти
             </Link>
-            <Link className="hk-btn hk-btn-primary" to={REGISTER_WITH_RETURN}>
+            <Link
+              className="hk-btn hk-btn-primary"
+              to={REGISTER_WITH_RETURN}
+              onClick={() => trackEvent("click_register", { source: "header" })}
+            >
               Зарегистрироваться
             </Link>
           </div>
@@ -162,11 +221,28 @@ export function HouseKitLandingPage() {
           <a href="#demo" onClick={closeMobile}>
             Демо
           </a>
+          <a href="#faq" onClick={closeMobile}>
+            FAQ
+          </a>
           <div className="hk-mobile-drawer-actions">
-            <Link className="hk-btn hk-btn-ghost" to="/login" onClick={closeMobile}>
+            <Link
+              className="hk-btn hk-btn-ghost"
+              to="/login"
+              onClick={() => {
+                trackEvent("click_login", { source: "mobile_drawer" });
+                closeMobile();
+              }}
+            >
               Войти
             </Link>
-            <Link className="hk-btn hk-btn-primary" to={REGISTER_WITH_RETURN} onClick={closeMobile}>
+            <Link
+              className="hk-btn hk-btn-primary"
+              to={REGISTER_WITH_RETURN}
+              onClick={() => {
+                trackEvent("click_register", { source: "mobile_drawer" });
+                closeMobile();
+              }}
+            >
               Зарегистрироваться
             </Link>
           </div>
@@ -184,7 +260,11 @@ export function HouseKitLandingPage() {
               </p>
               <div className="hk-hero-ctas">
                 <LandingStartProjectLink className="hk-btn hk-btn-primary hk-btn-lg" />
-                <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/demo">
+                <Link
+                  className="hk-btn hk-btn-ghost hk-btn-lg"
+                  to="/demo"
+                  onClick={() => trackEvent("click_demo", { source: "hero" })}
+                >
                   Посмотреть демо
                 </Link>
               </div>
@@ -325,7 +405,11 @@ export function HouseKitLandingPage() {
               Откройте готовый пример: 2D, 3D, отчёты и спецификация — как в реальном рабочем проекте.
             </p>
             <div className="hk-hero-ctas">
-              <Link className="hk-btn hk-btn-primary hk-btn-lg" to="/demo">
+              <Link
+                className="hk-btn hk-btn-primary hk-btn-lg"
+                to="/demo"
+                onClick={() => trackEvent("click_demo", { source: "demo_section" })}
+              >
                 Открыть демо
               </Link>
               <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/app">
@@ -334,14 +418,56 @@ export function HouseKitLandingPage() {
             </div>
           </section>
 
+          <section className="hk-section" id="faq" aria-labelledby="hk-faq-title">
+            <h2 id="hk-faq-title" className="hk-section-title">
+              Частые вопросы про HouseKit Pro
+            </h2>
+            <p className="hk-section-lead">
+              Коротко о ключевых сценариях: проектирование СИП-домов онлайн, расчёт СИП-панелей, отчёты и работа в
+              команде.
+            </p>
+            <div className="hk-faq" role="list">
+              {FAQ_ITEMS.map((item, idx) => (
+                <details
+                  key={item.q}
+                  className="hk-faq-item"
+                  role="listitem"
+                  open={idx === 0}
+                  onToggle={(ev) => {
+                    if (ev.currentTarget.open) {
+                      trackEvent("click_faq_item", { question: item.q });
+                    }
+                  }}
+                >
+                  <summary className="hk-faq-q">{item.q}</summary>
+                  <div className="hk-faq-a">{item.a}</div>
+                </details>
+              ))}
+            </div>
+            <script
+              type="application/ld+json"
+              id={faqJsonLdId}
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: buildFaqJsonLd(FAQ_ITEMS) }}
+            />
+          </section>
+
           <section className="hk-section hk-cta" aria-labelledby="hk-cta-title">
             <h2 id="hk-cta-title">Попробуйте HouseKit Pro для СИП-домов</h2>
             <p>Расчёт СИП-панелей, чертежи СИП-дома и спецификация СИП-дома — начните с демо или нового проекта.</p>
             <div className="hk-cta-btns">
-              <Link className="hk-btn hk-btn-primary hk-btn-lg" to={REGISTER_WITH_RETURN}>
+              <Link
+                className="hk-btn hk-btn-primary hk-btn-lg"
+                to={REGISTER_WITH_RETURN}
+                onClick={() => trackEvent("click_register", { source: "footer_cta" })}
+              >
                 Зарегистрироваться
               </Link>
-              <Link className="hk-btn hk-btn-ghost hk-btn-lg" to="/demo">
+              <Link
+                className="hk-btn hk-btn-ghost hk-btn-lg"
+                to="/demo"
+                onClick={() => trackEvent("click_demo", { source: "footer_cta" })}
+              >
                 Открыть демо
               </Link>
             </div>

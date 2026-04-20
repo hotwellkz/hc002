@@ -7,6 +7,8 @@ import {
   getCompanyInvite,
   normalizeInviteEmail,
 } from "@/features/company/companyTeamService";
+import { trackEvent } from "@/shared/analytics/analytics";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import { useAuth } from "./AuthProvider";
 import {
@@ -24,6 +26,11 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { refreshSession } = useAuth();
+
+  useDocumentSeo({
+    title: "Войти — HouseKit Pro",
+    robots: "noindex",
+  });
 
   const inviteToken = searchParams.get("invite");
   const inviteRef = inviteToken ? decodeInviteToken(inviteToken) : null;
@@ -83,6 +90,7 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    trackEvent("click_login", { method: "password" });
     try {
       await signInWithEmailPassword(email, password);
       if (inviteRef) {
@@ -100,6 +108,7 @@ export function LoginPage() {
   const onGoogle = async () => {
     setError(null);
     setLoading(true);
+    trackEvent("click_login", { method: "google" });
     try {
       await signInWithGoogle();
       if (inviteRef) {

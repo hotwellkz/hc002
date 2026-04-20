@@ -7,6 +7,8 @@ import {
   getCompanyInvite,
   normalizeInviteEmail,
 } from "@/features/company/companyTeamService";
+import { trackEvent } from "@/shared/analytics/analytics";
+import { useDocumentSeo } from "@/shared/seo/useDocumentSeo";
 
 import { useAuth } from "./AuthProvider";
 import { signUpAndJoinByInvite, signUpWithCompany } from "./authActions";
@@ -20,6 +22,11 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { refreshSession } = useAuth();
+
+  useDocumentSeo({
+    title: "Регистрация — HouseKit Pro",
+    robots: "noindex",
+  });
 
   const inviteToken = searchParams.get("invite");
   const inviteRef = inviteToken ? decodeInviteToken(inviteToken) : null;
@@ -75,6 +82,7 @@ export function RegisterPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    trackEvent("click_register", { with_invite: inviteRef ? true : false });
     try {
       if (inviteRef && invite) {
         if (invite.status !== "pending") {
@@ -95,6 +103,7 @@ export function RegisterPage() {
           companyId: inviteRef.companyId,
           inviteId: inviteRef.inviteId,
         });
+        trackEvent("registration_success", { mode: "invite" });
         await refreshSession();
         void navigate("/app/projects", { replace: true });
         return;
@@ -107,6 +116,7 @@ export function RegisterPage() {
         password,
         companyName: cn,
       });
+      trackEvent("registration_success", { mode: "self_signup" });
       void navigate(returnUrl, { replace: true });
     } catch (err) {
       setError(friendlyAuthError(err));

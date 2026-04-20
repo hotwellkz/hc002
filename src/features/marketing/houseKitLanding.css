@@ -516,3 +516,65 @@
 .hk-footer a:hover {
   text-decoration: underline;
 }
+
+/* ——— FAQ ——— */
+.hk-faq {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hk-faq-item {
+  border-radius: 16px;
+  background: var(--hk-glass-bg);
+  border: 1px solid var(--hk-glass-border);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.hk-faq-q {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--hk-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.hk-faq-q::-webkit-details-marker {
+  display: none;
+}
+
+.hk-faq-q::after {
+  content: "+";
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--hk-accent);
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.hk-faq-item[open] .hk-faq-q::after {
+  content: "−";
+}
+
+.hk-faq-a {
+  padding: 0 22px 20px;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--hk-muted);
+}
+
+.hk-faq-q:focus-visible,
+.hk-faq-item:focus-within .hk-faq-q {
+  outline: 2px solid var(--hk-accent);
+  outline-offset: -2px;
+}

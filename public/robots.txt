@@ -1,0 +1,38 @@
+# HouseKit Pro by HotWell.kz — robots
+# Маркетинговый лендинг открыт для индексации, внутреннее приложение закрыто.
+
+User-agent: *
+Allow: /$
+Allow: /sitemap.xml
+Allow: /robots.txt
+Allow: /og-image.svg
+Allow: /favicon.svg
+Allow: /favicon.ico
+Allow: /apple-touch-icon.png
+
+Disallow: /app
+Disallow: /app/
+Disallow: /login
+Disallow: /register
+Disallow: /demo
+Disallow: /invite/
+
+# Рекомендация для Яндекса
+User-agent: Yandex
+Allow: /$
+Allow: /sitemap.xml
+Allow: /robots.txt
+Allow: /og-image.svg
+Allow: /favicon.svg
+Allow: /favicon.ico
+Allow: /apple-touch-icon.png
+Disallow: /app
+Disallow: /app/
+Disallow: /login
+Disallow: /register
+Disallow: /demo
+Disallow: /invite/
+Clean-param: invite&returnUrl&projectId&demo /
+
+Host: https://housekit.pro
+Sitemap: https://housekit.pro/sitemap.xml
